@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.24](https://github.com/kent8192/reinhardt-web/compare/reinhardt-middleware@v0.3.23...reinhardt-middleware@v0.3.24) - 2026-10-14
+
+### Fixed
+
+- *(auth)* [**breaking**] revalidate cookie sessions and enforce CSRF
+- *(http)* [**breaking**] validate redirect authorities and referer origins
+- *(security)* [**breaking**] preserve configuration and typed values in hardening
+- *(middleware)* issue CSRF token for the rotated session ID
+
+### Fixed
+
+- Configure CSRF session cookies and honor typed session metadata when issuing and validating tokens.
+
+### Security
+
+- Revalidate cookie sessions against the current account record before granting authenticated or admin access.
+
+### Migration
+
+`CookieSessionAuthMiddleware::new(backend)` and `with_config(backend, config)`
+previously trusted the session's stored user ID and privilege flags. They now
+leave the request anonymous until an account lookup backend is configured. This
+prevents deleted, disabled, or demoted accounts from retaining access through an
+old cookie.
+
+1. Implement `AuthBackend::get_user` to load the current account. Return `None`
+   for deleted accounts and ensure `AuthIdentity::is_account_active` and
+   `AuthIdentity::is_admin` reflect the current account state.
+2. Configure the middleware with
+   `CookieSessionAuthMiddleware::new(session_backend).with_auth_backend(auth_backend)`
+   (or call `with_auth_backend` after `with_config`).
+3. Verify that disabled and demoted accounts lose access on their next request.
+
+The former session-flag behavior is removed when this fix ships; there is no
+compatibility mode because it would preserve the authorization flaw.
+
 ## [0.3.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-middleware@v0.3.20...reinhardt-middleware@v0.3.21) - 2026-10-05
 
 ### Fixed

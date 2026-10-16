@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.24](https://github.com/kent8192/reinhardt-web/compare/reinhardt-tasks@v0.3.23...reinhardt-tasks@v0.3.24) - 2026-10-14
+
+### Fixed
+
+- *(tasks)* reject unknown SQLite task status values instead of defaulting to pending
+
 ## [0.3.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-tasks@v0.3.20...reinhardt-tasks@v0.3.21) - 2026-10-05
 
 ### Documentation

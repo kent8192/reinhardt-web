@@ -1,12 +1,12 @@
 //! Cookie-based session authentication middleware.
 //!
 //! Reads a session ID from an HTTP cookie, validates it against an
-//! `AsyncSessionBackend`, and injects `AuthState` into request
-//! extensions.
+//! `AsyncSessionBackend`, resolves the current account through an
+//! `AuthBackend`, and injects `AuthState` into request extensions.
 //!
-//! This middleware uses **best-effort authentication**: valid sessions
-//! produce `AuthState::authenticated()`, while missing or invalid
-//! sessions produce `AuthState::anonymous()`. Requests are never
+//! This middleware uses **best-effort authentication**: a valid session and
+//! active account produce `AuthState::authenticated()`, while missing or invalid
+//! sessions and accounts produce `AuthState::anonymous()`. Requests are never
 //! rejected — authorization is delegated to endpoint-level guards.
 
 #[cfg(feature = "sessions")]
@@ -18,6 +18,8 @@ use std::time::{Duration, SystemTime};
 
 #[cfg(feature = "sessions")]
 use crate::session::AsyncSessionBackend;
+#[cfg(feature = "sessions")]
+use reinhardt_auth::AuthBackend;
 #[cfg(feature = "sessions")]
 use reinhardt_http::{
 	AuthState, Handler, IsActive, IsAdmin, IsAuthenticated, Middleware, Request, Response, Result,
@@ -61,10 +63,10 @@ impl Default for CookieSessionConfig {
 /// 1. Extracts the session ID from the configured cookie.
 /// 2. Loads the session from the `AsyncSessionBackend`.
 /// 3. Checks absolute expiry (`created_at + absolute_max`).
-/// 4. Builds an `AuthState` (authenticated or anonymous) and inserts
-///    it into request extensions.
-/// 5. After the downstream handler responds, fires a background `touch()`
-///    to refresh the sliding TTL.
+/// 4. Resolves the current user and builds an `AuthState` from live account
+///    status and privileges, then inserts it into request extensions.
+/// 5. After a verified request completes, fires a background `touch()` to
+///    refresh the sliding TTL.
 ///
 /// # Examples
 ///
@@ -72,6 +74,8 @@ impl Default for CookieSessionConfig {
 /// use std::sync::Arc;
 /// use reinhardt_middleware::CookieSessionAuthMiddleware;
 /// use reinhardt_middleware::session::{AsyncSessionBackend, SessionData};
+/// use reinhardt_auth::{AuthBackend, AuthIdentity, AuthenticationError};
+/// use reinhardt_http::Request;
 /// use reinhardt_http::Result;
 /// use std::time::Duration;
 ///
@@ -83,13 +87,21 @@ impl Default for CookieSessionConfig {
 /// #     async fn destroy(&self, _id: &str) -> Result<()> { Ok(()) }
 /// #     async fn touch(&self, _id: &str, _ttl: Duration) -> Result<()> { Ok(()) }
 /// # }
+/// # struct MyAuthBackend;
+/// # #[async_trait::async_trait]
+/// # impl AuthBackend for MyAuthBackend {
+/// #     async fn authenticate(&self, _request: &Request) -> std::result::Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> { Ok(None) }
+/// #     async fn get_user(&self, _id: &str) -> std::result::Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> { Ok(None) }
+/// # }
 ///
 /// let backend = Arc::new(MyBackend);
-/// let mw = CookieSessionAuthMiddleware::new(backend);
+/// let mw = CookieSessionAuthMiddleware::new(backend)
+///     .with_auth_backend(Arc::new(MyAuthBackend));
 /// ```
 #[cfg(feature = "sessions")]
 pub struct CookieSessionAuthMiddleware<B: AsyncSessionBackend> {
 	backend: Arc<B>,
+	auth_backend: Option<Arc<dyn AuthBackend>>,
 	config: CookieSessionConfig,
 }
 
@@ -99,13 +111,25 @@ impl<B: AsyncSessionBackend> CookieSessionAuthMiddleware<B> {
 	pub fn new(backend: Arc<B>) -> Self {
 		Self {
 			backend,
+			auth_backend: None,
 			config: CookieSessionConfig::default(),
 		}
 	}
 
 	/// Create a new middleware with the given backend and custom config.
 	pub fn with_config(backend: Arc<B>, config: CookieSessionConfig) -> Self {
-		Self { backend, config }
+		Self {
+			backend,
+			auth_backend: None,
+			config,
+		}
+	}
+
+	/// Set the backend used to revalidate the account on every request.
+	/// Without one, sessions remain anonymous and their sliding TTL is not refreshed.
+	pub fn with_auth_backend(mut self, auth_backend: Arc<dyn AuthBackend>) -> Self {
+		self.auth_backend = Some(auth_backend);
+		self
 	}
 
 	/// Extract the session ID from the `Cookie` header.
@@ -176,28 +200,28 @@ impl<B: AsyncSessionBackend + 'static> Middleware for CookieSessionAuthMiddlewar
 								// Corrupted session: user_id missing or empty
 								let _ = self.backend.destroy(sid).await;
 								AuthState::anonymous()
+							} else if let Some(auth_backend) = &self.auth_backend {
+								match auth_backend.get_user(&user_id).await {
+									Ok(Some(user))
+										if user.id() == user_id
+											&& user.is_authenticated() && user
+											.is_account_active() =>
+									{
+										let is_admin = user.is_admin();
+										request.extensions.insert(user_id.clone());
+										request.extensions.insert(IsAuthenticated(true));
+										request.extensions.insert(IsAdmin(is_admin));
+										request.extensions.insert(IsActive(true));
+										AuthState::authenticated(user_id, is_admin, true)
+									}
+									Ok(_) => {
+										let _ = self.backend.destroy(sid).await;
+										AuthState::anonymous()
+									}
+									Err(_) => AuthState::anonymous(),
+								}
 							} else {
-								let is_staff: bool = session
-									.data
-									.get("is_staff")
-									.and_then(|v| serde_json::from_value(v.clone()).ok())
-									.unwrap_or(false);
-								let is_superuser: bool = session
-									.data
-									.get("is_superuser")
-									.and_then(|v| serde_json::from_value(v.clone()).ok())
-									.unwrap_or(false);
-
-								let is_admin = is_staff || is_superuser;
-								let is_active = true;
-
-								// Insert backward compat values
-								request.extensions.insert(user_id.clone());
-								request.extensions.insert(IsAuthenticated(true));
-								request.extensions.insert(IsAdmin(is_admin));
-								request.extensions.insert(IsActive(is_active));
-
-								AuthState::authenticated(user_id, is_admin, is_active)
+								AuthState::anonymous()
 							}
 						}
 					}
@@ -206,11 +230,14 @@ impl<B: AsyncSessionBackend + 'static> Middleware for CookieSessionAuthMiddlewar
 			}
 		};
 
+		let refresh_session = auth_state.is_authenticated();
 		request.extensions.insert(auth_state);
 		let response = next.handle(request).await?;
 
 		// Fire-and-forget: touch session to reset sliding TTL
-		if let Some(ref sid) = session_id {
+		if let Some(ref sid) = session_id
+			&& refresh_session
+		{
 			let backend = Arc::clone(&self.backend);
 			let sid = sid.clone();
 			let ttl = self.config.sliding_ttl;
@@ -239,10 +266,37 @@ mod tests {
 	use std::time::{Duration, SystemTime};
 
 	use crate::session::SessionData;
+	use reinhardt_auth::{AuthIdentity, AuthenticationError};
+
+	#[derive(Clone)]
+	struct TestIdentity {
+		id: String,
+		admin: bool,
+		active: bool,
+	}
+
+	impl AuthIdentity for TestIdentity {
+		fn id(&self) -> String {
+			self.id.clone()
+		}
+
+		fn is_authenticated(&self) -> bool {
+			true
+		}
+
+		fn is_admin(&self) -> bool {
+			self.admin
+		}
+
+		fn is_account_active(&self) -> bool {
+			self.active
+		}
+	}
 
 	/// In-memory session backend for tests.
 	struct MockBackend {
 		sessions: Mutex<HashMap<String, SessionData>>,
+		users: Mutex<HashMap<String, TestIdentity>>,
 		destroyed: Mutex<Vec<String>>,
 		touched: Mutex<Vec<(String, Duration)>>,
 	}
@@ -251,12 +305,28 @@ mod tests {
 		fn new() -> Self {
 			Self {
 				sessions: Mutex::new(HashMap::new()),
+				users: Mutex::new(HashMap::new()),
 				destroyed: Mutex::new(Vec::new()),
 				touched: Mutex::new(Vec::new()),
 			}
 		}
 
 		fn insert(&self, session: SessionData) {
+			if let Some(id) = session.data.get("user_id").and_then(|id| id.as_str())
+				&& !id.is_empty()
+			{
+				let admin = ["is_staff", "is_superuser"].into_iter().any(|key| {
+					session.data.get(key).and_then(|value| value.as_bool()) == Some(true)
+				});
+				self.users.lock().unwrap().insert(
+					id.to_string(),
+					TestIdentity {
+						id: id.to_string(),
+						admin,
+						active: true,
+					},
+				);
+			}
 			self.sessions
 				.lock()
 				.unwrap()
@@ -292,6 +362,35 @@ mod tests {
 			self.touched.lock().unwrap().push((id.to_string(), ttl));
 			Ok(())
 		}
+	}
+
+	#[async_trait::async_trait]
+	impl AuthBackend for MockBackend {
+		async fn authenticate(
+			&self,
+			_request: &Request,
+		) -> std::result::Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> {
+			Ok(None)
+		}
+
+		async fn get_user(
+			&self,
+			id: &str,
+		) -> std::result::Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> {
+			Ok(self
+				.users
+				.lock()
+				.unwrap()
+				.get(id)
+				.cloned()
+				.map(|user| Box::new(user) as Box<dyn AuthIdentity>))
+		}
+	}
+
+	fn authenticated_middleware(
+		backend: Arc<MockBackend>,
+	) -> CookieSessionAuthMiddleware<MockBackend> {
+		CookieSessionAuthMiddleware::new(Arc::clone(&backend)).with_auth_backend(backend)
 	}
 
 	struct TestHandler;
@@ -378,7 +477,7 @@ mod tests {
 		// Arrange
 		let backend = Arc::new(MockBackend::new());
 		backend.insert(make_session("sess-123", "user-42", false, false));
-		let middleware = CookieSessionAuthMiddleware::new(Arc::clone(&backend));
+		let middleware = authenticated_middleware(Arc::clone(&backend));
 		let handler = Arc::new(TestHandler);
 		let request = create_request_with_cookie("sessionid=sess-123");
 
@@ -395,10 +494,89 @@ mod tests {
 
 	#[rstest]
 	#[tokio::test]
+	async fn test_session_without_auth_backend_is_anonymous() {
+		let backend = Arc::new(MockBackend::new());
+		backend.insert(make_session("sess-unconfigured", "user-42", true, true));
+		let middleware = CookieSessionAuthMiddleware::new(Arc::clone(&backend));
+
+		let response = middleware
+			.process(
+				create_request_with_cookie("sessionid=sess-unconfigured"),
+				Arc::new(TestHandler),
+			)
+			.await
+			.unwrap();
+		let body = parse_response_body(&response);
+		assert_eq!(body["is_authenticated"], false);
+		assert_eq!(body["is_admin"], false);
+		assert!(backend.touched.lock().unwrap().is_empty());
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_session_privileges_use_current_user_record() {
+		let backend = Arc::new(MockBackend::new());
+		backend.insert(make_session("sess-demoted", "admin-1", true, true));
+		backend
+			.users
+			.lock()
+			.unwrap()
+			.get_mut("admin-1")
+			.unwrap()
+			.admin = false;
+		let middleware = authenticated_middleware(Arc::clone(&backend));
+
+		let response = middleware
+			.process(
+				create_request_with_cookie("sessionid=sess-demoted"),
+				Arc::new(TestHandler),
+			)
+			.await
+			.unwrap();
+		let body = parse_response_body(&response);
+		assert_eq!(body["is_authenticated"], true);
+		assert_eq!(body["is_admin"], false);
+	}
+
+	#[rstest]
+	#[case(false)]
+	#[case(true)]
+	#[tokio::test]
+	async fn test_removed_or_inactive_user_is_anonymous(#[case] removed: bool) {
+		let backend = Arc::new(MockBackend::new());
+		backend.insert(make_session("sess-revoked", "user-42", true, true));
+		if removed {
+			backend.users.lock().unwrap().remove("user-42");
+		} else {
+			backend
+				.users
+				.lock()
+				.unwrap()
+				.get_mut("user-42")
+				.unwrap()
+				.active = false;
+		}
+		let middleware = authenticated_middleware(Arc::clone(&backend));
+
+		let response = middleware
+			.process(
+				create_request_with_cookie("sessionid=sess-revoked"),
+				Arc::new(TestHandler),
+			)
+			.await
+			.unwrap();
+		let body = parse_response_body(&response);
+		assert_eq!(body["is_authenticated"], false);
+		assert_eq!(body["is_admin"], false);
+		assert!(backend.was_destroyed("sess-revoked"));
+	}
+
+	#[rstest]
+	#[tokio::test]
 	async fn test_no_cookie_produces_anonymous_state() {
 		// Arrange
 		let backend = Arc::new(MockBackend::new());
-		let middleware = CookieSessionAuthMiddleware::new(Arc::clone(&backend));
+		let middleware = authenticated_middleware(Arc::clone(&backend));
 		let handler = Arc::new(TestHandler);
 		let request = create_request_without_cookie();
 
@@ -415,7 +593,7 @@ mod tests {
 	async fn test_invalid_session_id_produces_anonymous_state() {
 		// Arrange
 		let backend = Arc::new(MockBackend::new());
-		let middleware = CookieSessionAuthMiddleware::new(Arc::clone(&backend));
+		let middleware = authenticated_middleware(Arc::clone(&backend));
 		let handler = Arc::new(TestHandler);
 		let request = create_request_with_cookie("sessionid=nonexistent");
 
@@ -437,7 +615,7 @@ mod tests {
 		session.created_at = SystemTime::now() - Duration::from_secs(48 * 3600);
 		backend.insert(session);
 
-		let middleware = CookieSessionAuthMiddleware::new(Arc::clone(&backend));
+		let middleware = authenticated_middleware(Arc::clone(&backend));
 		let handler = Arc::new(TestHandler);
 		let request = create_request_with_cookie("sessionid=sess-expired");
 
@@ -480,7 +658,7 @@ mod tests {
 		// Arrange
 		let backend = Arc::new(MockBackend::new());
 		backend.insert(make_session("sess-staff", "admin-1", true, false));
-		let middleware = CookieSessionAuthMiddleware::new(Arc::clone(&backend));
+		let middleware = authenticated_middleware(Arc::clone(&backend));
 		let handler = Arc::new(TestHandler);
 		let request = create_request_with_cookie("sessionid=sess-staff");
 
@@ -501,7 +679,7 @@ mod tests {
 		// Arrange
 		let backend = Arc::new(MockBackend::new());
 		backend.insert(make_session("sess-super", "super-1", false, true));
-		let middleware = CookieSessionAuthMiddleware::new(Arc::clone(&backend));
+		let middleware = authenticated_middleware(Arc::clone(&backend));
 		let handler = Arc::new(TestHandler);
 		let request = create_request_with_cookie("sessionid=sess-super");
 
@@ -529,7 +707,7 @@ mod tests {
 		// Arrange
 		let backend = Arc::new(MockBackend::new());
 		backend.insert(make_session("sess-empty", "", false, false));
-		let middleware = CookieSessionAuthMiddleware::new(Arc::clone(&backend));
+		let middleware = authenticated_middleware(Arc::clone(&backend));
 		let handler = Arc::new(TestHandler);
 		let request = create_request_with_cookie("sessionid=sess-empty");
 
@@ -548,7 +726,7 @@ mod tests {
 		// Arrange
 		let backend = Arc::new(MockBackend::new());
 		backend.insert(make_session_without_user_id("sess-no-uid"));
-		let middleware = CookieSessionAuthMiddleware::new(Arc::clone(&backend));
+		let middleware = authenticated_middleware(Arc::clone(&backend));
 		let handler = Arc::new(TestHandler);
 		let request = create_request_with_cookie("sessionid=sess-no-uid");
 
@@ -567,7 +745,7 @@ mod tests {
 		// Arrange
 		let backend = Arc::new(MockBackend::new());
 		backend.insert(make_session("sess-multi", "user-multi", false, false));
-		let middleware = CookieSessionAuthMiddleware::new(Arc::clone(&backend));
+		let middleware = authenticated_middleware(Arc::clone(&backend));
 		let handler = Arc::new(TestHandler);
 		let request = create_request_with_cookie("other=foo; sessionid=sess-multi; another=bar");
 

@@ -12,6 +12,44 @@ use std::collections::HashMap;
 
 use super::parser::{ParseResult, ParsedData, Parser};
 
+/// Maximum nesting depth of length-delimited fields accepted by [`ProtobufParser`].
+///
+/// Without a schema, every length-delimited field is speculatively decoded as
+/// an embedded message, so the nesting of untrusted input maps directly onto
+/// native recursion. Each level costs only a few bytes on the wire, so the body
+/// size limit alone does not bound the stack depth. The value matches the
+/// default limit of `reinhardt-grpc`'s `DepthLimitedDecoder`.
+const MAX_NESTING_DEPTH: usize = 64;
+
+/// Failure of the internal wire-format decoder.
+#[derive(Debug)]
+enum WireFormatError {
+	/// The bytes are not a well-formed message. A length-delimited field whose
+	/// contents fail this way is exposed as a string or bytes instead.
+	Malformed(Error),
+	/// Length-delimited fields nest deeper than [`MAX_NESTING_DEPTH`]. Unlike
+	/// [`WireFormatError::Malformed`], this rejects the whole body instead of
+	/// degrading the offending field to a string or bytes.
+	NestingTooDeep,
+}
+
+impl From<Error> for WireFormatError {
+	fn from(error: Error) -> Self {
+		Self::Malformed(error)
+	}
+}
+
+impl From<WireFormatError> for Error {
+	fn from(error: WireFormatError) -> Self {
+		match error {
+			WireFormatError::Malformed(error) => error,
+			WireFormatError::NestingTooDeep => Error::Validation(format!(
+				"Protobuf message nesting exceeds the maximum depth of {MAX_NESTING_DEPTH}"
+			)),
+		}
+	}
+}
+
 /// Parser for Protocol Buffers binary format.
 ///
 /// This parser provides dynamic schema support for deserializing Protobuf messages
@@ -28,6 +66,14 @@ use super::parser::{ParseResult, ParsedData, Parser};
 /// This is a basic implementation that handles Protobuf wire format parsing.
 /// For full schema-aware deserialization, you should use the generated code
 /// from your `.proto` files with `prost::Message::decode()`.
+///
+/// # Nesting Limit
+///
+/// Length-delimited fields may nest at most 64 levels deep; deeper bodies are
+/// rejected with [`Error::Validation`]. Because the parser cannot tell embedded
+/// messages from strings or bytes without a schema, every length-delimited
+/// field counts as a level, including a string or bytes field inside the
+/// 64th nested message.
 ///
 /// # Examples
 ///
@@ -100,9 +146,14 @@ impl ProtobufParser {
 	/// - 3: Start group (deprecated)
 	/// - 4: End group (deprecated)
 	/// - 5: 32-bit (fixed32, sfixed32, float)
-	fn parse_wire_format(&self, data: &[u8]) -> ParseResult<Value> {
+	///
+	/// `depth` is the nesting level of `data`: `0` for the request body and one
+	/// more for each enclosing length-delimited field. A length-delimited field
+	/// found at [`MAX_NESTING_DEPTH`] fails with
+	/// [`WireFormatError::NestingTooDeep`] before any further recursion.
+	fn parse_wire_format(&self, data: &[u8], depth: usize) -> Result<Value, WireFormatError> {
 		if data.is_empty() {
-			return Err(Error::Validation("Empty Protobuf data".to_string()));
+			return Err(Error::Validation("Empty Protobuf data".to_string()).into());
 		}
 
 		let mut fields = serde_json::Map::new();
@@ -128,7 +179,8 @@ impl ProtobufParser {
 					if cursor + 8 > data.len() {
 						return Err(Error::Validation(
 							"Insufficient data for 64-bit field".to_string(),
-						));
+						)
+						.into());
 					}
 					let bytes: [u8; 8] = data[cursor..cursor + 8].try_into().unwrap();
 					let value = u64::from_le_bytes(bytes);
@@ -139,18 +191,33 @@ impl ProtobufParser {
 					let (len, n) = self.decode_varint(&data[cursor..])?;
 					cursor += n;
 
-					if cursor + len as usize > data.len() {
-						return Err(Error::Validation(
-							"Insufficient data for length-delimited field".to_string(),
-						));
+					// The declared length is attacker-controlled and may reach
+					// `u64::MAX`, so convert and add with checked arithmetic
+					// before slicing instead of truncating or overflowing.
+					let field_data = usize::try_from(len)
+						.ok()
+						.and_then(|len| data.get(cursor..cursor.checked_add(len)?))
+						.ok_or_else(|| {
+							Error::Validation(
+								"Insufficient data for length-delimited field".to_string(),
+							)
+						})?;
+
+					// Check before descending: the speculative nested parse
+					// below recurses once per level of untrusted nesting.
+					if depth >= MAX_NESTING_DEPTH {
+						return Err(WireFormatError::NestingTooDeep);
 					}
 
-					let field_data = &data[cursor..cursor + len as usize];
-
 					// Try to parse as nested message first
-					let value = match self.parse_wire_format(field_data) {
+					let value = match self.parse_wire_format(field_data, depth + 1) {
 						Ok(nested) => nested,
-						Err(_) => {
+						// Propagate instead of falling back to a string, which
+						// would accept the over-deep body.
+						Err(WireFormatError::NestingTooDeep) => {
+							return Err(WireFormatError::NestingTooDeep);
+						}
+						Err(WireFormatError::Malformed(_)) => {
 							// If parsing as message fails, treat as string or bytes
 							match std::str::from_utf8(field_data) {
 								Ok(s) => json!(s),
@@ -159,30 +226,31 @@ impl ProtobufParser {
 						}
 					};
 
-					(value, len as usize)
+					(value, field_data.len())
 				}
 				3 | 4 => {
 					// Start/End group (deprecated)
 					return Err(Error::Validation(
 						"Group wire types are deprecated and not supported".to_string(),
-					));
+					)
+					.into());
 				}
 				5 => {
 					// 32-bit
 					if cursor + 4 > data.len() {
 						return Err(Error::Validation(
 							"Insufficient data for 32-bit field".to_string(),
-						));
+						)
+						.into());
 					}
 					let bytes: [u8; 4] = data[cursor..cursor + 4].try_into().unwrap();
 					let value = u32::from_le_bytes(bytes);
 					(json!(value), 4)
 				}
 				_ => {
-					return Err(Error::Validation(format!(
-						"Unknown wire type: {}",
-						wire_type
-					)));
+					return Err(
+						Error::Validation(format!("Unknown wire type: {}", wire_type)).into(),
+					);
 				}
 			};
 
@@ -254,7 +322,7 @@ impl Parser for ProtobufParser {
 		_headers: &HeaderMap,
 	) -> ParseResult<ParsedData> {
 		// For dynamic parsing, we convert to a generic representation
-		let value = self.parse_wire_format(&body)?;
+		let value = self.parse_wire_format(&body, 0)?;
 
 		Ok(ParsedData::Protobuf(value))
 	}
@@ -292,6 +360,117 @@ pub trait ProtobufMessage: Sized {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
+
+	/// Appends `value` to `out` as a Protobuf base-128 varint.
+	fn encode_varint(mut value: usize, out: &mut Vec<u8>) {
+		while value >= 0x80 {
+			out.push((value as u8 & 0x7F) | 0x80);
+			value >>= 7;
+		}
+		out.push(value as u8);
+	}
+
+	/// Builds a body whose innermost message `{1: 1}` is wrapped in `levels`
+	/// nested length-delimited fields, each numbered 1.
+	fn nested_message(levels: usize) -> Bytes {
+		// Built back to front so that each wrap appends instead of copying
+		// the whole message, keeping very deep bodies linear to construct.
+		let mut reversed = vec![0x01, 0x08];
+		let mut prefix = Vec::with_capacity(11);
+		for _ in 0..levels {
+			prefix.clear();
+			prefix.push(0x0A);
+			encode_varint(reversed.len(), &mut prefix);
+			reversed.extend(prefix.iter().rev());
+		}
+		reversed.reverse();
+		Bytes::from(reversed)
+	}
+
+	#[rstest]
+	// Field 1, length u64::MAX: the 11-byte body overflows `cursor + len`.
+	#[case::max_length_at_end(vec![
+		0x0A, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x01,
+	])]
+	// Field 1 varint 1, then field 2 with length u64::MAX and a trailing byte.
+	#[case::max_length_mid_message(vec![
+		0x08, 0x01, 0x12, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x01, 0x00,
+	])]
+	// Field 1, length u64::MAX - 10: `cursor + len` wraps to exactly zero.
+	#[case::length_wrapping_to_zero(vec![
+		0x0A, 0xF5, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x01,
+	])]
+	#[tokio::test]
+	async fn test_protobuf_parser_rejects_overflowing_length(#[case] body: Vec<u8>) {
+		// Arrange
+		let parser = ProtobufParser::new();
+		let headers = HeaderMap::new();
+
+		// Act
+		let result = parser
+			.parse(Some("application/protobuf"), Bytes::from(body), &headers)
+			.await;
+
+		// Assert
+		let Err(err) = result else {
+			panic!("Expected overflowing length to be rejected, got: {result:?}");
+		};
+		assert!(
+			matches!(
+				&err,
+				Error::Validation(msg) if msg == "Insufficient data for length-delimited field"
+			),
+			"Unexpected error: {err:?}"
+		);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_protobuf_parser_nested_overflowing_length_falls_back_to_bytes() {
+		// Arrange: field 1 wraps the 11-byte overflowing payload as its contents
+		let body = Bytes::from(vec![
+			0x0A, 0x0B, 0x0A, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x01,
+		]);
+		let parser = ProtobufParser::new();
+		let headers = HeaderMap::new();
+
+		// Act
+		let result = parser
+			.parse(Some("application/protobuf"), body, &headers)
+			.await;
+
+		// Assert
+		match result {
+			Ok(ParsedData::Protobuf(value)) => {
+				assert_eq!(
+					value,
+					json!({"1": [10, 255, 255, 255, 255, 255, 255, 255, 255, 255, 1]})
+				);
+			}
+			other => panic!("Expected Protobuf variant, got: {other:?}"),
+		}
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_protobuf_parser_length_reaching_end_of_data() {
+		// Arrange: field 1, length 3, exactly the remaining bytes "abc"
+		let body = Bytes::from(vec![0x0A, 0x03, 0x61, 0x62, 0x63]);
+		let parser = ProtobufParser::new();
+		let headers = HeaderMap::new();
+
+		// Act
+		let result = parser
+			.parse(Some("application/protobuf"), body, &headers)
+			.await;
+
+		// Assert
+		match result {
+			Ok(ParsedData::Protobuf(value)) => assert_eq!(value, json!({"1": "abc"})),
+			other => panic!("Expected Protobuf variant, got: {other:?}"),
+		}
+	}
 
 	#[tokio::test]
 	async fn test_protobuf_parser_media_types() {
@@ -697,6 +876,56 @@ mod tests {
 				assert_eq!(arr[2], 3);
 			}
 			_ => panic!("Expected Protobuf variant"),
+		}
+	}
+
+	#[rstest]
+	#[case::single_level(1)]
+	#[case::at_limit(64)]
+	#[tokio::test]
+	async fn test_protobuf_parser_accepts_nesting_within_depth_limit(#[case] levels: usize) {
+		// Arrange
+		let parser = ProtobufParser::new();
+		let body = nested_message(levels);
+		let headers = HeaderMap::new();
+
+		// Act
+		let result = parser
+			.parse(Some("application/protobuf"), body, &headers)
+			.await;
+
+		// Assert
+		let ParsedData::Protobuf(value) = result.expect("nesting within the limit must parse")
+		else {
+			panic!("Expected Protobuf variant");
+		};
+		let innermost_field = "/1".repeat(levels + 1);
+		assert_eq!(value.pointer(&innermost_field), Some(&json!(1)));
+	}
+
+	#[rstest]
+	#[case::one_past_limit(65)]
+	// Deep enough to overflow the stack if the recursion were unbounded.
+	#[case::stack_exhausting(100_000)]
+	#[tokio::test]
+	async fn test_protobuf_parser_rejects_nesting_beyond_depth_limit(#[case] levels: usize) {
+		// Arrange
+		let parser = ProtobufParser::new();
+		let body = nested_message(levels);
+		let headers = HeaderMap::new();
+
+		// Act
+		let result = parser
+			.parse(Some("application/protobuf"), body, &headers)
+			.await;
+
+		// Assert
+		match result {
+			Err(Error::Validation(message)) => assert_eq!(
+				message,
+				"Protobuf message nesting exceeds the maximum depth of 64"
+			),
+			other => panic!("Expected nesting validation error, got {other:?}"),
 		}
 	}
 }

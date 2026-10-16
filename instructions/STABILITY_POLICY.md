@@ -492,11 +492,13 @@ The 0.3.24 release includes the `QuerySet` identifier correction for
 [GHSA-6rxp-cc74-26f5](https://github.com/kent8192/reinhardt-web/security/advisories/GHSA-6rxp-cc74-26f5)
 as an explicit exception to the 0.3 patch compatibility guarantee and the
 version-bump requirement in BC-3. `QuerySet::values`, `values_list`, and
-`only` no longer emit expression-shaped entries such as `COUNT(*)` as SQL:
-`to_sql` renders them as quoted identifiers and execution returns
-`Error::Validation`. `inner_join`, `left_join`, and `right_join` treat both
-field arguments as single column names, and the `*_join_as` methods emit
-their table aliases as quoted identifiers.
+`only` no longer emit expression-shaped entries as SQL: `COUNT(*)` and
+`COUNT`, `SUM`, `AVG`, `MIN`, or `MAX` over a single field are rendered as typed
+aggregates, while any other entry such as `LOWER(email)` is rendered by
+`to_sql` as a quoted identifier and execution returns `Error::Validation`.
+`inner_join`, `left_join`, and `right_join` treat both field arguments as single
+column names, and the `*_join_as` methods emit their table aliases as quoted
+identifiers.
 
 These methods accept plain strings that applications can derive from request
 data. Promoting those strings to raw SQL let an attacker-selected projection or

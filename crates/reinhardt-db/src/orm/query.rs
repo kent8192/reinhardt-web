@@ -4348,15 +4348,16 @@ where
 
 	/// Rejects projection entries that cannot be field identifiers.
 	///
-	/// [`Self::values`] entries are always emitted as quoted column references.
-	/// Entries shaped like SQL expressions are rejected before execution instead
-	/// of being promoted to raw SQL, so attacker-selected field names cannot run.
+	/// [`Self::values`] entries are emitted as quoted column references, except
+	/// the aggregates recognized by [`parse_projection_function`], which become
+	/// typed expressions. Any other entry shaped like an SQL expression is
+	/// rejected before execution instead of being promoted to raw SQL, so
+	/// attacker-selected field names cannot run.
 	fn validate_selected_fields(&self) -> reinhardt_core::exception::Result<()> {
-		let has_expression = self
-			.selected_fields
-			.iter()
-			.flatten()
-			.any(|field| field.contains(['(', ')']));
+		let has_expression =
+			self.selected_fields.iter().flatten().any(|field| {
+				field.contains(['(', ')']) && parse_projection_function(field).is_none()
+			});
 		if has_expression {
 			return Err(reinhardt_core::exception::Error::Validation(
 				"values(), values_list(), and only() accept field names only; use annotate or aggregate for computed projections".to_owned(),
@@ -4387,7 +4388,11 @@ where
 
 			if let Some(ref fields) = self.selected_fields {
 				for field in fields {
-					stmt.column(parse_column_reference(field));
+					if let Some(expr) = parse_projection_function(field) {
+						stmt.expr(expr);
+					} else {
+						stmt.column(parse_column_reference(field));
+					}
 				}
 			} else if !self.deferred_fields.is_empty() {
 				for field in T::field_metadata() {
@@ -5752,7 +5757,13 @@ where
 			// Column selection considering selected_fields and deferred_fields
 			if let Some(ref fields) = self.selected_fields {
 				for field in fields {
-					stmt.column(parse_column_reference(field));
+					if let Some(expr) = parse_projection_function(field) {
+						stmt.expr(expr);
+					} else {
+						// Regular column reference
+						let col_ref = parse_column_reference(field);
+						stmt.column(col_ref);
+					}
 				}
 			} else if !self.deferred_fields.is_empty() {
 				let all_fields = T::field_metadata();
@@ -5932,9 +5943,11 @@ where
 	/// Useful for optimizing queries when you don't need all model fields.
 	///
 	/// Each entry is a field name, optionally qualified as `table.field`, and is
-	/// always emitted as a quoted identifier. Entries are never interpreted as
-	/// SQL: executing the query fails for entries shaped like expressions (for
-	/// example `COUNT(*)`). Use [`Self::annotate`] or [`Self::aggregate`] for
+	/// emitted as a quoted identifier. The aggregates `COUNT(*)` and
+	/// `COUNT`/`SUM`/`AVG`/`MIN`/`MAX` over a single field are rendered as typed
+	/// expressions. Entries are never interpreted as SQL: executing the query
+	/// fails for any other entry shaped like an expression (for example
+	/// `LOWER(email)`). Use [`Self::annotate`] or [`Self::aggregate`] for other
 	/// computed projections.
 	///
 	/// # Examples
@@ -6709,8 +6722,9 @@ fn filter_lhs_sql(filter: &Filter) -> String {
 /// Note: For reinhardt-query v1.0.0-rc.29+, we use the full qualified name as a column identifier.
 /// This works for most databases that support qualified column references.
 ///
-/// Text containing parentheses (for example `COUNT(*)`) is kept as one quoted
-/// identifier; this function never emits its input as raw SQL.
+/// Computed projections are handled by [`parse_projection_function`]. Other
+/// text containing parentheses is kept as one quoted identifier; this
+/// function never emits its input as raw SQL.
 pub(crate) fn parse_column_reference(field: &str) -> reinhardt_query::prelude::ColumnRef {
 	use reinhardt_query::prelude::ColumnRef;
 
@@ -6779,6 +6793,37 @@ fn field_comparison_expr(comparison: &FieldComparison) -> SimpleExpr {
 	};
 
 	operand(&comparison.left).binary(operator, operand(&comparison.right))
+}
+
+/// Recognize the supported aggregate syntax without treating projection text as SQL.
+fn parse_projection_function(field: &str) -> Option<SimpleExpr> {
+	let (function, argument) = field.strip_suffix(')')?.split_once('(')?;
+	let argument = argument.trim();
+	let operand = if function.eq_ignore_ascii_case("COUNT") && argument == "*" {
+		Expr::asterisk().into_simple_expr()
+	} else if argument.split('.').all(|part| {
+		let mut chars = part.chars();
+		matches!(chars.next(), Some(first) if first.is_ascii_alphabetic() || first == '_')
+			&& chars.all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+	}) {
+		Expr::col(parse_column_reference(argument)).into_simple_expr()
+	} else {
+		return None;
+	};
+
+	if function.eq_ignore_ascii_case("COUNT") {
+		Some(Func::count(operand))
+	} else if function.eq_ignore_ascii_case("SUM") {
+		Some(Func::sum(operand))
+	} else if function.eq_ignore_ascii_case("AVG") {
+		Some(Func::avg(operand))
+	} else if function.eq_ignore_ascii_case("MIN") {
+		Some(Func::min(operand))
+	} else if function.eq_ignore_ascii_case("MAX") {
+		Some(Func::max(operand))
+	} else {
+		None
+	}
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -6877,6 +6922,21 @@ mod tests {
 	use rstest::rstest;
 	use serde::{Deserialize, Serialize};
 	use std::collections::HashMap;
+
+	#[rstest]
+	fn projection_text_cannot_become_raw_sql() {
+		let payload = "COUNT(*), (SELECT secret FROM credentials)";
+		let sql = QuerySet::<TestUser>::new().values(&[payload]).to_sql();
+
+		assert!(sql.contains("\"COUNT(*), (SELECT secret FROM credentials)\""));
+		assert!(!sql.contains("SELECT COUNT(*), (SELECT secret FROM credentials)"));
+		assert!(
+			QuerySet::<TestUser>::new()
+				.values(&["COUNT(*)"])
+				.to_sql()
+				.contains("COUNT(*)")
+		);
+	}
 
 	#[test]
 	fn render_select_statement_uses_mysql_identifier_quoting() {
@@ -9517,7 +9577,14 @@ mod tests {
 	}
 
 	#[rstest]
-	#[case::aggregate("COUNT(*)", r#"SELECT "id", "COUNT(*)" FROM "test_users""#)]
+	#[case::unsupported_function(
+		"LOWER(email)",
+		r#"SELECT "id", "LOWER(email)" FROM "test_users""#
+	)]
+	#[case::aggregate_with_injected_argument(
+		"COUNT(id) FROM test_users; --)",
+		r#"SELECT "id", "COUNT(id) FROM test_users; --)" FROM "test_users""#
+	)]
 	#[case::scalar_subquery(
 		"(SELECT email FROM test_users LIMIT 1)",
 		r#"SELECT "id", "(SELECT email FROM test_users LIMIT 1)" FROM "test_users""#
@@ -9538,7 +9605,7 @@ mod tests {
 	}
 
 	#[rstest]
-	#[case::aggregate("COUNT(*)")]
+	#[case::unsupported_function("LOWER(email)")]
 	#[case::scalar_subquery("(SELECT email FROM test_users LIMIT 1)")]
 	#[case::statement_break("id) FROM test_users; DROP TABLE test_users; --")]
 	fn projection_rejects_expression_shaped_fields_before_execution(#[case] field: &str) {
@@ -9562,6 +9629,22 @@ mod tests {
 					if message == "values(), values_list(), and only() accept field names only; use annotate or aggregate for computed projections"
 			));
 		}
+	}
+
+	#[rstest]
+	#[case::count_all("COUNT(*)", r#"SELECT "id", COUNT(*) FROM "test_users""#)]
+	#[case::max_field("MAX(id)", r#"SELECT "id", MAX("id") FROM "test_users""#)]
+	fn projection_accepts_supported_aggregates(#[case] field: &str, #[case] expected: &str) {
+		// Arrange
+		let queryset = QuerySet::<TestUser>::new().values(&["id", field]);
+
+		// Act
+		let statement = queryset.build_select_statement();
+		let sql = queryset.to_sql();
+
+		// Assert
+		assert!(statement.is_ok());
+		assert_eq!(sql, expected);
 	}
 
 	#[cfg(feature = "sqlite")]

@@ -17,15 +17,18 @@ interpolated their field arguments into a raw `ON` condition, and the
 those strings from request data, for example a field-selection parameter,
 let an attacker run SQL expressions or widen a join predicate. These methods
 take plain strings, so their signatures cannot distinguish a trusted expression
-from attacker input; every entry is now treated as an identifier.
+from attacker input; every entry is now treated as an identifier, except a
+fixed set of aggregates that are rendered as typed expressions.
 
 ## Required migration
 
 1. Replace expression projections passed to `values`, `values_list`, or
-   `only`. `to_sql` now renders an entry such as `COUNT(*)` as the quoted
-   identifier `"COUNT(*)"`, and executing the queryset returns
-   `Error::Validation`. Use `aggregate` or `annotate` for computed columns.
-   For example, a count subquery becomes:
+   `only`. Only `COUNT(*)` and `COUNT`, `SUM`, `AVG`, `MIN`, or `MAX` over a
+   single field name are still rendered as aggregates, with the field quoted.
+   Any other entry containing parentheses, such as `LOWER(email)`, is rendered
+   by `to_sql` as one quoted identifier, and executing the queryset returns
+   `Error::Validation`. Use `aggregate` or `annotate` for other computed
+   columns. For example, a count subquery becomes:
 
    ```rust,ignore
    use reinhardt_db::orm::aggregation::Aggregate;
@@ -58,10 +61,10 @@ Search for affected calls and exercise every query built from them:
 rg -n '\.(values|values_list|only)\(|\.(inner|left|right)_join(_as)?(::<|\()' src crates
 ```
 
-Confirm that projections contain only field names, that join arguments are
-column names, and that queries built from request data still reject unknown
-fields at the application layer. An API-compatible `cargo-semver-checks`
-result alone does not verify these runtime contracts.
+Confirm that projections contain only field names or the supported aggregates,
+that join arguments are column names, and that queries built from request data
+still reject unknown fields at the application layer. An API-compatible
+`cargo-semver-checks` result alone does not verify these runtime contracts.
 
 This exception is limited to the `QuerySet` projection and join behaviors
 described above. Other APIs and later releases retain the normal 0.3
