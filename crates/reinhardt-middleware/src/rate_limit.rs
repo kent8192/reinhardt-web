@@ -273,8 +273,9 @@ impl RateLimitConfig {
 	/// cannot choose its rate-limit identity by prepending entries to the
 	/// header. Every proxy between the client-facing edge and this server must
 	/// be listed; an unlisted intermediate proxy is treated as the client.
-	/// `X-Real-IP` is consulted only when `X-Forwarded-For` yields no client,
-	/// so trusted proxies must overwrite any client-supplied `X-Real-IP`.
+	/// `X-Real-IP` is consulted only when the request has no
+	/// `X-Forwarded-For` header, so trusted proxies that rely on it must
+	/// overwrite any client-supplied `X-Real-IP`.
 	///
 	/// # Examples
 	///
@@ -484,18 +485,16 @@ impl RateLimitMiddleware {
 	/// Extraction order:
 	/// 1. If remote_addr is from a trusted proxy:
 	///    a. X-Forwarded-For header (see [`Self::forwarded_for_client_ip`])
-	///    b. X-Real-IP header
+	///    b. X-Real-IP header, only when there is no X-Forwarded-For header
 	/// 2. remote_addr field from the request
 	/// 3. Falls back to 127.0.0.1 if none available
 	fn extract_client_ip(&self, request: &Request) -> String {
 		let peer_ip = request.remote_addr.map(|addr| addr.ip());
 
 		// Only trust proxy headers if the direct connection is from a trusted proxy
-		let from_trusted_proxy = peer_ip.map(|ip| self.is_trusted_proxy(ip)).unwrap_or(false);
-
-		if from_trusted_proxy {
+		if let Some(proxy_ip) = peer_ip.filter(|&ip| self.is_trusted_proxy(ip)) {
 			// 1a. Resolve the client from the X-Forwarded-For chain
-			if let Some(ip) = self.forwarded_for_client_ip(request) {
+			if let Some(ip) = self.forwarded_for_client_ip(request, proxy_ip) {
 				return ip.to_string();
 			}
 
@@ -527,26 +526,45 @@ impl RateLimitMiddleware {
 	/// therefore walked from right to left, trusted proxy hops are skipped,
 	/// and the first untrusted address is the client. Multiple
 	/// `X-Forwarded-For` header lines form one list in order of appearance.
+	/// Entries are decoded one at a time, so bytes a client places in the
+	/// part of the header it controls cannot stop the walk before the
+	/// address appended by a trusted proxy is reached.
 	///
-	/// Returns `None` when every entry is a trusted proxy, or when an entry
-	/// that is not a valid IP address is reached first, since nothing to the
-	/// left of it can be attributed to a trusted hop.
-	fn forwarded_for_client_ip(&self, request: &Request) -> Option<std::net::IpAddr> {
+	/// Returns `None` only when the request has no `X-Forwarded-For` header.
+	/// When every entry is a trusted proxy, or an entry that is not a valid
+	/// IP address is reached first, the nearest trusted hop resolved so far
+	/// (starting with `proxy_ip`, the direct peer) is returned, since nothing
+	/// to the left of that point can be attributed to a trusted hop.
+	fn forwarded_for_client_ip(
+		&self,
+		request: &Request,
+		proxy_ip: std::net::IpAddr,
+	) -> Option<std::net::IpAddr> {
+		if !request.headers.contains_key("X-Forwarded-For") {
+			return None;
+		}
+
+		let mut nearest_trusted = proxy_ip;
 		for value in request.headers.get_all("X-Forwarded-For").iter().rev() {
-			let list = value.to_str().ok()?;
-			for entry in list.rsplit(',') {
+			for entry in value.as_bytes().rsplit(|&byte| byte == b',') {
+				let Ok(entry) = std::str::from_utf8(entry) else {
+					return Some(nearest_trusted);
+				};
 				let entry = entry.trim();
 				// List syntax allows empty elements; they do not denote a hop.
 				if entry.is_empty() {
 					continue;
 				}
-				let ip = entry.parse::<std::net::IpAddr>().ok()?;
+				let Ok(ip) = entry.parse::<std::net::IpAddr>() else {
+					return Some(nearest_trusted);
+				};
 				if !self.is_trusted_proxy(ip) {
 					return Some(ip);
 				}
+				nearest_trusted = ip;
 			}
 		}
-		None
+		Some(nearest_trusted)
 	}
 
 	/// Check if an IP address belongs to a trusted proxy
@@ -913,12 +931,16 @@ mod tests {
 	#[case::spoofed_trusted_prefix_ignored("10.0.0.9, 198.51.100.7", &["10.0.0.0/8"], "198.51.100.7")]
 	#[case::empty_elements_ignored("203.0.113.50, , 198.51.100.7,", &["10.0.0.1"], "198.51.100.7")]
 	#[case::ipv6_client("2001:db8::1, 2001:db8::2", &["10.0.0.1"], "2001:db8::2")]
-	#[case::all_trusted_falls_back_to_peer("10.0.0.3, 10.0.0.2", &["10.0.0.0/8"], "10.0.0.1")]
-	#[case::invalid_entry_stops_chain("203.0.113.50, unknown", &["10.0.0.1"], "10.0.0.1")]
-	#[case::invalid_entry_behind_trusted_hop_stops_chain(
+	#[case::all_trusted_uses_furthest_trusted_hop(
+		"10.0.0.3, 10.0.0.2",
+		&["10.0.0.0/8"],
+		"10.0.0.3"
+	)]
+	#[case::invalid_rightmost_entry_stops_at_peer("203.0.113.50, unknown", &["10.0.0.1"], "10.0.0.1")]
+	#[case::invalid_entry_stops_at_nearest_trusted_hop(
 		"203.0.113.50, not-an-ip, 10.0.0.2",
 		&["10.0.0.0/8"],
-		"10.0.0.1"
+		"10.0.0.2"
 	)]
 	fn test_extract_ip_walks_forwarded_for_from_the_right(
 		#[case] forwarded_for: &str,
@@ -980,15 +1002,27 @@ mod tests {
 	}
 
 	#[rstest::rstest]
-	fn test_extract_ip_uses_x_real_ip_when_forwarded_for_is_all_trusted() {
-		// Arrange
+	#[case::non_utf8_client_prefix_skipped(b"\xff\xfe, 198.51.100.7", "198.51.100.7")]
+	#[case::all_trusted(b"10.0.0.3, 10.0.0.2", "10.0.0.3")]
+	#[case::invalid_rightmost_entry(b"198.51.100.7, unknown", "10.0.0.1")]
+	#[case::non_utf8_rightmost_entry(b"198.51.100.7, \xff", "10.0.0.1")]
+	#[case::empty_header(b"", "10.0.0.1")]
+	fn test_extract_ip_ignores_x_real_ip_when_forwarded_for_is_present(
+		#[case] forwarded_for: &[u8],
+		#[case] expected_ip: &str,
+	) {
+		// Arrange - X-Real-IP may have been passed through from the client by
+		// an append-style proxy, so it must not override X-Forwarded-For
 		let config = RateLimitConfig::new(RateLimitStrategy::PerIp, 10.0, 1.0)
 			.with_trusted_proxies(vec!["10.0.0.0/8".to_string()]);
 		let middleware = RateLimitMiddleware::new(config);
 
 		let mut headers = HeaderMap::new();
-		headers.insert("X-Forwarded-For", "10.0.0.2".parse().unwrap());
-		headers.insert("X-Real-IP", "198.51.100.42".parse().unwrap());
+		headers.insert(
+			"X-Forwarded-For",
+			hyper::header::HeaderValue::from_bytes(forwarded_for).unwrap(),
+		);
+		headers.insert("X-Real-IP", "203.0.113.99".parse().unwrap());
 
 		let mut request = Request::builder()
 			.method(Method::GET)
@@ -1004,7 +1038,7 @@ mod tests {
 		let ip = middleware.extract_client_ip(&request);
 
 		// Assert
-		assert_eq!(ip, "198.51.100.42");
+		assert_eq!(ip, expected_ip);
 	}
 
 	#[rstest::rstest]
