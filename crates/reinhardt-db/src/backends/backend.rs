@@ -1,9 +1,10 @@
 //! Database backend abstraction
 
 use async_trait::async_trait;
+use futures::stream::BoxStream;
 
 use super::{
-	error::Result,
+	error::{DatabaseError, Result},
 	types::{DatabaseType, IsolationLevel, QueryResult, QueryValue, Row, TransactionExecutor},
 };
 
@@ -86,6 +87,24 @@ pub trait DatabaseBackend: Send + Sync {
 			super::generated::backend_name(self.database_type()),
 		)?;
 		self.fetch_all(sql, params).await
+	}
+
+	/// Internal row streaming for callers that bound result size themselves.
+	///
+	/// Streams matching rows without materializing the result set. Dropping
+	/// the stream releases the driver cursor and any pooled connection it
+	/// holds. Backends that cannot stream rows return
+	/// [`DatabaseError::NotSupported`]; callers must not fall back to
+	/// [`fetch_all`](Self::fetch_all) when they rely on the bound.
+	#[doc(hidden)]
+	fn __fetch_stream<'a>(
+		&'a self,
+		_sql: String,
+		_params: Vec<QueryValue>,
+	) -> Result<BoxStream<'a, Result<Row>>> {
+		Err(DatabaseError::NotSupported(
+			"Row streaming is not supported by this database backend".to_string(),
+		))
 	}
 
 	/// Begin a database transaction and return a dedicated executor

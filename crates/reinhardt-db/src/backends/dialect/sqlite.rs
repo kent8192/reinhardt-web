@@ -1,6 +1,7 @@
 //! SQLite dialect implementation
 
 use async_trait::async_trait;
+use futures::{StreamExt, stream::BoxStream};
 use sqlx::{Column, Row as SqlxRow, Sqlite, SqlitePool, Transaction, TypeInfo, sqlite::SqliteRow};
 use std::sync::Arc;
 use tracing::warn;
@@ -227,6 +228,24 @@ impl DatabaseBackend for SqliteBackend {
 		}
 		let row = query.fetch_optional(self.pool.as_ref()).await?;
 		row.map(Self::convert_row).transpose()
+	}
+
+	fn __fetch_stream<'a>(
+		&'a self,
+		sql: String,
+		params: Vec<QueryValue>,
+	) -> Result<BoxStream<'a, Result<Row>>> {
+		let pool = Arc::clone(&self.pool);
+		Ok(Box::pin(async_stream::stream! {
+			let mut query = sqlx::query(&sql);
+			for param in &params {
+				query = Self::bind_value(query, param);
+			}
+			let mut rows = query.fetch(pool.as_ref());
+			while let Some(row) = rows.next().await {
+				yield row.map_err(Into::into).and_then(Self::convert_row);
+			}
+		}))
 	}
 
 	async fn begin(&self) -> Result<Box<dyn TransactionExecutor>> {
@@ -556,7 +575,9 @@ mod tests {
 		types::{IsolationLevel, QueryValue, Row},
 	};
 	use chrono::{DateTime, Utc};
+	use futures::StreamExt;
 	use sqlx::sqlite::SqlitePoolOptions;
+	use std::time::Duration;
 	use uuid::Uuid;
 
 	async fn sqlite_backend() -> SqliteBackend {
@@ -799,5 +820,63 @@ mod tests {
 			.await
 			.expect("committed record count must be selected");
 		assert_eq!(committed, count_row(1));
+	}
+
+	/// Recursive CTE whose result never ends: 1, 2, 3, ...
+	const UNBOUNDED_SQL: &str =
+		"WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM n) SELECT x FROM n";
+
+	#[tokio::test]
+	async fn test_sqlite_fetch_stream_yields_bound_rows_in_order() {
+		// Arrange
+		let sqlite = sqlite_backend().await;
+		let sql = format!("{UNBOUNDED_SQL} LIMIT ?");
+
+		// Act
+		let rows: Vec<Row> = sqlite
+			.__fetch_stream(sql, vec![QueryValue::Int(3)])
+			.expect("SQLite must stream rows")
+			.map(|row| row.expect("streamed row must convert"))
+			.collect()
+			.await;
+
+		// Assert
+		let values: Vec<Option<&QueryValue>> = rows.iter().map(|row| row.data.get("x")).collect();
+		assert_eq!(
+			values,
+			vec![
+				Some(&QueryValue::Int(1)),
+				Some(&QueryValue::Int(2)),
+				Some(&QueryValue::Int(3)),
+			]
+		);
+	}
+
+	#[tokio::test]
+	async fn test_sqlite_dropped_fetch_stream_releases_pooled_connection() {
+		// Arrange - an unbounded result on a single-connection pool
+		let sqlite = sqlite_backend().await;
+		let mut rows = sqlite
+			.__fetch_stream(UNBOUNDED_SQL.to_string(), vec![])
+			.expect("SQLite must stream rows");
+		let first = rows
+			.next()
+			.await
+			.expect("unbounded result must yield a row")
+			.expect("streamed row must convert");
+
+		// Act
+		drop(rows);
+		let after = tokio::time::timeout(
+			Duration::from_secs(10),
+			sqlite.fetch_one("SELECT 1 AS one", vec![]),
+		)
+		.await
+		.expect("dropping the stream must release the only pooled connection")
+		.expect("follow-up query must succeed");
+
+		// Assert
+		assert_eq!(first.data.get("x"), Some(&QueryValue::Int(1)));
+		assert_eq!(after.data.get("one"), Some(&QueryValue::Int(1)));
 	}
 }

@@ -1,6 +1,7 @@
 //! MySQL dialect implementation
 
 use async_trait::async_trait;
+use futures::{StreamExt, stream::BoxStream};
 use sqlx::{Column, MySql, MySqlPool, Row as SqlxRow, Transaction, mysql::MySqlRow};
 use std::sync::Arc;
 
@@ -185,6 +186,24 @@ impl DatabaseBackend for MySqlBackend {
 		}
 		let mysql_row = query.fetch_optional(self.pool.as_ref()).await?;
 		mysql_row.map(Self::convert_row).transpose()
+	}
+
+	fn __fetch_stream<'a>(
+		&'a self,
+		sql: String,
+		params: Vec<QueryValue>,
+	) -> Result<BoxStream<'a, Result<Row>>> {
+		let pool = Arc::clone(&self.pool);
+		Ok(Box::pin(async_stream::stream! {
+			let mut query = sqlx::query(&sql);
+			for param in &params {
+				query = Self::bind_value(query, param);
+			}
+			let mut rows = query.fetch(pool.as_ref());
+			while let Some(row) = rows.next().await {
+				yield row.map_err(Into::into).and_then(Self::convert_row);
+			}
+		}))
 	}
 
 	async fn begin(&self) -> Result<Box<dyn TransactionExecutor>> {
@@ -619,5 +638,60 @@ mod tests {
 		assert!(!mysql.supports_on_conflict());
 		assert!(!mysql.supports_transactional_ddl());
 		assert!(mysql.as_any().is::<super::MySqlBackend>());
+	}
+
+	#[tokio::test]
+	async fn test_mysql_fetch_stream_yields_rows_and_releases_connection_on_drop() {
+		use crate::backends::types::QueryValue;
+		use futures::StreamExt;
+		use std::time::Duration;
+		use testcontainers::{ImageExt, runners::AsyncRunner};
+		use testcontainers_modules::mysql::Mysql;
+
+		// Arrange - a result larger than the rows read, on a single-connection pool
+		let container = Mysql::default()
+			.with_tag("8.0")
+			.with_startup_timeout(Duration::from_secs(180))
+			.start()
+			.await
+			.unwrap();
+		let url = format!(
+			"mysql://root@{}:{}/test",
+			container.get_host().await.unwrap(),
+			container.get_host_port_ipv4(3306).await.unwrap()
+		);
+		let pool = MySqlPoolOptions::new()
+			.max_connections(1)
+			.connect(&url)
+			.await
+			.unwrap();
+		let mysql = super::MySqlBackend::new(pool);
+		// Rows are compared as text so the assertions do not depend on how
+		// integer columns are converted.
+		let sql = "WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM n WHERE x < ?) \
+		           SELECT CAST(x AS CHAR) AS x FROM n";
+		let mut rows = mysql
+			.__fetch_stream(sql.to_string(), vec![QueryValue::Int(1000)])
+			.unwrap();
+		let first = rows.next().await.unwrap().unwrap();
+		let second = rows.next().await.unwrap().unwrap();
+
+		// Act
+		drop(rows);
+		let after = tokio::time::timeout(
+			Duration::from_secs(30),
+			mysql.fetch_one("SELECT 'ok' AS status", vec![]),
+		)
+		.await
+		.expect("dropping the stream must release the only pooled connection")
+		.unwrap();
+
+		// Assert
+		assert_eq!(first.data.get("x"), Some(&QueryValue::String("1".into())));
+		assert_eq!(second.data.get("x"), Some(&QueryValue::String("2".into())));
+		assert_eq!(
+			after.data.get("status"),
+			Some(&QueryValue::String("ok".into()))
+		);
 	}
 }

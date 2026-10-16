@@ -648,6 +648,19 @@ impl DatabaseConnection {
 		self.backend.fetch_all(sql, params).await
 	}
 
+	/// Internal row streaming for callers that bound result size themselves.
+	///
+	/// See [`DatabaseBackend::__fetch_stream`]. Dropping the stream releases
+	/// the driver cursor and the pooled connection it holds.
+	#[doc(hidden)]
+	pub fn __fetch_stream(
+		&self,
+		sql: String,
+		params: Vec<super::types::QueryValue>,
+	) -> Result<futures::stream::BoxStream<'_, Result<super::types::Row>>> {
+		self.backend.__fetch_stream(sql, params)
+	}
+
 	/// Fetches optional.
 	pub async fn fetch_optional(
 		&self,
