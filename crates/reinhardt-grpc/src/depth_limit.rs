@@ -372,6 +372,83 @@ mod tests {
 		));
 	}
 
+	/// Default maximum decoding message size of tonic, the gRPC transport.
+	const TRANSPORT_MAX_MESSAGE_SIZE: usize = 4 * 1024 * 1024;
+
+	/// Encode `levels` nested `field 1` length-delimited wrappers around `{1: 1}`.
+	///
+	/// Builds the body in linear time so that bodies close to the transport
+	/// size limit stay cheap to construct.
+	fn nested_field_wrappers(levels: usize) -> Vec<u8> {
+		const INNERMOST: [u8; 2] = [0x08, 0x01];
+
+		// lengths[k] is the encoded length of the message wrapped by level k + 1.
+		let mut lengths = Vec::with_capacity(levels);
+		let mut length = INNERMOST.len();
+		for _ in 0..levels {
+			lengths.push(length);
+			length += 1 + prost::encoding::encoded_len_varint(length as u64);
+		}
+
+		let mut encoded = Vec::with_capacity(length);
+		for &inner_length in lengths.iter().rev() {
+			encoded.push(0x0a);
+			prost::encoding::encode_varint(inner_length as u64, &mut encoded);
+		}
+		encoded.extend_from_slice(&INNERMOST);
+		encoded
+	}
+
+	#[rstest]
+	fn transport_sized_deep_nesting_is_rejected_without_stack_overflow() {
+		// Arrange: ~900k nesting levels still fit in a single gRPC message
+		let decoder = DepthLimitedDecoder::default();
+		let encoded = nested_field_wrappers(900_000);
+		assert!(encoded.len() < TRANSPORT_MAX_MESSAGE_SIZE);
+
+		// Act
+		let result = decoder.decode::<crate::proto::common::Empty>(&encoded);
+
+		// Assert
+		assert!(
+			matches!(
+				result,
+				Err(DepthLimitError::ExceededMaxDepth {
+					depth: 65,
+					limit: 64
+				})
+			),
+			"Expected ExceededMaxDepth, got: {result:?}"
+		);
+	}
+
+	#[rstest]
+	#[case::at_limit(64, None)]
+	#[case::one_past_limit(65, Some(65))]
+	fn nesting_depth_is_checked_against_limit(
+		#[case] levels: usize,
+		#[case] rejected_depth: Option<u32>,
+	) {
+		// Arrange
+		let decoder = DepthLimitedDecoder::default();
+		let encoded = nested_field_wrappers(levels);
+
+		// Act
+		let result = decoder.decode::<crate::proto::common::Empty>(&encoded);
+
+		// Assert
+		match rejected_depth {
+			None => assert_eq!(result.unwrap(), crate::proto::common::Empty {}),
+			Some(depth) => assert!(
+				matches!(
+					result,
+					Err(DepthLimitError::ExceededMaxDepth { depth: d, limit: 64 }) if d == depth
+				),
+				"Expected ExceededMaxDepth at depth {depth}, got: {result:?}"
+			),
+		}
+	}
+
 	#[rstest]
 	fn oversized_length_returns_decode_error_without_panicking() {
 		let decoder = DepthLimitedDecoder::default();
