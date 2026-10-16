@@ -628,13 +628,15 @@ fn redirect_detects_encoded_bypass_attempt() {
 }
 
 #[rstest]
+#[case("'//evil.com/path")]
+#[case("\"//evil.com/path")]
 #[case("/\\evil.com/path")]
 #[case("\\\\evil.com/path")]
 #[case("\\/evil.com/path")]
 #[case("/\t/evil.com/path")]
 #[case("/%5cevil.com/path")]
 #[case("/%2f%2fevil.com/path")]
-fn redirect_rejects_backslash_normalized_network_paths(#[case] url: &str) {
+fn redirect_rejects_browser_normalized_network_paths(#[case] url: &str) {
 	// Arrange
 	let hosts = make_allowed_hosts(&["example.com"]);
 

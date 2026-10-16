@@ -42,6 +42,7 @@ pub enum RedirectValidationError {
 /// 5. Detects URL-encoded bypass attempts
 /// 6. Rejects backslashes and control characters (raw or percent-encoded),
 ///    because browsers normalize inputs such as `/\host` into `//host`
+/// 7. Rejects a leading quote, which the meta refresh URL parser drops
 ///
 /// Non-ASCII paths, raw or percent-encoded as UTF-8, are accepted.
 ///
@@ -87,6 +88,12 @@ pub fn validate_redirect_url(
 	// controls, so `/\evil.com` or `/<TAB>/evil.com` navigates to `//evil.com`
 	// even though it does not start with `//` here.
 	if trimmed.contains('\\') || trimmed.chars().any(char::is_control) {
+		return Err(RedirectValidationError::SuspiciousEncoding);
+	}
+	// The `<meta http-equiv="refresh">` URL parser drops one leading quote,
+	// so `'//evil.com` embedded as `content="0;url='//evil.com"` navigates to
+	// `//evil.com`.
+	if trimmed.starts_with(['\'', '"']) {
 		return Err(RedirectValidationError::SuspiciousEncoding);
 	}
 
@@ -236,8 +243,12 @@ mod tests {
 	}
 
 	// Browsers read `\` as `/` and drop tabs, newlines and leading C0 controls,
-	// so each of these reaches `//evil.test` in a browser.
+	// and the meta refresh parser drops a leading quote, so each of these
+	// reaches `//evil.test` in a browser.
 	#[rstest]
+	#[case("'//evil.test/path")]
+	#[case("\"//evil.test/path")]
+	#[case("' //evil.test/path")]
 	#[case("/\\evil.test/path")]
 	#[case("\\\\evil.test/path")]
 	#[case("\\/evil.test/path")]
