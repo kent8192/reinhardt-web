@@ -185,6 +185,10 @@ pub struct RateLimitConfig {
 	/// Trusted proxy IP addresses/CIDRs.
 	/// Only requests from these IPs will have their X-Forwarded-For/X-Real-IP headers trusted.
 	/// If empty, proxy headers are never trusted and remote_addr is always used.
+	///
+	/// List every proxy hop between the client-facing edge and this server.
+	/// The client IP is the rightmost `X-Forwarded-For` entry that is not in
+	/// this list, so addresses a client prepends to the header are ignored.
 	pub trusted_proxies: Vec<String>,
 }
 
@@ -263,6 +267,14 @@ impl RateLimitConfig {
 	/// Only requests originating from these IP addresses will have their
 	/// `X-Forwarded-For` and `X-Real-IP` headers trusted for client IP extraction.
 	/// Supports both individual IPs (e.g., "10.0.0.1") and CIDR notation (e.g., "10.0.0.0/8").
+	///
+	/// The client IP is resolved by walking the `X-Forwarded-For` chain from
+	/// right to left and skipping the addresses in this list, so a client
+	/// cannot choose its rate-limit identity by prepending entries to the
+	/// header. Every proxy between the client-facing edge and this server must
+	/// be listed; an unlisted intermediate proxy is treated as the client.
+	/// `X-Real-IP` is consulted only when `X-Forwarded-For` yields no client,
+	/// so trusted proxies must overwrite any client-supplied `X-Real-IP`.
 	///
 	/// # Examples
 	///
@@ -471,7 +483,7 @@ impl RateLimitMiddleware {
 	///
 	/// Extraction order:
 	/// 1. If remote_addr is from a trusted proxy:
-	///    a. X-Forwarded-For header (first IP in the list)
+	///    a. X-Forwarded-For header (see [`Self::forwarded_for_client_ip`])
 	///    b. X-Real-IP header
 	/// 2. remote_addr field from the request
 	/// 3. Falls back to 127.0.0.1 if none available
@@ -482,15 +494,9 @@ impl RateLimitMiddleware {
 		let from_trusted_proxy = peer_ip.map(|ip| self.is_trusted_proxy(ip)).unwrap_or(false);
 
 		if from_trusted_proxy {
-			// 1a. Check X-Forwarded-For header
-			if let Some(xff) = request.headers.get("X-Forwarded-For")
-				&& let Ok(xff_str) = xff.to_str()
-				&& let Some(first_ip) = xff_str.split(',').next()
-			{
-				let trimmed = first_ip.trim();
-				if trimmed.parse::<std::net::IpAddr>().is_ok() {
-					return trimmed.to_string();
-				}
+			// 1a. Resolve the client from the X-Forwarded-For chain
+			if let Some(ip) = self.forwarded_for_client_ip(request) {
+				return ip.to_string();
 			}
 
 			// 1b. Check X-Real-IP header
@@ -511,6 +517,36 @@ impl RateLimitMiddleware {
 
 		// 3. Fallback to localhost
 		"127.0.0.1".to_string()
+	}
+
+	/// Resolve the client address from the `X-Forwarded-For` chain.
+	///
+	/// Each proxy appends the address it received the request from, so only
+	/// the entries on the right are written by trusted infrastructure while
+	/// the leftmost entries are whatever the client sent. The chain is
+	/// therefore walked from right to left, trusted proxy hops are skipped,
+	/// and the first untrusted address is the client. Multiple
+	/// `X-Forwarded-For` header lines form one list in order of appearance.
+	///
+	/// Returns `None` when every entry is a trusted proxy, or when an entry
+	/// that is not a valid IP address is reached first, since nothing to the
+	/// left of it can be attributed to a trusted hop.
+	fn forwarded_for_client_ip(&self, request: &Request) -> Option<std::net::IpAddr> {
+		for value in request.headers.get_all("X-Forwarded-For").iter().rev() {
+			let list = value.to_str().ok()?;
+			for entry in list.rsplit(',') {
+				let entry = entry.trim();
+				// List syntax allows empty elements; they do not denote a hop.
+				if entry.is_empty() {
+					continue;
+				}
+				let ip = entry.parse::<std::net::IpAddr>().ok()?;
+				if !self.is_trusted_proxy(ip) {
+					return Some(ip);
+				}
+			}
+		}
+		None
 	}
 
 	/// Check if an IP address belongs to a trusted proxy
@@ -862,8 +898,162 @@ mod tests {
 		// Act
 		let ip = middleware.extract_client_ip(&request);
 
+		// Assert - the trusted proxy appended the rightmost entry; the entries
+		// to its left were supplied by the client and are not trusted
+		assert_eq!(ip, "150.172.238.178");
+	}
+
+	#[rstest::rstest]
+	#[case::attacker_prefix_ignored("203.0.113.50, 198.51.100.7", &["10.0.0.1"], "198.51.100.7")]
+	#[case::trusted_hops_skipped(
+		"203.0.113.50, 198.51.100.7, 10.0.0.3, 10.0.0.2",
+		&["10.0.0.0/8"],
+		"198.51.100.7"
+	)]
+	#[case::spoofed_trusted_prefix_ignored("10.0.0.9, 198.51.100.7", &["10.0.0.0/8"], "198.51.100.7")]
+	#[case::empty_elements_ignored("203.0.113.50, , 198.51.100.7,", &["10.0.0.1"], "198.51.100.7")]
+	#[case::ipv6_client("2001:db8::1, 2001:db8::2", &["10.0.0.1"], "2001:db8::2")]
+	#[case::all_trusted_falls_back_to_peer("10.0.0.3, 10.0.0.2", &["10.0.0.0/8"], "10.0.0.1")]
+	#[case::invalid_entry_stops_chain("203.0.113.50, unknown", &["10.0.0.1"], "10.0.0.1")]
+	#[case::invalid_entry_behind_trusted_hop_stops_chain(
+		"203.0.113.50, not-an-ip, 10.0.0.2",
+		&["10.0.0.0/8"],
+		"10.0.0.1"
+	)]
+	fn test_extract_ip_walks_forwarded_for_from_the_right(
+		#[case] forwarded_for: &str,
+		#[case] trusted_proxies: &[&str],
+		#[case] expected_ip: &str,
+	) {
+		// Arrange
+		let config = RateLimitConfig::new(RateLimitStrategy::PerIp, 10.0, 1.0)
+			.with_trusted_proxies(trusted_proxies.iter().map(|p| p.to_string()).collect());
+		let middleware = RateLimitMiddleware::new(config);
+
+		let mut headers = HeaderMap::new();
+		headers.insert("X-Forwarded-For", forwarded_for.parse().unwrap());
+
+		let mut request = Request::builder()
+			.method(Method::GET)
+			.uri("/test")
+			.version(Version::HTTP_11)
+			.headers(headers)
+			.body(Bytes::new())
+			.build()
+			.unwrap();
+		request.remote_addr = Some("10.0.0.1:12345".parse().unwrap());
+
+		// Act
+		let ip = middleware.extract_client_ip(&request);
+
 		// Assert
-		assert_eq!(ip, "203.0.113.195");
+		assert_eq!(ip, expected_ip);
+	}
+
+	#[rstest::rstest]
+	fn test_extract_ip_reads_last_forwarded_for_header_line() {
+		// Arrange - the client sent its own X-Forwarded-For line and the
+		// trusted proxy appended a second line instead of merging them
+		let config = RateLimitConfig::new(RateLimitStrategy::PerIp, 10.0, 1.0)
+			.with_trusted_proxies(vec!["10.0.0.1".to_string()]);
+		let middleware = RateLimitMiddleware::new(config);
+
+		let mut headers = HeaderMap::new();
+		headers.append("X-Forwarded-For", "203.0.113.50".parse().unwrap());
+		headers.append("X-Forwarded-For", "198.51.100.7".parse().unwrap());
+
+		let mut request = Request::builder()
+			.method(Method::GET)
+			.uri("/test")
+			.version(Version::HTTP_11)
+			.headers(headers)
+			.body(Bytes::new())
+			.build()
+			.unwrap();
+		request.remote_addr = Some("10.0.0.1:12345".parse().unwrap());
+
+		// Act
+		let ip = middleware.extract_client_ip(&request);
+
+		// Assert
+		assert_eq!(ip, "198.51.100.7");
+	}
+
+	#[rstest::rstest]
+	fn test_extract_ip_uses_x_real_ip_when_forwarded_for_is_all_trusted() {
+		// Arrange
+		let config = RateLimitConfig::new(RateLimitStrategy::PerIp, 10.0, 1.0)
+			.with_trusted_proxies(vec!["10.0.0.0/8".to_string()]);
+		let middleware = RateLimitMiddleware::new(config);
+
+		let mut headers = HeaderMap::new();
+		headers.insert("X-Forwarded-For", "10.0.0.2".parse().unwrap());
+		headers.insert("X-Real-IP", "198.51.100.42".parse().unwrap());
+
+		let mut request = Request::builder()
+			.method(Method::GET)
+			.uri("/test")
+			.version(Version::HTTP_11)
+			.headers(headers)
+			.body(Bytes::new())
+			.build()
+			.unwrap();
+		request.remote_addr = Some("10.0.0.1:12345".parse().unwrap());
+
+		// Act
+		let ip = middleware.extract_client_ip(&request);
+
+		// Assert
+		assert_eq!(ip, "198.51.100.42");
+	}
+
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn test_rate_limit_per_ip_ignores_rotated_forwarded_for_prefix() {
+		// Arrange - capacity 1 with a negligible refill rate, so a second
+		// request in the same bucket is rejected
+		let config = RateLimitConfig::new(RateLimitStrategy::PerIp, 1.0, 0.001)
+			.with_trusted_proxies(vec!["10.0.0.1".to_string()]);
+		let middleware = Arc::new(RateLimitMiddleware::new(config));
+		let handler = Arc::new(TestHandler::new(StatusCode::OK));
+
+		let request_with_prefix = |prefix: &str| {
+			let mut headers = HeaderMap::new();
+			headers.insert(
+				"X-Forwarded-For",
+				format!("{prefix}, 198.51.100.7").parse().unwrap(),
+			);
+			let mut request = Request::builder()
+				.method(Method::GET)
+				.uri("/test")
+				.version(Version::HTTP_11)
+				.headers(headers)
+				.body(Bytes::new())
+				.build()
+				.unwrap();
+			request.remote_addr = Some("10.0.0.1:12345".parse().unwrap());
+			request
+		};
+
+		// Act - the same client rotates the prefix it controls
+		let first = middleware
+			.process(request_with_prefix("203.0.113.1"), handler.clone())
+			.await
+			.unwrap();
+		let second = middleware
+			.process(request_with_prefix("203.0.113.2"), handler)
+			.await
+			.unwrap();
+
+		// Assert - both requests share the bucket of the appended address
+		assert_eq!(first.status, StatusCode::OK);
+		assert_eq!(second.status, StatusCode::TOO_MANY_REQUESTS);
+		assert_eq!(
+			middleware
+				.store()
+				.request_count("ip:198.51.100.7", Duration::from_secs(60)),
+			1
+		);
 	}
 
 	#[tokio::test]
