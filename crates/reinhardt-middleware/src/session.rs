@@ -633,7 +633,7 @@ mod tests {
 			let mut session = self
 				.store
 				.get(&original_id)
-				.expect("session created by middleware should be present");
+				.expect("session resumed by middleware should be present");
 			session.id_holder = Some(active_id);
 
 			let old_id = session.regenerate_id();
@@ -659,11 +659,21 @@ mod tests {
 		let handler = Arc::new(RotatingHandler {
 			store: Arc::clone(&store),
 		});
+		// The middleware stores a session only once a handler saves it, so
+		// start from a stored anonymous session.
+		let anonymous = SessionData::new(Duration::from_secs(3600));
+		let anonymous_id = anonymous.id.clone();
+		store.save(anonymous);
+		let mut headers = HeaderMap::new();
+		headers.insert(
+			hyper::header::COOKIE,
+			hyper::header::HeaderValue::from_str(&format!("sessionid={}", anonymous_id)).unwrap(),
+		);
 		let request = Request::builder()
 			.method(Method::POST)
 			.uri("/login")
 			.version(Version::HTTP_11)
-			.headers(HeaderMap::new())
+			.headers(headers)
 			.body(Bytes::new())
 			.build()
 			.unwrap();
@@ -689,6 +699,8 @@ mod tests {
 
 		// …and verify the store contains exactly that session, with the user_id
 		// the handler wrote during rotation.
+		assert_ne!(cookie_session_id, anonymous_id);
+		assert!(store.get(&anonymous_id).is_none());
 		let stored = store
 			.get(&cookie_session_id)
 			.expect("Session referenced by Set-Cookie must exist in store");

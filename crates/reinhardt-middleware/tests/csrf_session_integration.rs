@@ -13,7 +13,7 @@ use hyper::{HeaderMap, Method, StatusCode, Version};
 use reinhardt_http::{Handler, Middleware, MiddlewareChain, Request, Response, Result};
 use reinhardt_middleware::csrf::{CsrfMiddleware, CsrfMiddlewareConfig};
 use reinhardt_middleware::session::{
-	ActiveSessionId, SessionConfig, SessionMiddleware, SessionStore,
+	ActiveSessionId, SessionConfig, SessionData, SessionMiddleware, SessionStore,
 };
 use rstest::rstest;
 use serial_test::serial;
@@ -79,10 +79,13 @@ impl Handler for RotatingLoginHandler {
 			.extensions
 			.get::<ActiveSessionId>()
 			.expect("ActiveSessionId should be present");
-		let mut session = self
-			.store
-			.get(&active_id.get())
-			.expect("session created by middleware should be present");
+		// The middleware stores a session only once a handler saves it, so a
+		// visitor's first login starts from the unsaved session it issued.
+		let mut session = self.store.get(&active_id.get()).unwrap_or_else(|| {
+			let mut session = SessionData::new(Duration::from_secs(3600));
+			session.id = active_id.get();
+			session
+		});
 		session.id_holder = Some(active_id);
 		let old_id = session.regenerate_id();
 		self.store.delete(&old_id);
