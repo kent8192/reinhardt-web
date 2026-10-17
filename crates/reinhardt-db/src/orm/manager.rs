@@ -1754,9 +1754,11 @@ impl<M: Model> Manager<M> {
 	///
 	/// ```ignore
 	/// let authors = Author::objects()
-	///     .annotate_subquery::<Book, _>("book_count", |subq| {
+	///     .annotate_subquery::<Book, _>("latest_title", |subq| {
 	///         subq.filter("author_id", FilterOperator::Eq, FilterValue::OuterRef(OuterRef::new("authors.id")))
-	///             .values(&["COUNT(*)"])
+	///             .order_by(&["-published_at"])
+	///             .values(&["title"])
+	///             .limit(1)
 	///     })?
 	///     .all()
 	///     .await?;
