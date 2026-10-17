@@ -4,9 +4,43 @@ use std::collections::hash_map::DefaultHasher;
 use std::fs;
 use std::hash::{Hash, Hasher};
 use std::io;
-use std::path::PathBuf;
+use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use tracing;
+
+/// Resolve `name` inside `root`, rejecting every name that addresses a path
+/// outside it.
+///
+/// Containment comes from [`crate::safe_path_join`]: it rejects parent
+/// components, absolute paths, and platform prefixes, and verifies that the
+/// canonical result, including any symlinks, stays within `root`.
+fn resolve_in_root(root: &Path, name: &str) -> io::Result<PathBuf> {
+	if !Path::new(name)
+		.components()
+		.any(|component| matches!(component, Component::Normal(_)))
+	{
+		return Err(io::Error::new(
+			io::ErrorKind::InvalidInput,
+			format!("storage name {name:?} does not identify a file"),
+		));
+	}
+	crate::safe_path_join(root, name).map_err(|error| match error {
+		crate::PathTraversalError::Io(error) => error,
+		error => io::Error::new(
+			io::ErrorKind::InvalidInput,
+			format!("storage name {name:?} is outside the storage root: {error}"),
+		),
+	})
+}
+
+/// Validate a logical name or published path before storage records it.
+///
+/// Uses the portable path rules of publication manifests, so every mapping
+/// written by legacy storage can be read back by `decode_manifest`.
+fn validate_logical_name(name: &str) -> io::Result<()> {
+	reinhardt_core::types::static_assets::validate_asset_path(name)
+		.map_err(|error| io::Error::new(io::ErrorKind::InvalidInput, error))
+}
 
 /// Acquire a read lock, recovering from poisoning with a warning log.
 fn read_or_recover<'a, T>(lock: &'a RwLock<T>, context: &str) -> RwLockReadGuard<'a, T> {
@@ -380,6 +414,12 @@ impl StaticFilesFinder {
 }
 
 /// A storage backend that renames files with a content hash for cache busting.
+///
+/// Every file is read and written inside [`location`](Self::location). Saved
+/// names must be portable relative paths: empty names, `.` or `..` segments,
+/// absolute paths, platform prefixes, and backslashes are rejected with
+/// [`io::ErrorKind::InvalidInput`], as are paths that leave the root through a
+/// symlink.
 pub struct HashedFileStorage {
 	/// The root directory where hashed files are stored.
 	pub location: PathBuf,
@@ -416,10 +456,18 @@ impl HashedFileStorage {
 		}
 	}
 
+	/// Validate a logical name and derive its hashed name and contained path.
+	fn prepare(&self, name: &str, content: &[u8]) -> io::Result<(String, PathBuf)> {
+		validate_logical_name(name)?;
+		let hashed_name = self.get_hashed_name(name, content);
+		validate_logical_name(&hashed_name)?;
+		let file_path = resolve_in_root(&self.location, &hashed_name)?;
+		Ok((hashed_name, file_path))
+	}
+
 	/// Saves a file with a content-hashed filename and returns the hashed name.
 	pub async fn save(&self, name: &str, content: &[u8]) -> io::Result<String> {
-		let hashed_name = self.get_hashed_name(name, content);
-		let file_path = self.location.join(&hashed_name);
+		let (hashed_name, file_path) = self.prepare(name, content)?;
 
 		if let Some(parent) = file_path.parent() {
 			tokio::fs::create_dir_all(parent).await?;
@@ -443,10 +491,9 @@ impl HashedFileStorage {
 		let mut hashed_map = HashMap::new();
 		let mut processed_files = HashMap::new();
 
-		// First pass: hash all files to build the mapping
+		// First pass: validate and hash all files before anything is written
 		for (name, content) in &files {
-			let hashed_name = self.get_hashed_name(name, content);
-			hashed_map.insert(name.clone(), hashed_name);
+			hashed_map.insert(name.clone(), self.prepare(name, content)?);
 		}
 
 		// Second pass: process CSS files to update references, then save all files
@@ -459,7 +506,7 @@ impl HashedFileStorage {
 				let mut updated = content_str.to_string();
 
 				// Replace all references to other files with their hashed names
-				for (orig_name, hashed_name) in &hashed_map {
+				for (orig_name, (hashed_name, _)) in &hashed_map {
 					if orig_name != &name {
 						updated = updated.replace(orig_name, hashed_name);
 					}
@@ -468,14 +515,13 @@ impl HashedFileStorage {
 				final_content = updated.into_bytes();
 			}
 
-			let hashed_name = hashed_map.get(&name).unwrap();
-			let file_path = self.location.join(hashed_name);
+			let (hashed_name, file_path) = hashed_map.get(&name).unwrap();
 
 			if let Some(parent) = file_path.parent() {
 				tokio::fs::create_dir_all(parent).await?;
 			}
 
-			tokio::fs::write(&file_path, &final_content).await?;
+			tokio::fs::write(file_path, &final_content).await?;
 			processed_files.insert(name, hashed_name.clone());
 		}
 
@@ -503,7 +549,7 @@ impl HashedFileStorage {
 				.clone()
 		};
 
-		let file_path = self.location.join(&hashed_name);
+		let file_path = resolve_in_root(&self.location, &hashed_name)?;
 		tokio::fs::read(file_path).await
 	}
 
@@ -520,11 +566,9 @@ impl HashedFileStorage {
 	/// Returns whether a file with the given name exists in the hashed storage.
 	pub fn exists(&self, name: &str) -> bool {
 		let hashed_files = read_or_recover(&self.hashed_files, "HashedFileStorage::exists");
-		if let Some(hashed_name) = hashed_files.get(name) {
-			self.location.join(hashed_name).exists()
-		} else {
-			false
-		}
+		hashed_files.get(name).is_some_and(|hashed_name| {
+			resolve_in_root(&self.location, hashed_name).is_ok_and(|path| path.exists())
+		})
 	}
 
 	/// Returns the hashed filename for the given original name, if available.
@@ -550,6 +594,14 @@ pub struct Manifest {
 }
 
 /// A storage backend that persists a JSON manifest mapping original names to hashed names.
+///
+/// Every file, including the manifest, is read and written inside
+/// [`location`](Self::location). A leading `/` in a name is interpreted
+/// relative to that root. Names that resolve outside it through `..`
+/// segments, platform prefixes, or symlinks are rejected with
+/// [`io::ErrorKind::InvalidInput`]. Names written by
+/// [`save_with_dependencies`](Self::save_with_dependencies) must also be
+/// portable relative paths that a publication manifest can record.
 pub struct ManifestStaticFilesStorage {
 	/// The root directory where files and the manifest are stored.
 	pub location: PathBuf,
@@ -599,9 +651,17 @@ impl ManifestStaticFilesStorage {
 		}
 	}
 
-	fn normalize_path(&self, name: &str) -> PathBuf {
-		let name = name.trim_start_matches('/');
-		self.location.join(name)
+	/// Resolve a name inside `location`.
+	///
+	/// The leading-`/` trim only preserves root-relative names; containment is
+	/// enforced by `resolve_in_root`.
+	fn normalize_path(&self, name: &str) -> io::Result<PathBuf> {
+		resolve_in_root(&self.location, name.trim_start_matches('/'))
+	}
+
+	/// Resolve the manifest file inside `location`.
+	pub(crate) fn manifest_path(&self) -> io::Result<PathBuf> {
+		self.normalize_path(&self.manifest_name)
 	}
 
 	fn normalize_url(&self, base: &str, name: &str) -> String {
@@ -627,10 +687,13 @@ impl ManifestStaticFilesStorage {
 		let mut hashed_map = HashMap::new();
 		let mut processed_files = HashMap::new();
 
-		// First pass: hash all files and create mapping
+		// First pass: validate and hash all files before anything is written
 		for (name, content) in &files {
+			validate_logical_name(name)?;
 			let hashed_name = self.get_hashed_name(name, content);
-			hashed_map.insert(name.clone(), hashed_name);
+			validate_logical_name(&hashed_name)?;
+			let file_path = self.normalize_path(&hashed_name)?;
+			hashed_map.insert(name.clone(), (hashed_name, file_path));
 		}
 
 		// Second pass: update CSS references and save files
@@ -643,7 +706,7 @@ impl ManifestStaticFilesStorage {
 				let mut updated = content_str.to_string();
 
 				// Update all url() references
-				for (orig_name, hashed_name) in &hashed_map {
+				for (orig_name, (hashed_name, _)) in &hashed_map {
 					if orig_name != &name {
 						updated = updated.replace(orig_name, hashed_name);
 					}
@@ -652,14 +715,13 @@ impl ManifestStaticFilesStorage {
 				final_content = updated.into_bytes();
 			}
 
-			let hashed_name = hashed_map.get(&name).unwrap();
-			let file_path = self.normalize_path(hashed_name);
+			let (hashed_name, file_path) = hashed_map.get(&name).unwrap();
 
 			if let Some(parent) = file_path.parent() {
 				tokio::fs::create_dir_all(parent).await?;
 			}
 
-			tokio::fs::write(&file_path, &final_content).await?;
+			tokio::fs::write(file_path, &final_content).await?;
 			processed_files.insert(name, hashed_name.clone());
 		}
 
@@ -679,22 +741,19 @@ impl ManifestStaticFilesStorage {
 	}
 
 	async fn save_manifest(&self) -> io::Result<()> {
-		let (manifest_path, manifest_json) = {
+		let manifest_path = self.manifest_path()?;
+		let manifest_json = {
 			let hashed_files = read_or_recover(
 				&self.hashed_files,
 				"ManifestStaticFilesStorage::save_manifest",
 			);
-			let manifest_path = self.normalize_path(&self.manifest_name);
 
 			// Create manifest with "paths" key to match Django's manifest structure
 			let manifest_data = serde_json::json!({
 				"paths": *hashed_files
 			});
 
-			let manifest_json =
-				serde_json::to_string_pretty(&manifest_data).map_err(io::Error::other)?;
-
-			(manifest_path, manifest_json)
+			serde_json::to_string_pretty(&manifest_data).map_err(io::Error::other)?
 		};
 
 		tokio::fs::write(manifest_path, manifest_json).await
@@ -702,7 +761,7 @@ impl ManifestStaticFilesStorage {
 
 	/// Load manifest from disk
 	pub async fn load_manifest(&self) -> io::Result<()> {
-		let manifest_path = self.normalize_path(&self.manifest_name);
+		let manifest_path = self.manifest_path()?;
 
 		if !manifest_path.exists() {
 			// No manifest file exists yet, that's okay
@@ -744,17 +803,17 @@ impl ManifestStaticFilesStorage {
 		// First check if we have a hashed version of this file
 		let hashed_files =
 			read_or_recover(&self.hashed_files, "ManifestStaticFilesStorage::exists");
-		if let Some(hashed_name) = hashed_files.get(name) {
-			// Check hashed file path
-			let hashed_path = self.normalize_path(hashed_name);
-			if hashed_path.exists() {
-				return true;
-			}
+		if let Some(hashed_name) = hashed_files.get(name)
+			&& self
+				.normalize_path(hashed_name)
+				.is_ok_and(|path| path.exists())
+		{
+			return true;
 		}
 		drop(hashed_files);
 
 		// Fall back to checking original path
-		self.normalize_path(name).exists()
+		self.normalize_path(name).is_ok_and(|path| path.exists())
 	}
 
 	/// Open a file by its original name
@@ -768,7 +827,7 @@ impl ManifestStaticFilesStorage {
 				.unwrap_or_else(|| name.to_string())
 		};
 
-		let file_path = self.normalize_path(&actual_name);
+		let file_path = self.normalize_path(&actual_name)?;
 		tokio::fs::read(file_path).await
 	}
 
