@@ -158,8 +158,8 @@ impl std::fmt::Debug for SsrProxy {
 impl SsrProxy {
 	/// Create a new SSR proxy.
 	///
-	/// By default, SSR is not available. Use [`with_ts_runtime`](Self::with_ts_runtime)
-	/// to create a proxy with TypeScript backend support.
+	/// By default, SSR is not available. The `ts` feature provides
+	/// `with_ts_runtime` to create a proxy with TypeScript backend support.
 	pub fn new() -> Self {
 		Self {
 			available: false,
@@ -197,6 +197,7 @@ impl SsrProxy {
 	/// let proxy = SsrProxy::with_ts_runtime(ts_runtime);
 	/// assert!(proxy.is_available());
 	/// ```
+	#[cfg(feature = "ts")]
 	pub fn with_ts_runtime(runtime: SharedTsRuntime) -> Self {
 		Self {
 			available: true,
@@ -361,6 +362,8 @@ impl SsrProxy {
 				},
 			});
 		}
+		#[cfg(not(feature = "ts"))]
+		let _ = (props_json, options);
 
 		Err(SsrError::NotAvailable)
 	}
@@ -447,6 +450,8 @@ impl SsrProxy {
 		if let Some(ref runtime) = self.ts_runtime {
 			return runtime.eval(code).map_err(SsrError::from);
 		}
+		#[cfg(not(feature = "ts"))]
+		let _ = code;
 
 		Err(SsrError::NotAvailable)
 	}
@@ -491,6 +496,8 @@ impl SsrProxy {
 
 			return Ok(msgpack_bytes);
 		}
+		#[cfg(not(feature = "ts"))]
+		let _ = code;
 
 		Err(SsrError::NotAvailable)
 	}
@@ -504,6 +511,7 @@ impl SsrProxy {
 	///
 	/// Both `component_code` and `props_json` are escaped to prevent XSS attacks
 	/// via `</script>` tag injection. See [`escape_for_script`] for details.
+	#[cfg(any(feature = "ts", test))]
 	fn generate_hydration_script(&self, component_code: &str, props_json: &str) -> String {
 		let safe_code = escape_for_script(component_code);
 		let safe_props = escape_for_script(props_json);
