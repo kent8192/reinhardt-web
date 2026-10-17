@@ -4,14 +4,28 @@ use async_trait::async_trait;
 use reinhardt_http::{Handler, Middleware, MiddlewareDiRegistration, Request, Response, Result};
 use std::any::TypeId;
 use std::sync::Arc;
+use std::time::SystemTime;
 
 use super::config::SessionConfig;
 use super::cookie::find_cookie_value;
-use super::data::SessionData;
+use super::data::{PendingSession, SessionData};
 use super::id::{ActiveSessionId, SessionCookieName, SessionId};
 use super::store::{SessionStore, SessionStoreKey};
 
 /// Session middleware
+///
+/// A request whose cookie names a valid stored session resumes that session,
+/// and its expiry is extended. Any other request gets a fresh session that is
+/// only stored once a handler saves it (for example through
+/// `SessionAuthExt::login`, or `SessionStore::save` on an injected
+/// `SessionData`), so requests that never save their session do not grow the
+/// store.
+///
+/// The ID of such an unsaved session is still sent as the session cookie, so
+/// values bound to it, such as CSRF tokens, stay valid on the client's next
+/// request. The ID is signed with a random key held by the store and expires
+/// after the session TTL, which lets the middleware accept it back without
+/// storing it. Forged or expired IDs are replaced with a new one.
 ///
 /// # Examples
 ///
@@ -184,34 +198,49 @@ impl Middleware for SessionMiddleware {
 	}
 
 	async fn process(&self, request: Request, handler: Arc<dyn Handler>) -> Result<Response> {
-		// Get or generate session ID
-		let session_id = self.get_session_id(&request);
-		let mut session = if let Some(id) = session_id.clone() {
-			self.store
-				.get(&id)
-				.filter(|s| s.is_valid())
-				.unwrap_or_else(|| SessionData::new(self.config.ttl))
-		} else {
-			SessionData::new(self.config.ttl)
+		// Resume the valid stored session named by the cookie, extending its
+		// expiry. Otherwise start a session that stays in the request
+		// extensions until a handler saves it: storing it here would let every
+		// request without a valid cookie allocate a store entry.
+		let cookie_id = self.get_session_id(&request);
+		let resumed = cookie_id
+			.as_deref()
+			.and_then(|id| self.store.get(id))
+			.filter(|s| s.is_valid());
+		let session_id = match resumed {
+			Some(mut session) => {
+				session.touch(self.config.ttl);
+				let id = session.id.clone();
+				self.store.save(session);
+				id
+			}
+			None => {
+				// Keep an unsaved session ID this store issued earlier so tokens
+				// bound to it stay valid; never adopt an ID the client chose.
+				let id = cookie_id
+					.filter(|id| self.store.is_pending_id(id))
+					.unwrap_or_else(|| {
+						self.store
+							.new_pending_id(SystemTime::now() + self.config.ttl)
+					});
+				let mut session = SessionData::new(self.config.ttl);
+				session.id = id.clone();
+				request.extensions.insert(PendingSession(session));
+				id
+			}
 		};
-
-		// Touch the session
-		session.touch(self.config.ttl);
-
-		// Save the session
-		self.store.save(session.clone());
 
 		// Inject session ID and cookie name into request extensions
 		// so downstream handlers and Injectable impls can access them
 		request
 			.extensions
-			.insert(SessionId::new(session.id.clone()));
+			.insert(SessionId::new(session_id.clone()));
 		request
 			.extensions
 			.insert(SessionCookieName::new(self.config.cookie_name.clone()));
 		// Shared, mutable holder so handlers that rotate the session ID
 		// (`SessionData::regenerate_id`) keep `Set-Cookie` in sync. See #3827.
-		let active_id = ActiveSessionId::new(session.id.clone());
+		let active_id = ActiveSessionId::new(session_id);
 		request.extensions.insert(active_id.clone());
 
 		// Call the handler
@@ -223,10 +252,15 @@ impl Middleware for SessionMiddleware {
 		};
 
 		// Append Set-Cookie header (use append to preserve existing Set-Cookie headers).
-		// Read the final session ID from the shared holder rather than the
-		// local `session` clone, since handlers may have rotated the ID via
+		// Read the final session ID from the shared holder rather than a local
+		// copy, since handlers may have rotated the ID via
 		// `SessionData::regenerate_id`. See #3827.
+		// Advertise a stored session or an unsaved one this store issued. A
+		// rotated ID that no handler saved names nothing.
 		let final_id = active_id.get();
+		if !self.store.contains_valid(&final_id) && !self.store.is_pending_id(&final_id) {
+			return Ok(response);
+		}
 		let cookie = self.build_cookie_header(&final_id);
 		response.headers.append(
 			hyper::header::SET_COOKIE,
@@ -246,12 +280,13 @@ impl Middleware for SessionMiddleware {
 mod tests {
 	use super::*;
 	use crate::session::data::USER_ID_SESSION_KEY;
+	use crate::session::test_support::{SessionSavingHandler, session_di_scope};
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, Version};
 	use reinhardt_http::{AuthState, Handler, IsActive, IsAdmin, IsAuthenticated, Request};
 	use rstest::rstest;
 	use std::sync::Mutex;
-	use std::time::Duration;
+	use std::time::{Duration, SystemTime};
 
 	#[derive(Default)]
 	struct CapturedAuth {
@@ -322,6 +357,326 @@ mod tests {
 			captured: Arc::clone(&captured),
 		});
 		(captured, handler)
+	}
+
+	/// What `InjectingHandler` does with the session it injects.
+	#[derive(Clone, Copy)]
+	enum SessionUse {
+		/// Read the session without saving it.
+		Read,
+		/// Log in through `SessionAuthExt::login`, which rotates the ID and
+		/// saves the session.
+		Login,
+	}
+
+	/// Handler that resolves `SessionData` through its `Injectable`
+	/// implementation, as an `#[inject] session: SessionData` parameter does.
+	struct InjectingHandler {
+		scope: Arc<reinhardt_di::SingletonScope>,
+		session_use: SessionUse,
+	}
+
+	#[async_trait]
+	impl Handler for InjectingHandler {
+		async fn handle(&self, request: Request) -> Result<Response> {
+			use crate::session::SessionAuthExt;
+			use reinhardt_di::{Injectable, InjectionContext};
+
+			let ctx = InjectionContext::builder(Arc::clone(&self.scope)).build();
+			ctx.set_request(request);
+			let mut session = SessionData::inject(&ctx)
+				.await
+				.expect("every request behind SessionMiddleware must have a session");
+			match self.session_use {
+				SessionUse::Read => assert!(session.data.is_empty()),
+				SessionUse::Login => {
+					let store = ctx
+						.get_singleton::<SessionStore>()
+						.expect("SessionMiddleware must register its store for DI");
+					session.login(&store, 42_i64).unwrap();
+				}
+			}
+			Ok(Response::ok())
+		}
+	}
+
+	fn injecting_handler(
+		middleware: &SessionMiddleware,
+		session_use: SessionUse,
+	) -> Arc<dyn Handler> {
+		Arc::new(InjectingHandler {
+			scope: session_di_scope(middleware),
+			session_use,
+		})
+	}
+
+	/// Value of the `name` cookie set by `response`, if any.
+	fn set_cookie_value(response: &Response, name: &str) -> Option<String> {
+		let prefix = format!("{name}=");
+		response
+			.headers
+			.get_all(hyper::header::SET_COOKIE)
+			.iter()
+			.filter_map(|value| value.to_str().ok())
+			.find_map(|cookie| cookie.split(';').next()?.strip_prefix(prefix.as_str()))
+			.map(str::to_owned)
+	}
+
+	fn session_cookie_id(response: &Response) -> Option<String> {
+		set_cookie_value(response, "sessionid")
+	}
+
+	/// Regression test for GHSA-wg7w-cm25-56qp: a client that omits its
+	/// session cookie, or sends one naming no stored session, must not make
+	/// the middleware store a session per request.
+	#[rstest]
+	#[case::without_cookie(None)]
+	#[case::with_unknown_cookie(Some("not-a-stored-session"))]
+	#[tokio::test]
+	async fn unused_sessions_are_not_stored(#[case] cookie: Option<&str>) {
+		// Arrange
+		let middleware = make_middleware();
+		let (_, handler) = capture_handler();
+
+		for _ in 0..100 {
+			let request = match cookie {
+				Some(session_id) => request_with_cookie(session_id),
+				None => request_without_cookie(),
+			};
+
+			// Act
+			let response = middleware
+				.process(request, Arc::clone(&handler))
+				.await
+				.unwrap();
+
+			// Assert: the client gets an unsaved session ID issued by the store,
+			// never the ID it sent.
+			let session_id = session_cookie_id(&response).expect("a session ID must be issued");
+			assert!(middleware.store().is_pending_id(&session_id));
+			assert_ne!(Some(session_id.as_str()), cookie);
+		}
+		assert_eq!(middleware.store().len(), 0);
+	}
+
+	/// The unsaved session ID a client returns stays its session ID, so
+	/// values bound to it remain valid, and still nothing is stored.
+	#[rstest]
+	#[tokio::test]
+	async fn returned_unsaved_session_id_is_kept_without_storing() {
+		// Arrange
+		let middleware = make_middleware();
+		let (_, handler) = capture_handler();
+		let first = middleware
+			.process(request_without_cookie(), Arc::clone(&handler))
+			.await
+			.unwrap();
+		let issued = session_cookie_id(&first).unwrap();
+
+		for _ in 0..10 {
+			// Act
+			let response = middleware
+				.process(request_with_cookie(&issued), Arc::clone(&handler))
+				.await
+				.unwrap();
+
+			// Assert
+			assert_eq!(session_cookie_id(&response), Some(issued.clone()));
+		}
+		assert_eq!(middleware.store().len(), 0);
+	}
+
+	#[rstest]
+	#[case::expired(true)]
+	#[case::from_another_store(false)]
+	#[tokio::test]
+	async fn unusable_unsaved_session_id_is_replaced(#[case] expired: bool) {
+		// Arrange
+		let middleware = make_middleware();
+		let unusable = if expired {
+			middleware
+				.store()
+				.new_pending_id(SystemTime::now() - Duration::from_secs(1))
+		} else {
+			SessionStore::new().new_pending_id(SystemTime::now() + Duration::from_secs(60))
+		};
+		let (_, handler) = capture_handler();
+
+		// Act
+		let response = middleware
+			.process(request_with_cookie(&unusable), handler)
+			.await
+			.unwrap();
+
+		// Assert
+		let session_id = session_cookie_id(&response).expect("a session ID must be issued");
+		assert_ne!(session_id, unusable);
+		assert!(middleware.store().is_pending_id(&session_id));
+		assert_eq!(middleware.store().len(), 0);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn expired_session_cookie_does_not_store_a_replacement() {
+		// Arrange
+		let middleware = make_middleware();
+		let mut expired = SessionData::new(Duration::from_secs(3600));
+		expired.expires_at = SystemTime::now() - Duration::from_secs(1);
+		let expired_id = expired.id.clone();
+		middleware.store().save(expired);
+		let (_, handler) = capture_handler();
+
+		// Act
+		let response = middleware
+			.process(request_with_cookie(&expired_id), handler)
+			.await
+			.unwrap();
+
+		// Assert: only the expired entry remains until cleanup removes it.
+		let session_id = session_cookie_id(&response).expect("a session ID must be issued");
+		assert_ne!(session_id, expired_id);
+		assert_eq!(middleware.store().len(), 1);
+		assert!(!middleware.store().contains_valid(&expired_id));
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn injected_session_is_not_stored_unless_saved() {
+		// Arrange
+		let middleware = make_middleware();
+		let handler = injecting_handler(&middleware, SessionUse::Read);
+
+		// Act
+		let response = middleware
+			.process(request_without_cookie(), handler)
+			.await
+			.unwrap();
+
+		// Assert
+		let session_id = session_cookie_id(&response).expect("a session ID must be issued");
+		assert!(middleware.store().is_pending_id(&session_id));
+		assert_eq!(middleware.store().len(), 0);
+	}
+
+	/// A visitor without a stored session can submit a CSRF-protected form:
+	/// the unsaved session ID the CSRF token is bound to comes back unchanged.
+	#[rstest]
+	#[tokio::test]
+	async fn csrf_form_works_for_a_visitor_without_a_stored_session() {
+		use crate::csrf::{CsrfMiddleware, CsrfMiddlewareConfig};
+		use reinhardt_http::MiddlewareChain;
+
+		// Arrange: SessionMiddleware wrapping CsrfMiddleware wrapping the handler.
+		let middleware = make_middleware();
+		let csrf_config = CsrfMiddlewareConfig {
+			check_referer_header: false,
+			..Default::default()
+		};
+		let csrf: Arc<dyn Middleware> = Arc::new(CsrfMiddleware::with_config(csrf_config));
+		let (_, handler) = capture_handler();
+		let chain: Arc<dyn Handler> = Arc::new(MiddlewareChain::new(handler).with_middleware(csrf));
+		let first = middleware
+			.process(request_without_cookie(), Arc::clone(&chain))
+			.await
+			.unwrap();
+		let session_id = session_cookie_id(&first).unwrap();
+		let form = middleware
+			.process(request_with_cookie(&session_id), Arc::clone(&chain))
+			.await
+			.unwrap();
+		let token = set_cookie_value(&form, "csrftoken").expect("CSRF token cookie");
+		let mut headers = HeaderMap::new();
+		headers.insert(
+			hyper::header::COOKIE,
+			format!("sessionid={session_id}; csrftoken={token}")
+				.parse()
+				.unwrap(),
+		);
+		headers.insert("X-CSRFToken", token.parse().unwrap());
+		let submit = Request::builder()
+			.method(Method::POST)
+			.uri("/")
+			.version(Version::HTTP_11)
+			.headers(headers)
+			.body(Bytes::new())
+			.build()
+			.unwrap();
+
+		// Act
+		let response = middleware.process(submit, chain).await.unwrap();
+
+		// Assert
+		assert_eq!(response.status, hyper::StatusCode::OK);
+		assert_eq!(session_cookie_id(&response), Some(session_id));
+		assert_eq!(middleware.store().len(), 0);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn saved_session_is_stored_and_advertised() {
+		// Arrange
+		let middleware = make_middleware();
+		let handler: Arc<dyn Handler> = Arc::new(SessionSavingHandler::new(&middleware));
+
+		// Act
+		let response = middleware
+			.process(request_without_cookie(), handler)
+			.await
+			.unwrap();
+
+		// Assert
+		let session_id = session_cookie_id(&response).expect("a saved session must be advertised");
+		assert_eq!(middleware.store().len(), 1);
+		assert!(middleware.store().contains_valid(&session_id));
+	}
+
+	/// Login on a request without a cookie goes through the request-scoped
+	/// session: the rotated session is the one stored and advertised.
+	#[rstest]
+	#[tokio::test]
+	async fn login_without_cookie_advertises_the_rotated_session() {
+		// Arrange
+		let middleware = make_middleware();
+		let handler = injecting_handler(&middleware, SessionUse::Login);
+
+		// Act
+		let response = middleware
+			.process(request_without_cookie(), handler)
+			.await
+			.unwrap();
+
+		// Assert
+		let session_id = session_cookie_id(&response).expect("login must advertise its session");
+		let stored = middleware
+			.store()
+			.get(&session_id)
+			.expect("Set-Cookie must name the stored session");
+		assert_eq!(stored.get::<i64>(USER_ID_SESSION_KEY), Some(42));
+		assert_eq!(middleware.store().len(), 1);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn resumed_session_is_extended_and_advertised() {
+		// Arrange
+		let middleware = make_middleware();
+		let session = SessionData::new(Duration::from_secs(60));
+		let session_id = session.id.clone();
+		let original_expiry = session.expires_at;
+		middleware.store().save(session);
+		let (_, handler) = capture_handler();
+
+		// Act
+		let response = middleware
+			.process(request_with_cookie(&session_id), handler)
+			.await
+			.unwrap();
+
+		// Assert
+		assert_eq!(session_cookie_id(&response), Some(session_id.clone()));
+		assert_eq!(middleware.store().len(), 1);
+		let resumed = middleware.store().get(&session_id).unwrap();
+		assert!(resumed.expires_at > original_expiry);
 	}
 
 	#[rstest]

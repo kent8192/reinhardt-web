@@ -49,6 +49,16 @@ pub struct SessionData {
 	pub id_holder: Option<ActiveSessionId>,
 }
 
+/// Session that `SessionMiddleware` started for a request without a valid
+/// session cookie.
+///
+/// It lives only in the request extensions, never in the store, so requests
+/// that do not save their session leave nothing behind. `SessionData::inject`
+/// falls back to it when the store has no entry for the request's session ID;
+/// saving the injected session to the store is what persists it.
+#[derive(Debug, Clone)]
+pub(super) struct PendingSession(pub(super) SessionData);
+
 impl SessionData {
 	/// Create a new session
 	pub fn new(ttl: Duration) -> Self {
