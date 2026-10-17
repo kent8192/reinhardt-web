@@ -542,9 +542,10 @@ impl SimpleSearchBackend {
 		self
 	}
 
-	/// Escape special characters in LIKE patterns to prevent SQL injection
+	/// Escape LIKE wildcards so that search text matches literally
 	///
-	/// Escapes `%`, `_`, and `\` which have special meanings in SQL LIKE patterns.
+	/// Escapes `%`, `_`, and `\` with a backslash, PostgreSQL's default LIKE
+	/// escape character.
 	fn escape_like_pattern(pattern: &str) -> String {
 		pattern
 			.replace('\\', "\\\\")
@@ -552,21 +553,34 @@ impl SimpleSearchBackend {
 			.replace('_', "\\_")
 	}
 
-	/// Build the search condition using reinhardt-query
+	/// Build one `LIKE` condition per search field
 	///
-	/// Returns a vector of SimpleExpr for the search condition.
-	/// Uses SeaQuery's parameterized query building to prevent SQL injection.
+	/// The search text is escaped exactly once, and the rendered string
+	/// literals end at the same position under MySQL, PostgreSQL and SQLite
+	/// rules, so filters that run after this one can still scan the SQL with
+	/// [`find_sql_keyword`]:
+	///
+	/// - MySQL: `contains` escapes the text and renders `ESCAPE 0x5C`.
+	/// - PostgreSQL: the pattern is escaped here and rendered without an
+	///   `ESCAPE` clause, because backslash is already PostgreSQL's default LIKE
+	///   escape character. The `ESCAPE '\'` that `contains` renders for
+	///   PostgreSQL is an unterminated string under MySQL rules, so
+	///   `find_sql_keyword` rejects SQL containing it.
 	fn build_search_conditions(&self, search_query: &str) -> Vec<SimpleExpr> {
-		let escaped = Self::escape_like_pattern(search_query);
-
-		self.fields
-			.iter()
-			.map(|field| {
-				// Use SeaQuery's .contains() which properly parameterizes the value
-				// This prevents SQL injection by using parameterized queries
-				Expr::col(Alias::new(field)).contains(escaped.as_str())
-			})
-			.collect()
+		match self.dialect {
+			DatabaseDialect::MySQL => self
+				.fields
+				.iter()
+				.map(|field| Expr::col(Alias::new(field)).contains(search_query))
+				.collect(),
+			DatabaseDialect::PostgreSQL => {
+				let pattern = format!("%{}%", Self::escape_like_pattern(search_query));
+				self.fields
+					.iter()
+					.map(|field| Expr::col(Alias::new(field)).like(pattern.as_str()))
+					.collect()
+			}
+		}
 	}
 }
 
@@ -584,14 +598,16 @@ impl FilterBackend for SimpleSearchBackend {
 				));
 			}
 			// The rendered search text must not end a line comment that a
-			// backend reads differently from find_sql_keyword.
-			if search_query.contains(['\n', '\r']) {
+			// backend reads differently from find_sql_keyword. The search text
+			// is embedded in an unbound string literal, and no encoding of a
+			// backslash in it matches the same rows under every MySQL and
+			// PostgreSQL string mode.
+			if search_query.contains(['\\', '\n', '\r']) {
 				return Err(FilterError::InvalidParameter(
-					"search text must not contain line breaks".to_string(),
+					"search text must not contain backslash or line break characters".to_string(),
 				));
 			}
 
-			// Build search conditions using SeaQuery's parameterized queries
 			let conditions = self.build_search_conditions(search_query);
 
 			// Combine all conditions with OR logic
@@ -1319,6 +1335,93 @@ mod tests {
 		assert_eq!(
 			result,
 			"SELECT id, 'x WHERE y' AS note FROM articles WHERE (tenant_id = 1) AND (`title` LIKE '%rust%' ESCAPE 0x5C) "
+		);
+	}
+
+	#[rstest]
+	#[case::mysql(
+		DatabaseDialect::MySQL,
+		"SELECT * FROM articles WHERE (`title` LIKE '%rust%' ESCAPE 0x5C) ORDER BY created_at ASC"
+	)]
+	#[case::postgresql(
+		DatabaseDialect::PostgreSQL,
+		"SELECT * FROM articles WHERE (\"title\" LIKE '%rust%') ORDER BY created_at ASC"
+	)]
+	#[tokio::test]
+	async fn test_search_output_is_valid_input_for_ordering(
+		#[case] dialect: DatabaseDialect,
+		#[case] expected: &str,
+	) {
+		// Arrange
+		let search = SimpleSearchBackend::new("search")
+			.with_field("title")
+			.with_dialect(dialect);
+		let ordering = SimpleOrderingBackend::new("ordering").allow_field("created_at");
+		let params = HashMap::from([
+			("search".to_string(), "rust".to_string()),
+			("ordering".to_string(), "created_at".to_string()),
+		]);
+
+		// Act
+		let searched = search
+			.filter_queryset(&params, "SELECT * FROM articles".to_string())
+			.await
+			.unwrap();
+		let result = ordering.filter_queryset(&params, searched).await;
+
+		// Assert
+		assert_eq!(result.unwrap(), expected);
+	}
+
+	#[rstest]
+	#[case::mysql(
+		DatabaseDialect::MySQL,
+		"SELECT * FROM articles WHERE (`title` LIKE '%a\\_b\\%c%' ESCAPE 0x5C)"
+	)]
+	#[case::postgresql(
+		DatabaseDialect::PostgreSQL,
+		"SELECT * FROM articles WHERE (\"title\" LIKE '%a\\_b\\%c%')"
+	)]
+	#[tokio::test]
+	async fn test_search_escapes_like_wildcards_once(
+		#[case] dialect: DatabaseDialect,
+		#[case] expected: &str,
+	) {
+		// Arrange
+		let backend = SimpleSearchBackend::new("search")
+			.with_field("title")
+			.with_dialect(dialect);
+		let params = HashMap::from([("search".to_string(), "a_b%c".to_string())]);
+
+		// Act
+		let result = backend
+			.filter_queryset(&params, "SELECT * FROM articles".to_string())
+			.await;
+
+		// Assert
+		assert_eq!(result.unwrap(), expected);
+	}
+
+	#[rstest]
+	#[case::mysql(DatabaseDialect::MySQL)]
+	#[case::postgresql(DatabaseDialect::PostgreSQL)]
+	#[tokio::test]
+	async fn test_search_rejects_backslash(#[case] dialect: DatabaseDialect) {
+		// Arrange
+		let backend = SimpleSearchBackend::new("search")
+			.with_field("title")
+			.with_dialect(dialect);
+		let params = HashMap::from([("search".to_string(), "C:\\temp".to_string())]);
+
+		// Act
+		let result = backend
+			.filter_queryset(&params, "SELECT * FROM articles".to_string())
+			.await;
+
+		// Assert
+		assert!(
+			matches!(result, Err(FilterError::InvalidParameter(_))),
+			"expected InvalidParameter, got {result:?}"
 		);
 	}
 }

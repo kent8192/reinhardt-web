@@ -43,7 +43,11 @@ validate them.
   different position under MySQL (either backslash mode), PostgreSQL, or
   SQLite rules, or that ends inside one. They read `#>`, `#>>`, and `#-` as
   PostgreSQL operators, so a MySQL `#` comment in that SQL must not start with
-  `>` or `-`; `SimpleSearchBackend` also rejects line breaks in search text.
+  `>` or `-`. `SimpleSearchBackend` also embeds search text in unbound string
+  literals, so it rejects backslash and line break characters in search text.
+  The search condition it appends contains no string literal whose end
+  depends on the backend, so its output stays valid input for the other
+  filters when the input SQL is.
   The `BatchValidator` uniqueness fast path currently builds a raw `UNION ALL`
   statement from table, field, and check values; callers must restrict that
   path to trusted identifiers and non-attacker-controlled values, or disable
