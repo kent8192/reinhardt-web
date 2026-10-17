@@ -60209,8 +60209,8 @@
       "path": "crates/reinhardt-rest/src/filters/backend.rs",
       "symbol": "SimpleSearchBackend as FilterBackend::filter_queryset",
       "kind": "possible-inline-render",
-      "line": 407,
-      "fingerprint": "4458460dbf2b7a2292bfa92ec14b4601251ba1bd5c27254ee02933becc01cebe",
+      "line": 607,
+      "fingerprint": "257c69ecd9b5162ca47f173ec173e346c9b2db9fe08c69c9490286714ebefe48",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -60232,8 +60232,8 @@
       "path": "crates/reinhardt-rest/src/filters/backend.rs",
       "symbol": "SimpleSearchBackend as FilterBackend::filter_queryset",
       "kind": "possible-inline-render",
-      "line": 411,
-      "fingerprint": "328e1c573c43d46d6331baf7ca7e28afcab8555a7ebec4dd4dbdb6aa8cec5d55",
+      "line": 611,
+      "fingerprint": "3ba0ea745771d089efa514233050daf8972036fa09956295dbebc03920f7ec2a",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -60625,52 +60625,6 @@
       "kind": "possible-inline-render",
       "line": 301,
       "fingerprint": "8674896613e6336ae72bb09017f41986ccd977c4547bde5349ff6a93fe7bf990",
-      "conditions": [],
-      "test_only": false,
-      "category": "review-required",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
-    },
-    {
-      "id": "crates/reinhardt-rest/src/filters/synonym.rs::SynonymExpander::apply_expansion::custom-fragment#1",
-      "path": "crates/reinhardt-rest/src/filters/synonym.rs",
-      "symbol": "SynonymExpander::apply_expansion",
-      "kind": "custom-fragment",
-      "line": 455,
-      "fingerprint": "9532ebf8dcaa1c7575de9814050a4e56121d303fffb68da36644bcc0b01038f5",
-      "conditions": [],
-      "test_only": false,
-      "category": "review-required",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
-    },
-    {
-      "id": "crates/reinhardt-rest/src/filters/synonym.rs::SynonymExpander::apply_expansion::possible-inline-render#1",
-      "path": "crates/reinhardt-rest/src/filters/synonym.rs",
-      "symbol": "SynonymExpander::apply_expansion",
-      "kind": "possible-inline-render",
-      "line": 464,
-      "fingerprint": "a105a636667a7051f0cffa6a988eea3a6b15c691156079871c67ee95bc082d99",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
