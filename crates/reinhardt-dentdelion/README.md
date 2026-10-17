@@ -284,6 +284,7 @@ WASM plugins can access the following host functions:
 | Services | `register_service`, `get_service`, `unregister_service` | `Services` |
 | HTTP | `http_get`, `http_post` | `NetworkAccess` |
 | Database | `db_query`, `db_execute` | `DatabaseAccess` |
+| Events | `emit`, `subscribe`, `unsubscribe`, `poll_events` | `Signals` |
 
 **Data Serialization:**
 - Configuration values, query parameters, and results are serialized using MessagePack
@@ -302,7 +303,9 @@ capabilities = ["NetworkAccess", "DatabaseAccess"]
 Host functions check capabilities at runtime:
 - `http_get`/`http_post` require `NetworkAccess` capability
 - `db_query`/`db_execute` require `DatabaseAccess` capability
-- Unauthorized calls return `PluginError` with code 403
+- `emit`/`subscribe`/`unsubscribe`/`poll_events` require `Signals` capability
+- Unauthorized calls return `PluginError` with code 403; `poll_events` has no
+  error result, so an unauthorized poll returns an empty list
 
 ### HTTP Resource Limits
 
