@@ -11,7 +11,6 @@ use super::field_codec::{
 use super::{FieldSelector, Model};
 use crate::naming::to_snake_case;
 use crate::orm::query_fields::comparison::FieldComparison;
-use crate::orm::query_fields::compiler::QueryFieldCompiler;
 use crate::orm::query_fields::expression::{compiler::compile_expression, node::StoredExpression};
 use crate::orm::query_fields::{
 	AnnotationExpressionKind, GroupByFields, HavingPredicate, LabeledExpression, OrderedExpression,
@@ -1473,10 +1472,32 @@ struct JoinClause {
 	target_table: String,
 	/// Optional alias for the target table (for self-joins)
 	target_alias: Option<String>,
-	/// The ON condition as a SQL expression string
-	/// Format: "left_table.left_field = right_table.right_field"
-	/// Can include table aliases for self-joins (e.g., "u1.id < u2.id")
-	on_condition: String,
+	/// The ON condition, or [`JoinCondition::Cross`] for a CROSS JOIN
+	on_condition: JoinCondition,
+}
+
+/// ON condition of a manual JOIN clause
+#[derive(Clone, Debug)]
+enum JoinCondition {
+	/// CROSS JOIN without an ON clause
+	Cross,
+	/// Comparison of column references whose identifiers the query builder quotes
+	Columns(SimpleExpr),
+	/// Trusted SQL supplied to the `*_join_on` methods and emitted verbatim
+	RawSql(String),
+}
+
+impl JoinCondition {
+	/// Condition for the trusted SQL passed to the `*_join_on` methods.
+	///
+	/// An empty condition keeps its established meaning of a CROSS JOIN.
+	fn raw_sql(condition: &str) -> Self {
+		if condition.is_empty() {
+			Self::Cross
+		} else {
+			Self::RawSql(condition.to_owned())
+		}
+	}
 }
 
 /// Subquery condition specification for WHERE clause
@@ -2277,6 +2298,7 @@ where
 		&self,
 		backend: crate::backends::types::DatabaseType,
 	) -> reinhardt_core::exception::Result<SelectStatement> {
+		self.validate_selected_fields()?;
 		if self.has_select_related() {
 			return self.select_related_query_with_condition(
 				self.build_where_condition_for_backend(backend)?,
@@ -2290,11 +2312,7 @@ where
 		}
 		if let Some(ref fields) = self.selected_fields {
 			for field in fields {
-				if field.contains('(') && field.contains(')') {
-					stmt.expr(Expr::cust(field.clone()));
-				} else {
-					stmt.column(self.root_column_reference(field));
-				}
+				stmt.column(self.root_column_reference(field));
 			}
 		} else if !self.deferred_fields.is_empty() {
 			for field in T::field_metadata() {
@@ -2359,6 +2377,27 @@ where
 		}
 
 		self.build_select_statement_for_backend(backend)
+	}
+
+	/// Rejects projection entries that cannot be field identifiers.
+	///
+	/// [`Self::values`] entries are always emitted as quoted column references.
+	/// Entries shaped like SQL expressions are rejected instead of being
+	/// promoted to raw SQL, so attacker-selected field names cannot execute.
+	fn validate_selected_fields(&self) -> reinhardt_core::exception::Result<()> {
+		let has_expression = self
+			.selected_fields
+			.iter()
+			.flatten()
+			.any(|field| field.contains(['(', ')']));
+		if has_expression {
+			return Err(DatabaseError::new(
+				DatabaseErrorKind::Unsupported,
+				"values(), values_list(), and only() accept field names only; use select_expr or annotate for computed projections",
+			)
+			.into());
+		}
+		Ok(())
 	}
 
 	fn is_model_shaped_source(&self) -> bool {
@@ -2438,12 +2477,10 @@ where
 
 		if let Some(fields) = &self.selected_fields {
 			for field in fields {
-				if !field.contains('(') && !field.contains(')') {
-					stmt.group_by_col(ColumnRef::table_column(
-						Alias::new(self.root_alias()),
-						Alias::new(Self::database_column_for_field(field)),
-					));
-				}
+				stmt.group_by_col(ColumnRef::table_column(
+					Alias::new(self.root_alias()),
+					Alias::new(Self::database_column_for_field(field)),
+				));
 			}
 		} else {
 			for field in T::field_metadata() {
@@ -2558,18 +2595,6 @@ where
 			return Err(DatabaseError::new(
 				DatabaseErrorKind::Unsupported,
 				"aggregate ordering requires an aggregate annotation or explicit GROUP BY projection",
-			)
-			.into());
-		}
-		if self.has_aggregate_annotation()
-			&& self.selected_fields.as_ref().is_some_and(|fields| {
-				fields
-					.iter()
-					.any(|field| field.contains('(') || field.contains(')'))
-			}) {
-			return Err(DatabaseError::new(
-				DatabaseErrorKind::Unsupported,
-				"aggregate annotations do not support raw selected expressions; use select_expr for structured scalar projections",
 			)
 			.into());
 		}
@@ -2764,7 +2789,7 @@ where
 			.any(|join| join.join_kind == RelationJoinKind::Left)
 			|| !self.select_related_fields.is_empty()
 			|| self.joins.iter().any(|join| {
-				!join.on_condition.is_empty()
+				!matches!(join.on_condition, JoinCondition::Cross)
 					&& matches!(
 						join.join_type,
 						super::sqlalchemy_query::JoinType::Left
@@ -3691,8 +3716,12 @@ where
 	///
 	/// # Parameters
 	///
-	/// * `left_field` - The field name from the left table (current model T)
-	/// * `right_field` - The field name from the right table (model R)
+	/// * `left_field` - The column name from the left table (current model T)
+	/// * `right_field` - The column name from the right table (model R)
+	///
+	/// Both names are emitted as quoted identifiers qualified by their model's
+	/// table name; they are never interpreted as SQL. Use [`Self::inner_join_on`]
+	/// for trusted custom conditions.
 	///
 	/// # Examples
 	///
@@ -3741,19 +3770,11 @@ where
 	/// # }
 	/// ```
 	pub fn inner_join<R: super::Model>(mut self, left_field: &str, right_field: &str) -> Self {
-		let condition = format!(
-			"{}.{} = {}.{}",
-			T::table_name(),
-			left_field,
-			R::table_name(),
-			right_field
-		);
-
 		self.joins.push(JoinClause {
 			join_type: super::sqlalchemy_query::JoinType::Inner,
 			target_table: R::table_name().to_string(),
 			target_alias: None,
-			on_condition: condition,
+			on_condition: Self::column_equality_join::<R>(left_field, right_field),
 		});
 		self.rebase_filter_relation_aliases();
 
@@ -3813,19 +3834,11 @@ where
 	/// # }
 	/// ```
 	pub fn left_join<R: super::Model>(mut self, left_field: &str, right_field: &str) -> Self {
-		let condition = format!(
-			"{}.{} = {}.{}",
-			T::table_name(),
-			left_field,
-			R::table_name(),
-			right_field
-		);
-
 		self.joins.push(JoinClause {
 			join_type: super::sqlalchemy_query::JoinType::Left,
 			target_table: R::table_name().to_string(),
 			target_alias: None,
-			on_condition: condition,
+			on_condition: Self::column_equality_join::<R>(left_field, right_field),
 		});
 		self.rebase_filter_relation_aliases();
 
@@ -3885,19 +3898,11 @@ where
 	/// # }
 	/// ```
 	pub fn right_join<R: super::Model>(mut self, left_field: &str, right_field: &str) -> Self {
-		let condition = format!(
-			"{}.{} = {}.{}",
-			T::table_name(),
-			left_field,
-			R::table_name(),
-			right_field
-		);
-
 		self.joins.push(JoinClause {
 			join_type: super::sqlalchemy_query::JoinType::Right,
 			target_table: R::table_name().to_string(),
 			target_alias: None,
-			on_condition: condition,
+			on_condition: Self::column_equality_join::<R>(left_field, right_field),
 		});
 		self.rebase_filter_relation_aliases();
 
@@ -3961,7 +3966,7 @@ where
 			join_type: super::sqlalchemy_query::JoinType::Inner, // CROSS JOIN uses Inner with empty condition
 			target_table: R::table_name().to_string(),
 			target_alias: None,
-			on_condition: String::new(), // Empty condition for CROSS JOIN
+			on_condition: JoinCondition::Cross,
 		});
 		self.rebase_filter_relation_aliases();
 
@@ -4039,6 +4044,13 @@ where
 	///
 	/// * `condition` - Custom SQL condition for the JOIN (e.g., "users.id = posts.user_id AND posts.status = 'published'")
 	///
+	/// # Security
+	///
+	/// `condition` is trusted raw SQL and is emitted verbatim. Never build it
+	/// from request data or other attacker-controlled input; use the
+	/// identifier-based join methods or the typed `*_join_as` methods instead.
+	/// An empty `condition` produces a CROSS JOIN.
+	///
 	/// # Examples
 	///
 	/// ```no_run
@@ -4090,7 +4102,7 @@ where
 			join_type: super::sqlalchemy_query::JoinType::Inner,
 			target_table: R::table_name().to_string(),
 			target_alias: None,
-			on_condition: condition.to_string(),
+			on_condition: JoinCondition::raw_sql(condition),
 		});
 		self.rebase_filter_relation_aliases();
 
@@ -4108,6 +4120,13 @@ where
 	/// # Parameters
 	///
 	/// * `condition` - Custom SQL condition for the JOIN
+	///
+	/// # Security
+	///
+	/// `condition` is trusted raw SQL and is emitted verbatim. Never build it
+	/// from request data or other attacker-controlled input; use the
+	/// identifier-based join methods or the typed `*_join_as` methods instead.
+	/// An empty `condition` produces a CROSS JOIN.
 	///
 	/// # Examples
 	///
@@ -4159,7 +4178,7 @@ where
 			join_type: super::sqlalchemy_query::JoinType::Left,
 			target_table: R::table_name().to_string(),
 			target_alias: None,
-			on_condition: condition.to_string(),
+			on_condition: JoinCondition::raw_sql(condition),
 		});
 		self.rebase_filter_relation_aliases();
 
@@ -4177,6 +4196,13 @@ where
 	/// # Parameters
 	///
 	/// * `condition` - Custom SQL condition for the JOIN
+	///
+	/// # Security
+	///
+	/// `condition` is trusted raw SQL and is emitted verbatim. Never build it
+	/// from request data or other attacker-controlled input; use the
+	/// identifier-based join methods or the typed `*_join_as` methods instead.
+	/// An empty `condition` produces a CROSS JOIN.
 	///
 	/// # Examples
 	///
@@ -4228,7 +4254,7 @@ where
 			join_type: super::sqlalchemy_query::JoinType::Right,
 			target_table: R::table_name().to_string(),
 			target_alias: None,
-			on_condition: condition.to_string(),
+			on_condition: JoinCondition::raw_sql(condition),
 		});
 		self.rebase_filter_relation_aliases();
 
@@ -4318,15 +4344,12 @@ where
 		// Get comparison expression from closure
 		let comparison = condition_fn(left_fields, right_fields);
 
-		// Convert to SQL
-		let condition = QueryFieldCompiler::compile_field_comparison(&comparison);
-
 		// Add to JoinClause
 		self.joins.push(JoinClause {
 			join_type: super::sqlalchemy_query::JoinType::Inner,
 			target_table: R::table_name().to_string(),
 			target_alias: Some(right_alias.to_string()),
-			on_condition: condition,
+			on_condition: JoinCondition::Columns(field_comparison_expr(&comparison)),
 		});
 		self.rebase_filter_relation_aliases();
 
@@ -4420,15 +4443,12 @@ where
 		// Get comparison from closure
 		let comparison = condition_fn(left_fields, right_fields);
 
-		// Convert to SQL
-		let condition = QueryFieldCompiler::compile_field_comparison(&comparison);
-
 		// Add to JoinClause
 		self.joins.push(JoinClause {
 			join_type: super::sqlalchemy_query::JoinType::Left,
 			target_table: R::table_name().to_string(),
 			target_alias: Some(right_alias.to_string()),
-			on_condition: condition,
+			on_condition: JoinCondition::Columns(field_comparison_expr(&comparison)),
 		});
 		self.rebase_filter_relation_aliases();
 
@@ -4522,15 +4542,12 @@ where
 		// Get comparison from closure
 		let comparison = condition_fn(left_fields, right_fields);
 
-		// Convert to SQL
-		let condition = QueryFieldCompiler::compile_field_comparison(&comparison);
-
 		// Add to JoinClause
 		self.joins.push(JoinClause {
 			join_type: super::sqlalchemy_query::JoinType::Right,
 			target_table: R::table_name().to_string(),
 			target_alias: Some(right_alias.to_string()),
-			on_condition: condition,
+			on_condition: JoinCondition::Columns(field_comparison_expr(&comparison)),
 		});
 		self.rebase_filter_relation_aliases();
 
@@ -5217,9 +5234,7 @@ where
 	fn add_select_related_root_columns(&self, stmt: &mut SelectStatement) {
 		if let Some(ref fields) = self.selected_fields {
 			for field in fields {
-				if field.contains('(') && field.contains(')') {
-					stmt.expr(Expr::cust(field.clone()));
-				} else if field.contains('.') {
+				if field.contains('.') {
 					stmt.column(parse_column_reference(field));
 				} else {
 					stmt.column(ColumnRef::table_column(
@@ -5511,14 +5526,18 @@ where
 
 	fn apply_manual_joins(&self, stmt: &mut SelectStatement) {
 		for join in &self.joins {
-			if join.on_condition.is_empty() {
-				if let Some(ref alias) = join.target_alias {
-					stmt.cross_join((Alias::new(&join.target_table), Alias::new(alias)));
-				} else {
-					stmt.cross_join(Alias::new(&join.target_table));
+			let condition = match &join.on_condition {
+				JoinCondition::Cross => {
+					if let Some(ref alias) = join.target_alias {
+						stmt.cross_join((Alias::new(&join.target_table), Alias::new(alias)));
+					} else {
+						stmt.cross_join(Alias::new(&join.target_table));
+					}
+					continue;
 				}
-				continue;
-			}
+				JoinCondition::Columns(condition) => condition.clone(),
+				JoinCondition::RawSql(sql) => Expr::cust(sql.clone()).into_simple_expr(),
+			};
 
 			let sea_join_type = match join.join_type {
 				super::sqlalchemy_query::JoinType::Inner => SeaJoinType::InnerJoin,
@@ -5530,16 +5549,21 @@ where
 				stmt.join(
 					sea_join_type,
 					(Alias::new(&join.target_table), Alias::new(alias)),
-					Expr::cust(join.on_condition.clone()),
+					condition,
 				);
 			} else {
-				stmt.join(
-					sea_join_type,
-					Alias::new(&join.target_table),
-					Expr::cust(join.on_condition.clone()),
-				);
+				stmt.join(sea_join_type, Alias::new(&join.target_table), condition);
 			}
 		}
+	}
+
+	/// Builds `<T table>.<left_field> = <R table>.<right_field>` from quoted
+	/// identifiers so field names cannot contribute SQL syntax to the ON clause.
+	fn column_equality_join<R: super::Model>(left_field: &str, right_field: &str) -> JoinCondition {
+		JoinCondition::Columns(
+			Expr::col((Alias::new(T::table_name()), Alias::new(left_field)))
+				.equals((Alias::new(R::table_name()), Alias::new(right_field))),
+		)
 	}
 
 	fn apply_typed_select_expressions(
@@ -6873,6 +6897,7 @@ where
 		&self,
 		where_condition: Option<Condition>,
 	) -> reinhardt_core::exception::Result<SelectStatement> {
+		self.validate_selected_fields()?;
 		let table_name = T::table_name();
 		let root_alias = self.from_alias.as_deref().unwrap_or(table_name);
 		let relation_joins = self.expression_relation_join_graph_for_query();
@@ -6950,40 +6975,7 @@ where
 			}
 		}
 
-		// Apply manual JOINs
-		for join in &self.joins {
-			if join.on_condition.is_empty() {
-				// CROSS JOIN (no ON condition)
-				if let Some(ref alias) = join.target_alias {
-					stmt.cross_join((Alias::new(&join.target_table), Alias::new(alias)));
-				} else {
-					stmt.cross_join(Alias::new(&join.target_table));
-				}
-			} else {
-				// Convert reinhardt JoinType to reinhardt-query JoinType
-				let sea_join_type = match join.join_type {
-					super::sqlalchemy_query::JoinType::Inner => SeaJoinType::InnerJoin,
-					super::sqlalchemy_query::JoinType::Left => SeaJoinType::LeftJoin,
-					super::sqlalchemy_query::JoinType::Right => SeaJoinType::RightJoin,
-					super::sqlalchemy_query::JoinType::Full => SeaJoinType::FullOuterJoin,
-				};
-
-				// Build the join with optional alias
-				if let Some(ref alias) = join.target_alias {
-					stmt.join(
-						sea_join_type,
-						(Alias::new(&join.target_table), Alias::new(alias)),
-						Expr::cust(join.on_condition.clone()),
-					);
-				} else {
-					stmt.join(
-						sea_join_type,
-						Alias::new(&join.target_table),
-						Expr::cust(join.on_condition.clone()),
-					);
-				}
-			}
-		}
+		self.apply_manual_joins(&mut stmt);
 
 		// Apply WHERE conditions
 		if let Some(cond) = where_condition {
@@ -10185,19 +10177,22 @@ where
 	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
 	/// # }
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-	/// // Add book count for each author
+	/// // Add the title of each author's most recent book
 	/// let authors = Author::objects()
-	///     .annotate_subquery::<Book, _>("book_count", |subq| {
+	///     .annotate_subquery::<Book, _>("latest_title", |subq| {
 	///         subq.filter(Filter::new(
 	///             "author_id",
 	///             FilterOperator::Eq,
 	///             FilterValue::OuterRef(OuterRef::new("authors.id"))
 	///         ))
-	///         .values(&["COUNT(*)"])
+	///         .order_by(&["-published_at"])
+	///         .values(&["title"])
+	///         .limit(1)
 	///     })?
 	///     .all()
 	///     .await?;
-	/// // Generates: SELECT *, (SELECT COUNT(*) FROM books WHERE author_id = authors.id) AS book_count FROM authors
+	/// // Generates: SELECT *, (SELECT title FROM books WHERE author_id = authors.id
+	/// //   ORDER BY published_at DESC LIMIT 1) AS latest_title FROM authors
 	/// # Ok(())
 	/// # }
 	/// ```
@@ -10235,6 +10230,7 @@ where
 		&self,
 		backend: crate::backends::types::DatabaseType,
 	) -> reinhardt_core::exception::Result<String> {
+		self.validate_selected_fields()?;
 		let mut stmt = if !self.has_select_related() {
 			// Simple SELECT without JOINs
 			let mut stmt = Query::select();
@@ -10249,15 +10245,7 @@ where
 			// Column selection considering selected_fields and deferred_fields
 			if let Some(ref fields) = self.selected_fields {
 				for field in fields {
-					// Detect raw SQL expressions (like COUNT(*), AVG(price), etc.)
-					if field.contains('(') && field.contains(')') {
-						// Use expr() for raw SQL expressions - clone to satisfy lifetime
-						stmt.expr(Expr::cust(field.clone()));
-					} else {
-						// Regular column reference
-						let col_ref = self.root_column_reference(field);
-						stmt.column(col_ref);
-					}
+					stmt.column(self.root_column_reference(field));
 				}
 			} else if !self.deferred_fields.is_empty() {
 				let all_fields = T::field_metadata();
@@ -10274,44 +10262,7 @@ where
 
 			self.apply_relation_joins(&mut stmt);
 
-			// Apply JOINs
-			for join in &self.joins {
-				if join.on_condition.is_empty() {
-					// CROSS JOIN (no ON condition)
-					if let Some(ref alias) = join.target_alias {
-						// CROSS JOIN with alias - reinhardt-query doesn't support this directly
-						// Use regular join syntax instead
-						stmt.cross_join((Alias::new(&join.target_table), Alias::new(alias)));
-					} else {
-						stmt.cross_join(Alias::new(&join.target_table));
-					}
-				} else {
-					// Convert reinhardt JoinType to reinhardt-query JoinType
-					let sea_join_type = match join.join_type {
-						super::sqlalchemy_query::JoinType::Inner => SeaJoinType::InnerJoin,
-						super::sqlalchemy_query::JoinType::Left => SeaJoinType::LeftJoin,
-						super::sqlalchemy_query::JoinType::Right => SeaJoinType::RightJoin,
-						super::sqlalchemy_query::JoinType::Full => SeaJoinType::FullOuterJoin,
-					};
-
-					// Build the join with optional alias
-					if let Some(ref alias) = join.target_alias {
-						// JOIN with alias: (table, alias)
-						stmt.join(
-							sea_join_type,
-							(Alias::new(&join.target_table), Alias::new(alias)),
-							Expr::cust(join.on_condition.clone()),
-						);
-					} else {
-						// JOIN without alias
-						stmt.join(
-							sea_join_type,
-							Alias::new(&join.target_table),
-							Expr::cust(join.on_condition.clone()),
-						);
-					}
-				}
-			}
+			self.apply_manual_joins(&mut stmt);
 
 			// Apply WHERE conditions
 			if let Some(cond) = self.build_where_condition_for_backend(backend)? {
@@ -10411,6 +10362,12 @@ where
 	///
 	/// Returns only the specified fields instead of all columns.
 	/// Useful for optimizing queries when you don't need all model fields.
+	///
+	/// Each entry is a field name, optionally qualified as `table.field`, and is
+	/// always emitted as a quoted identifier. Entries are never interpreted as
+	/// SQL: building the query fails for entries shaped like expressions (for
+	/// example `COUNT(*)`). Use [`Self::select_expr`] or [`Self::annotate`] for
+	/// computed projections.
 	///
 	/// # Examples
 	///
@@ -11435,15 +11392,14 @@ fn qualify_filter_expression_sql(sql: &str, root_alias: &str) -> String {
 /// Note: For reinhardt-query v1.0.0-rc.29+, we use the full qualified name as a column identifier.
 /// This works for most databases that support qualified column references.
 ///
-/// This function also detects raw SQL expressions (containing parentheses, like `COUNT(*)`,
-/// `AVG(price)`) and returns them wrapped in `Expr::cust()` instead of as column references.
+/// Text containing parentheses (for example `COUNT(*)`) is kept as one quoted
+/// identifier; this function never emits its input as raw SQL.
 pub(crate) fn parse_column_reference(field: &str) -> reinhardt_query::prelude::ColumnRef {
 	use reinhardt_query::prelude::ColumnRef;
 
-	// Detect raw SQL expressions by checking for parentheses
-	// Examples: COUNT(*), AVG(price), SUM(amount), MAX(value)
+	// Expression-shaped text is not split on dots; the whole value stays one
+	// quoted identifier.
 	if field.contains('(') && field.contains(')') {
-		// Use column reference with raw expression name
 		ColumnRef::column(Alias::new(field))
 	} else if field.contains('.') {
 		// Qualified column reference (table.column format)
@@ -11470,6 +11426,42 @@ pub(crate) fn parse_column_reference(field: &str) -> reinhardt_query::prelude::C
 		// Simple column reference
 		ColumnRef::column(Alias::new(field))
 	}
+}
+
+/// Compiles a typed JOIN comparison into a structured expression.
+///
+/// Table aliases and field paths become quoted column references, so alias
+/// strings passed to the `*_join_as` methods cannot contribute SQL syntax.
+/// [`FieldRef::Value`](crate::orm::query_fields::comparison::FieldRef::Value)
+/// is trusted raw SQL by contract and is emitted as written.
+fn field_comparison_expr(comparison: &FieldComparison) -> SimpleExpr {
+	use crate::orm::query_fields::comparison::{ComparisonOperator, FieldRef};
+
+	let operand = |field_ref: &FieldRef| match field_ref {
+		FieldRef::Field {
+			table_alias,
+			field_path,
+		} => {
+			let path = table_alias
+				.iter()
+				.chain(field_path)
+				.map(String::as_str)
+				.collect::<Vec<_>>()
+				.join(".");
+			Expr::col(parse_column_reference(&path)).into_simple_expr()
+		}
+		FieldRef::Value(value) => Expr::cust(value.clone()).into_simple_expr(),
+	};
+	let operator = match comparison.op {
+		ComparisonOperator::Eq => BinOper::Equal,
+		ComparisonOperator::Ne => BinOper::NotEqual,
+		ComparisonOperator::Gt => BinOper::GreaterThan,
+		ComparisonOperator::Gte => BinOper::GreaterThanOrEqual,
+		ComparisonOperator::Lt => BinOper::SmallerThan,
+		ComparisonOperator::Lte => BinOper::SmallerThanOrEqual,
+	};
+
+	operand(&comparison.left).binary(operator, operand(&comparison.right))
 }
 
 fn contains_known_raw_aggregate(projection: &str) -> bool {
@@ -12429,7 +12421,15 @@ mod tests {
 	#[rstest]
 	fn none_aggregate_subquery_limits_output_rows() {
 		// Arrange
-		let queryset = QuerySet::<TestUser>::new().none().values(&["COUNT(*)"]);
+		let queryset = QuerySet::<TestUser>::new()
+			.none()
+			.values(&[])
+			.annotate(
+				crate::orm::func::count_all::<TestUser>()
+					.label("user_count")
+					.expect("valid aggregate label"),
+			)
+			.expect("count annotation should compile");
 
 		// Act
 		let sql = queryset
@@ -12439,7 +12439,7 @@ mod tests {
 		// Assert
 		assert_eq!(
 			sql,
-			r#"(SELECT COUNT(*) FROM "test_users" WHERE 1 = 0 LIMIT 0)"#
+			r#"(SELECT COUNT(*) AS "user_count" FROM "test_users" WHERE 1 = 0 LIMIT 0)"#
 		);
 	}
 
@@ -15243,6 +15243,201 @@ mod tests {
 			sql.contains(r#"INNER JOIN "test_projects" ON test_users.id = test_projects.user_id"#)
 		);
 		assert!(sql.contains(r#"WHERE "test_projects"."name" = 'reinhardt'"#));
+	}
+
+	type IdentifierJoin = fn(QuerySet<TestUser>, &str, &str) -> QuerySet<TestUser>;
+
+	#[rstest]
+	#[case::inner(QuerySet::<TestUser>::inner_join::<TestProject>, "INNER JOIN")]
+	#[case::left(QuerySet::<TestUser>::left_join::<TestProject>, "LEFT JOIN")]
+	#[case::right(QuerySet::<TestUser>::right_join::<TestProject>, "RIGHT JOIN")]
+	fn identifier_join_fields_stay_quoted_identifiers(
+		#[case] join: IdentifierJoin,
+		#[case] keyword: &str,
+	) {
+		// Arrange
+		let queryset = join(
+			QuerySet::<TestUser>::new(),
+			r#"id" = 1 OR 1 = 1 OR "id"#,
+			"user_id",
+		);
+
+		// Act
+		let to_sql = queryset.to_sql().expect("identifier join should compile");
+		let statement = queryset
+			.build_select_statement()
+			.expect("identifier join statement should build")
+			.to_string(PostgresQueryBuilder);
+
+		// Assert
+		let expected = format!(
+			r#"SELECT * FROM "test_users" {keyword} "test_projects" ON "test_users"."id"" = 1 OR 1 = 1 OR ""id" = "test_projects"."user_id""#
+		);
+		assert_eq!(to_sql, expected);
+		assert_eq!(statement, expected);
+	}
+
+	#[rstest]
+	#[case::postgres(
+		crate::backends::types::DatabaseType::Postgres,
+		r#"SELECT * FROM "test_users" INNER JOIN "test_projects" ON "test_users"."id" = "test_projects"."user_id""#
+	)]
+	#[case::mysql(
+		crate::backends::types::DatabaseType::Mysql,
+		"SELECT * FROM `test_users` INNER JOIN `test_projects` ON `test_users`.`id` = `test_projects`.`user_id`"
+	)]
+	#[case::sqlite(
+		crate::backends::types::DatabaseType::Sqlite,
+		r#"SELECT * FROM "test_users" INNER JOIN "test_projects" ON "test_users"."id" = "test_projects"."user_id""#
+	)]
+	fn identifier_join_quotes_columns_for_each_backend(
+		#[case] backend: crate::backends::types::DatabaseType,
+		#[case] expected: &str,
+	) {
+		// Arrange
+		let queryset = QuerySet::<TestUser>::new().inner_join::<TestProject>("id", "user_id");
+
+		// Act
+		let sql = queryset
+			.to_sql_for_backend(backend)
+			.expect("identifier join should compile");
+
+		// Assert
+		assert_eq!(sql, expected);
+	}
+
+	type RawJoin = fn(QuerySet<TestUser>, &str) -> QuerySet<TestUser>;
+
+	#[rstest]
+	#[case::inner(QuerySet::<TestUser>::inner_join_on::<TestMembership>)]
+	#[case::left(QuerySet::<TestUser>::left_join_on::<TestMembership>)]
+	#[case::right(QuerySet::<TestUser>::right_join_on::<TestMembership>)]
+	fn raw_join_with_empty_condition_stays_cross_join(#[case] join: RawJoin) {
+		// Arrange
+		let queryset = join(QuerySet::<TestUser>::new(), "");
+		let expected = QuerySet::<TestUser>::new()
+			.cross_join::<TestMembership>()
+			.to_sql()
+			.expect("cross join should compile");
+
+		// Act
+		let sql = queryset.to_sql().expect("empty raw join should compile");
+
+		// Assert
+		assert_eq!(sql, expected);
+		assert!(sql.contains("CROSS JOIN"), "{sql}");
+	}
+
+	#[rstest]
+	fn join_as_comparison_quotes_aliases() {
+		// Arrange
+		let comparison = aliased_join_condition("u", r#"p" ON 1 = 1 --"#);
+
+		// Act
+		let sql = reinhardt_query::prelude::Query::select()
+			.column(Alias::new("id"))
+			.from(Alias::new("test_users"))
+			.and_where(super::field_comparison_expr(&comparison))
+			.to_string(PostgresQueryBuilder);
+
+		// Assert
+		assert_eq!(
+			sql,
+			r#"SELECT "id" FROM "test_users" WHERE "u"."id" = "p"" ON 1 = 1 --"."id""#
+		);
+	}
+
+	#[rstest]
+	fn join_as_keeps_hostile_alias_inside_quoted_on_condition() {
+		// Arrange
+		let right_alias = r#"p" ON 1 = 1 --"#;
+		let queryset = QuerySet::<TestUser>::new().inner_join_as::<TestProject, _>(
+			"u",
+			right_alias,
+			|_, _| aliased_join_condition("u", right_alias),
+		);
+
+		// Act
+		let sql = queryset.to_sql().expect("aliased join should compile");
+
+		// Assert: only the ON clause is pinned; the aliased table reference is
+		// rendered by an unrelated code path.
+		assert!(sql.ends_with(r#" ON "u"."id" = "p"" ON 1 = 1 --"."id""#));
+	}
+
+	#[rstest]
+	#[case::aggregate("COUNT(*)")]
+	#[case::scalar_subquery("(SELECT email FROM test_users LIMIT 1)")]
+	#[case::statement_break("id) FROM test_users; DROP TABLE test_users; --")]
+	fn projection_rejects_expression_shaped_fields(#[case] projection: &str) {
+		// Arrange
+		let querysets = [
+			QuerySet::<TestUser>::new().values(&["id", projection]),
+			QuerySet::<TestUser>::new().values_list(&["id", projection]),
+			QuerySet::<TestUser>::new().only(&["id", projection]),
+		];
+
+		for queryset in querysets {
+			// Act
+			let to_sql_error = queryset
+				.to_sql()
+				.expect_err("expression-shaped projection must be rejected");
+			let statement_error = queryset
+				.build_select_statement()
+				.expect_err("expression-shaped projection must be rejected");
+
+			// Assert
+			assert_eq!(
+				to_sql_error.database_kind(),
+				Some(reinhardt_core::exception::DatabaseErrorKind::Unsupported)
+			);
+			assert_eq!(
+				statement_error.database_kind(),
+				Some(reinhardt_core::exception::DatabaseErrorKind::Unsupported)
+			);
+		}
+	}
+
+	#[rstest]
+	fn select_related_projection_rejects_expression_shaped_fields() {
+		// Arrange
+		let eager_path =
+			crate::orm::relations::RelationPath::<TestUser, TestProject>::from_descriptor::<
+				TestUserRelationNamedCorpusFileProject,
+			>();
+		let queryset = QuerySet::<TestUser>::new()
+			.select_related(eager_path)
+			.values(&["id", "(SELECT email FROM test_users LIMIT 1)"]);
+
+		// Act
+		let error = queryset
+			.select_related_query()
+			.expect_err("expression-shaped projection must be rejected");
+
+		// Assert
+		assert_eq!(
+			error.database_kind(),
+			Some(reinhardt_core::exception::DatabaseErrorKind::Unsupported)
+		);
+	}
+
+	#[rstest]
+	#[case::plain_fields(&["id", "email"], r#"SELECT "id", "email" FROM "test_users""#)]
+	#[case::quote_breakout(
+		&["id", r#"email", "username"#],
+		r#"SELECT "id", "email"", ""username" FROM "test_users""#
+	)]
+	fn projection_fields_stay_quoted_identifiers(#[case] fields: &[&str], #[case] expected: &str) {
+		// Arrange
+		let queryset = QuerySet::<TestUser>::new().values(fields);
+
+		// Act
+		let sql = queryset
+			.to_sql()
+			.expect("identifier projection should compile");
+
+		// Assert
+		assert_eq!(sql, expected);
 	}
 
 	#[rstest]
