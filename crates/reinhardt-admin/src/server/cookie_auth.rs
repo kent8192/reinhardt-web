@@ -20,7 +20,8 @@
 use async_trait::async_trait;
 use reinhardt_auth::JwtAuth;
 use reinhardt_http::{
-	AuthState, Handler, IsActive, IsAdmin, IsAuthenticated, Middleware, Request, Response, Result,
+	AuthState, Extensions, Handler, IsActive, IsAdmin, IsAuthenticated, Middleware, Request,
+	Response, Result,
 };
 use std::sync::Arc;
 
@@ -82,25 +83,41 @@ impl Middleware for AdminCookieAuthMiddleware {
 		let auth_state = if let Some(token) = Self::extract_token(&request)
 			&& let Ok(claims) = self.jwt_auth.verify_token(&token)
 		{
-			let user_id = claims.sub;
 			let is_admin = claims.is_staff || claims.is_superuser;
-			let is_active = true;
-
-			// Insert individual values for backward compatibility with
-			// existing code that reads from extensions directly.
-			request.extensions.insert(user_id.clone());
-			request.extensions.insert(IsAuthenticated(true));
-			request.extensions.insert(IsAdmin(is_admin));
-			request.extensions.insert(IsActive(is_active));
-
-			AuthState::authenticated(user_id, is_admin, is_active)
+			AuthState::authenticated(claims.sub, is_admin, true)
 		} else {
 			AuthState::anonymous()
 		};
 
-		request.extensions.insert(auth_state);
+		install_auth_state(&request.extensions, auth_state);
 		next.handle(request).await
 	}
+}
+
+/// Installs `state` together with the legacy compatibility entries
+/// (`String` user ID, [`IsAuthenticated`], [`IsAdmin`], [`IsActive`]) that
+/// existing code reads from extensions directly.
+///
+/// The legacy flags are always overwritten together with the canonical
+/// state, so an anonymous state writes `false` flags and discards any
+/// principal left behind by an earlier authentication layer instead of
+/// letting legacy consumers observe it after admin authentication failed.
+///
+/// An anonymous state blanks an existing user ID but never adds one: the
+/// untyped `String` entry is also read as the CSRF session identifier and
+/// the rate-limit user key, and an empty ID added to every anonymous request
+/// would give them all the same CSRF secret. This mirrors the helper used by
+/// the authentication middleware in `reinhardt-middleware`.
+fn install_auth_state(extensions: &Extensions, state: AuthState) {
+	if state.is_authenticated() {
+		extensions.insert(state.user_id().to_owned());
+	} else if extensions.contains::<String>() {
+		extensions.insert(String::new());
+	}
+	extensions.insert(IsAuthenticated(state.is_authenticated()));
+	extensions.insert(IsAdmin(state.is_admin()));
+	extensions.insert(IsActive(state.is_active()));
+	extensions.insert(state);
 }
 
 #[cfg(all(test, server))]
@@ -110,8 +127,73 @@ mod tests {
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, StatusCode, Version};
 	use reinhardt_auth::JwtAuth;
+	use rstest::rstest;
+	use serde_json::{Value, json};
+
+	const PRIOR_USER_ID: &str = "prior-admin";
 
 	struct AuthCheckHandler;
+
+	/// Echoes the canonical state and every legacy entry, the way a
+	/// downstream legacy consumer would read them.
+	struct AuthEntriesHandler;
+
+	#[async_trait]
+	impl Handler for AuthEntriesHandler {
+		async fn handle(&self, request: Request) -> Result<Response> {
+			let extensions = &request.extensions;
+			let auth_state = extensions.get::<AuthState>().map(|state| {
+				json!({
+					"user_id": state.user_id(),
+					"is_authenticated": state.is_authenticated(),
+					"is_admin": state.is_admin(),
+					"is_active": state.is_active(),
+				})
+			});
+			Ok(Response::ok().with_json(&json!({
+				"auth_state": auth_state,
+				"user_id": extensions.get::<String>(),
+				"is_authenticated": extensions.get::<IsAuthenticated>().map(|v| v.0),
+				"is_admin": extensions.get::<IsAdmin>().map(|v| v.0),
+				"is_active": extensions.get::<IsActive>().map(|v| v.0),
+			}))?)
+		}
+	}
+
+	/// Simulates an earlier authentication layer that already installed an
+	/// active admin principal in both the canonical and the legacy entries.
+	fn seed_prior_principal(request: &Request) {
+		let extensions = &request.extensions;
+		extensions.insert(PRIOR_USER_ID.to_owned());
+		extensions.insert(IsAuthenticated(true));
+		extensions.insert(IsAdmin(true));
+		extensions.insert(IsActive(true));
+		extensions.insert(AuthState::authenticated(PRIOR_USER_ID, true, true));
+	}
+
+	fn expected_entries(
+		user_id: &str,
+		is_authenticated: bool,
+		is_admin: bool,
+		is_active: bool,
+	) -> Value {
+		json!({
+			"auth_state": {
+				"user_id": user_id,
+				"is_authenticated": is_authenticated,
+				"is_admin": is_admin,
+				"is_active": is_active,
+			},
+			"user_id": user_id,
+			"is_authenticated": is_authenticated,
+			"is_admin": is_admin,
+			"is_active": is_active,
+		})
+	}
+
+	fn auth_entries(response: &Response) -> Value {
+		serde_json::from_slice(response.body.as_ref()).unwrap()
+	}
 
 	#[async_trait]
 	impl Handler for AuthCheckHandler {
@@ -228,5 +310,55 @@ mod tests {
 		let req = make_request(headers);
 		let resp = mw.process(req, next).await.unwrap();
 		assert_eq!(resp.body, "anonymous");
+	}
+
+	#[rstest]
+	#[case::missing_token(None)]
+	#[case::invalid_cookie_token(Some(format!("{}=invalid.token.here", ADMIN_AUTH_COOKIE_NAME)))]
+	#[tokio::test]
+	async fn test_auth_failure_clears_prior_legacy_principal(#[case] cookie: Option<String>) {
+		// Arrange
+		let mw = AdminCookieAuthMiddleware::new(test_secret());
+		let mut headers = HeaderMap::new();
+		if let Some(cookie) = cookie {
+			headers.insert("cookie", cookie.parse().unwrap());
+		}
+		let req = make_request(headers);
+		seed_prior_principal(&req);
+
+		// Act
+		let resp = mw.process(req, Arc::new(AuthEntriesHandler)).await.unwrap();
+
+		// Assert
+		assert_eq!(
+			auth_entries(&resp),
+			expected_entries("", false, false, false)
+		);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_valid_cookie_token_replaces_prior_legacy_principal() {
+		// Arrange
+		let token = generate_test_token("user-123");
+		let mw = AdminCookieAuthMiddleware::new(test_secret());
+		let mut headers = HeaderMap::new();
+		headers.insert(
+			"cookie",
+			format!("{}={}", ADMIN_AUTH_COOKIE_NAME, token)
+				.parse()
+				.unwrap(),
+		);
+		let req = make_request(headers);
+		seed_prior_principal(&req);
+
+		// Act
+		let resp = mw.process(req, Arc::new(AuthEntriesHandler)).await.unwrap();
+
+		// Assert
+		assert_eq!(
+			auth_entries(&resp),
+			expected_entries("user-123", true, true, true)
+		);
 	}
 }
