@@ -263,6 +263,12 @@ impl Expression {
 			AnnotationValue::Expression(expression) => expression.to_query_expr(),
 			// Runtime text is bound; typed constants keep the inline result grammar.
 			AnnotationValue::Value(Value::String(text)) => Expr::val(text.clone()),
+			// Field references are backend-quoted columns, as everywhere else in
+			// the lowering. `F::to_sql` emits ANSI double quotes, which MySQL
+			// without `ANSI_QUOTES` reads as a string literal.
+			AnnotationValue::Field(field) => {
+				Expr::col(super::query::parse_column_reference(&field.field))
+			}
 			_ => Expr::cust(value.to_sql()),
 		}
 	}

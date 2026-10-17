@@ -286,6 +286,22 @@ async fn assert_case_conditions_bind(database: &ArithmeticDatabase, backend: DbB
 		);
 	}
 
+	// A plain field reference as the CASE result, the advisory's shape, must
+	// select the column on every backend rather than the ANSI-quoted text.
+	let queryset = QuerySet::<Item>::new().filter(Filter::new(
+		"id",
+		FilterOperator::Eq,
+		FilterValue::Expression(Expression::Case {
+			whens: vec![When::new(Q::new("name", "=", stored), *field())],
+			default: Some(number(0)),
+		}),
+	));
+	assert_eq!(
+		reader.list(&queryset).await.unwrap(),
+		vec![Item { id: 1 }],
+		"CASE field result"
+	);
+
 	// CASE result text in UPDATE binds too; the second pass restores the fixture.
 	for name in [format!("{stored} case"), stored.to_owned()] {
 		let statement = QuerySet::<Item>::new()
