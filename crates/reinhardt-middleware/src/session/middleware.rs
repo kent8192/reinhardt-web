@@ -367,6 +367,9 @@ mod tests {
 		/// Log in through `SessionAuthExt::login`, which rotates the ID and
 		/// saves the session.
 		Login,
+		/// Log out through `SessionAuthExt::logout`, which rotates the ID and
+		/// stores nothing when no other key remains.
+		Logout,
 	}
 
 	/// Handler that resolves `SessionData` through its `Injectable`
@@ -394,6 +397,12 @@ mod tests {
 						.get_singleton::<SessionStore>()
 						.expect("SessionMiddleware must register its store for DI");
 					session.login(&store, 42_i64).unwrap();
+				}
+				SessionUse::Logout => {
+					let store = ctx
+						.get_singleton::<SessionStore>()
+						.expect("SessionMiddleware must register its store for DI");
+					session.logout(&store);
 				}
 			}
 			Ok(Response::ok())
@@ -653,6 +662,32 @@ mod tests {
 			.expect("Set-Cookie must name the stored session");
 		assert_eq!(stored.get::<i64>(USER_ID_SESSION_KEY), Some(42));
 		assert_eq!(middleware.store().len(), 1);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn anonymous_logout_advertises_an_unsaved_session() {
+		// Arrange
+		let middleware = make_middleware();
+
+		// Act: a client without credentials logs out repeatedly.
+		let mut session_ids = Vec::new();
+		for _ in 0..10 {
+			let handler = injecting_handler(&middleware, SessionUse::Logout);
+			let response = middleware
+				.process(request_without_cookie(), handler)
+				.await
+				.unwrap();
+			session_ids.push(session_cookie_id(&response));
+		}
+
+		// Assert: every response advertises a signed unsaved ID, so CSRF
+		// tokens bound to it keep working, and the store stays empty.
+		for session_id in session_ids {
+			let session_id = session_id.expect("logout must advertise the rotated session");
+			assert!(middleware.store().is_pending_id(&session_id));
+		}
+		assert!(middleware.store().is_empty());
 	}
 
 	#[rstest]

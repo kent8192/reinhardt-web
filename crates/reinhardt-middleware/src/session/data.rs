@@ -83,7 +83,13 @@ impl SessionData {
 	///
 	/// See #3827.
 	pub fn regenerate_id(&mut self) -> String {
-		let old_id = std::mem::replace(&mut self.id, Uuid::now_v7().to_string());
+		self.replace_id(Uuid::now_v7().to_string())
+	}
+
+	/// Replace the session ID with `new_id`, keeping the request-scoped
+	/// [`ActiveSessionId`] in sync, and return the previous ID.
+	pub(super) fn replace_id(&mut self, new_id: String) -> String {
+		let old_id = std::mem::replace(&mut self.id, new_id);
 		if let Some(holder) = &self.id_holder {
 			holder.set(self.id.clone());
 		}
