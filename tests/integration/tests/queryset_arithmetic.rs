@@ -250,6 +250,127 @@ async fn assert_native_arithmetic(database: &ArithmeticDatabase, backend: DbBack
 	}
 }
 
+async fn assert_case_conditions_bind(database: &ArithmeticDatabase, backend: DbBackend) {
+	// Arrange: CASE predicates must compare runtime text with the stored name as data.
+	let reader = Session::new(database.pool.clone(), backend).await.unwrap();
+	let stored = "quotes' \\ ? $7 雪";
+	for (condition, expected) in [
+		(Q::new("name", "=", "missing"), vec![]),
+		(Q::new("name", "=", "x' OR 1=1 OR 'x"), vec![]),
+		(Q::new("name", "=", stored), vec![Item { id: 1 }]),
+		(Q::new("name", "!=", stored), vec![]),
+		(
+			Q::new("name", "IN", format!("(missing, {stored})")),
+			vec![Item { id: 1 }],
+		),
+		(Q::empty(), vec![Item { id: 1 }]),
+		(Q::from_raw_sql("1 = 1"), vec![Item { id: 1 }]),
+	] {
+		let queryset = QuerySet::<Item>::new().filter(Filter::new(
+			"id",
+			FilterOperator::Eq,
+			FilterValue::Expression(Expression::Case {
+				// Typed arithmetic keeps the THEN column backend-quoted, as in case_identity().
+				whens: vec![When::new(
+					condition.clone(),
+					AV::Expression(Expression::Add(field(), number(0))),
+				)],
+				default: Some(number(0)),
+			}),
+		));
+		// Act / Assert: compare the complete result, including the rejected payload.
+		assert_eq!(
+			reader.list(&queryset).await.unwrap(),
+			expected,
+			"CASE condition: {condition:?}"
+		);
+	}
+
+	// CASE result text in UPDATE binds too; the second pass restores the fixture.
+	for name in [format!("{stored} case"), stored.to_owned()] {
+		let statement = QuerySet::<Item>::new()
+			.filter(Filter::new(
+				"id",
+				FilterOperator::Eq,
+				FilterValue::Integer(1),
+			))
+			.update_query(&HashMap::from([(
+				"name".into(),
+				UpdateValue::Expression(Expression::Case {
+					whens: vec![When::new(
+						Q::new("id", "=", "1"),
+						AV::Value(Scalar::String(name.clone())),
+					)],
+					default: None,
+				}),
+			)]));
+		let (sql, values) = match backend {
+			DbBackend::Postgres => PostgresQueryBuilder.build_update(&statement),
+			DbBackend::Mysql => MySqlQueryBuilder.build_update(&statement),
+			DbBackend::Sqlite => SqliteQueryBuilder.build_update(&statement),
+		};
+		let texts = values
+			.0
+			.iter()
+			.filter(|value| matches!(value, Value::String(_)))
+			.cloned()
+			.collect::<Vec<_>>();
+		assert_eq!(texts, vec![Value::from(name.clone())], "{sql}");
+		let mut query = sqlx::query(&sql);
+		for value in values.0 {
+			query = match value {
+				Value::BigInt(Some(value)) => query.bind(value),
+				Value::String(Some(value)) => query.bind(*value),
+				other => panic!("unexpected CASE argument: {other:?}"),
+			};
+		}
+		// Act
+		let affected = query
+			.execute(database.pool.as_ref())
+			.await
+			.unwrap()
+			.rows_affected();
+		// Assert: the stored text equals the bound result exactly.
+		assert_eq!(affected, 1);
+		let renamed = QuerySet::<Item>::new().filter(Filter::new(
+			"name",
+			FilterOperator::Eq,
+			FilterValue::String(name.clone()),
+		));
+		assert_eq!(reader.list(&renamed).await.unwrap(), vec![Item { id: 1 }]);
+	}
+}
+
+#[rstest]
+#[case::mysql(DbBackend::Mysql)]
+#[case::postgres(DbBackend::Postgres)]
+#[case::sqlite(DbBackend::Sqlite)]
+#[tokio::test]
+async fn legacy_case_conditions_execute_with_bound_runtime_values(
+	#[case] backend: DbBackend,
+	#[with(backend)]
+	#[future]
+	arithmetic_database: ArithmeticDatabase,
+) {
+	// Arrange: the fixture owns the disposable database and its single-connection pool.
+	let database = arithmetic_database.await;
+	// Act / Assert
+	assert_case_conditions_bind(&database, backend).await;
+	if backend == DbBackend::Mysql {
+		// Fixed modes affect only this RAII-owned container and connection.
+		for mode in [
+			"SET SESSION sql_mode = 'NO_BACKSLASH_ESCAPES'",
+			"SET SESSION sql_mode = ''",
+		] {
+			sqlx::query(mode)
+				.execute(database.pool.as_ref())
+				.await
+				.unwrap();
+			assert_case_conditions_bind(&database, backend).await;
+		}
+	}
+}
+
 #[rstest]
 #[case::mysql(DbBackend::Mysql)]
 #[case::postgres(DbBackend::Postgres)]

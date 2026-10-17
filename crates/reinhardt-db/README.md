@@ -410,6 +410,15 @@ updates, and annotations, including nested expressions. The standalone
 compatibility renderers `Q::to_sql()`, `When::to_sql()`, and
 `Expression::to_sql()` retain their existing output.
 
+Each `Q::new` comparison in a runtime CASE condition renders its field as a
+backend-quoted column and its value as a bound parameter, so runtime text never
+becomes SQL on any backend. Values keep the `Q::to_sql()` classification:
+`NULL`, `TRUE`/`FALSE`, i64 integers, and exact decimals become typed values,
+and one pair of outer single quotes is removed from text. Text values bind as
+text parameters, which PostgreSQL does not implicitly cast to date, time, or
+numeric columns. Unsupported fields and operators evaluate to FALSE; only
+`Q::from_raw_sql` conditions keep their SQL text.
+
 Case-sensitive `Contains`, `StartsWith`, and `EndsWith` lookups escape literal
 `%`, `_`, and backslash characters in their bound patterns. Column identifiers
 use the selected backend's quoting. MySQL renders the escape character as
@@ -466,8 +475,8 @@ in CASE results uses the same operand lowering and preserves the runtime empty
 condition identities described above. Nested operations retain their parentheses,
 and COALESCE operands use the same typed lowering.
 
-Scalar CASE result values, aggregate SQL, and subquery SQL retain their
-existing SQL rendering paths.
+CASE result text values are bound parameters. Other scalar CASE result values,
+aggregate SQL, and subquery SQL retain their existing SQL rendering paths.
 
 ### Execute a QuerySet with Session
 

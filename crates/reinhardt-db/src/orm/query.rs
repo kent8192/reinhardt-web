@@ -7058,6 +7058,100 @@ mod tests {
 		assert_eq!(values, Values(vec![0_i64.into()]));
 	}
 
+	#[rstest]
+	#[case::postgres(DatabaseBackend::Postgres)]
+	#[case::mysql(DatabaseBackend::MySql)]
+	#[case::sqlite(DatabaseBackend::Sqlite)]
+	fn case_conditions_bind_runtime_values_for_each_backend(#[case] backend: DatabaseBackend) {
+		use crate::orm::annotation::{AnnotationValue, Expression, Value as Scalar, When};
+		use crate::orm::expressions::{Q, QOperator};
+
+		// Arrange: runtime text carries quotes, a backslash, and placeholder tokens.
+		let payload = "x' OR 1=1 OR 'x ? $41\\雪";
+		let result = "then' \\ ? $4";
+		let condition = Q::new("username", "=", payload)
+			.or(Q::new("id", ">=", (1_i64 << 40).to_string()))
+			.and(Q::Combined {
+				operator: QOperator::Not,
+				conditions: vec![Q::new("email", "=", "'quoted'"), Q::new("id", "<", "23")],
+			});
+		let expression = Expression::Case {
+			whens: vec![When::new(
+				condition,
+				AnnotationValue::Value(Scalar::String(result.into())),
+			)],
+			default: Some(Box::new(AnnotationValue::Value(Scalar::Int(0)))),
+		};
+		let mut statement = Query::select();
+		statement.expr(QuerySet::<TestUser>::expression_to_query_expr(&expression));
+
+		// Act
+		let (sql, values) = match backend {
+			DatabaseBackend::Postgres => statement.build(PostgresQueryBuilder),
+			DatabaseBackend::MySql => statement.build(MySqlQueryBuilder),
+			DatabaseBackend::Sqlite => statement.build(SqliteQueryBuilder),
+		};
+
+		// Assert: every runtime operand is an ordered bind and never part of the SQL text.
+		// PostgreSQL also groups custom AST operands in its renderer.
+		let expected_sql = match backend {
+			DatabaseBackend::Postgres => {
+				"SELECT CASE WHEN (((((\"username\" = $1)) OR ((\"id\" >= $2)))) AND NOT (((((\"email\" = $3)) AND ((\"id\" < $4)))))) THEN $5 ELSE 0 END"
+			}
+			DatabaseBackend::MySql => {
+				"SELECT CASE WHEN (((`username` = ?) OR (`id` >= ?)) AND NOT (((`email` = ?) AND (`id` < ?)))) THEN ? ELSE 0 END"
+			}
+			DatabaseBackend::Sqlite => {
+				"SELECT CASE WHEN (((\"username\" = ?) OR (\"id\" >= ?)) AND NOT (((\"email\" = ?) AND (\"id\" < ?)))) THEN ? ELSE 0 END"
+			}
+		};
+		assert_eq!(sql, expected_sql);
+		assert_eq!(
+			values,
+			Values(vec![
+				payload.into(),
+				(1_i64 << 40).into(),
+				"quoted".into(),
+				23_i64.into(),
+				result.into(),
+			])
+		);
+	}
+
+	#[rstest]
+	#[case::postgres(DatabaseBackend::Postgres)]
+	#[case::mysql(DatabaseBackend::MySql)]
+	#[case::sqlite(DatabaseBackend::Sqlite)]
+	fn joined_case_filter_binds_runtime_value(#[case] backend: DatabaseBackend) {
+		use crate::orm::annotation::{AnnotationValue, Expression, Value as Scalar, When};
+		use crate::orm::expressions::{F, Q};
+
+		// Arrange: the advisory's shape, a CASE filter on a framework-owned JOIN.
+		let runtime_value = "x' OR 1=1 OR 'x";
+		let queryset = QuerySet::<TestUser>::new()
+			.inner_join::<TestUser>("id", "id")
+			.filter(Filter::new(
+				"id",
+				FilterOperator::Eq,
+				FilterValue::Expression(Expression::Case {
+					whens: vec![When::new(
+						Q::new("username", "=", runtime_value),
+						AnnotationValue::Field(F::new("id")),
+					)],
+					default: Some(Box::new(AnnotationValue::Value(Scalar::Int(0)))),
+				}),
+			));
+		let statement = queryset.build_select_statement().unwrap();
+
+		// Act
+		let (sql, values) = build_select_statement(&statement, backend);
+
+		// Assert: the runtime value is exactly one bound argument.
+		assert!(sql.contains("INNER JOIN"), "{sql}");
+		assert!(!sql.contains(runtime_value), "{sql}");
+		assert_eq!(values, Values(vec![runtime_value.into()]));
+	}
+
 	impl TestUser {
 		// Allow dead_code: test helper constructor for query tests
 		#[allow(dead_code)]
