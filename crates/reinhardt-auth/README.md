@@ -774,17 +774,28 @@ its user association. Setting `expires_at` to `None` removes an existing expirat
   Apache, etc.)
 - **Header Configuration**: Configurable header name (default: `REMOTE_USER`)
 - **Header Validation**: Verify header presence and format
-- **Automatic Logout**: Optional force logout when header is missing
+- **Forced Logout**: Enabled by default; a request without the header is
+  rejected with `AuthenticationError::NotAuthenticated`, and composite backends
+  stop there instead of accepting a later fallback credential
 - **SSO Support**: Single sign-on integration
 
 ```rust
-use reinhardt::auth::RemoteUserAuthentication;
+use reinhardt::auth::{CompositeAuthentication, RemoteUserAuth, TokenAuthentication};
 
-// Standard configuration
-let auth = RemoteUserAuthentication::new("REMOTE_USER");
+// Standard configuration (header `REMOTE_USER`, forced logout enabled)
+let auth = RemoteUserAuth::new();
 
-// With force logout
-let auth = RemoteUserAuthentication::new("REMOTE_USER").force_logout_if_no_header(true);
+// Custom header name
+let auth = RemoteUserAuth::new().with_header("X-Auth-User");
+
+// Register it before fallback backends: once the proxy stops sending the
+// header, a still-valid token can no longer keep the client signed in
+let auth = CompositeAuthentication::new()
+    .with_backend(RemoteUserAuth::new())
+    .with_backend(TokenAuthentication::new());
+
+// Opt out to let fallback backends authenticate requests without the header
+let auth = RemoteUserAuth::new().force_logout(false);
 
 // Authenticate from request
 let user = auth.authenticate(&request).await?;
