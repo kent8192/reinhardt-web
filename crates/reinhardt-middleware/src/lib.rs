@@ -146,6 +146,8 @@ pub mod allowed_hosts;
 #[cfg_attr(docsrs, doc(cfg(feature = "sessions")))]
 #[cfg(feature = "sessions")]
 pub mod auth;
+#[cfg(any(feature = "sessions", feature = "auth-jwt"))]
+mod auth_extensions;
 pub mod broken_link;
 #[cfg(feature = "compression")]
 pub mod brotli;
