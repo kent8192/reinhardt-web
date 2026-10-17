@@ -482,7 +482,7 @@ mod tests {
 			compiler.compile_select::<TestModel>("test_models", &[], Some(&q), &[], None, None);
 		let (sql, values) = stmt.build(SqliteQueryBuilder);
 
-		assert_eq!(sql, r#"SELECT * FROM "test_models" WHERE NOT "name" = ?"#);
+		assert_eq!(sql, r#"SELECT * FROM "test_models" WHERE NOT ("name" = ?)"#);
 		assert_eq!(
 			values.0,
 			vec![reinhardt_query::value::Value::String(Some(Box::new(

@@ -2,7 +2,7 @@
 //!
 //! This module implements the SQL generation backend for MySQL.
 
-use super::{QueryBuilder, SqlWriter, write_arithmetic_operand};
+use super::{QueryBuilder, SqlWriter, write_binary_operand, write_not_operand};
 use crate::{
 	expr::{Condition, SimpleExpr},
 	query::{
@@ -228,16 +228,16 @@ impl MySqlQueryBuilder {
 				(BinOper::Between | BinOper::NotBetween, SimpleExpr::Tuple(items))
 					if items.len() == 2 =>
 				{
-					self.write_simple_expr(writer, left);
+					self.write_binary_operand(writer, left, *op, false);
 					writer.push_space();
 					writer.push(op.as_str());
 					writer.push_space();
-					self.write_simple_expr(writer, &items[0]);
+					self.write_binary_operand(writer, &items[0], *op, true);
 					writer.push(" AND ");
-					self.write_simple_expr(writer, &items[1]);
+					self.write_binary_operand(writer, &items[1], *op, true);
 				}
 				(BinOper::In | BinOper::NotIn, SimpleExpr::Tuple(items)) => {
-					self.write_simple_expr(writer, left);
+					self.write_binary_operand(writer, left, *op, false);
 					writer.push_space();
 					writer.push(op.as_str());
 					writer.push(" (");
@@ -247,21 +247,19 @@ impl MySqlQueryBuilder {
 					writer.push(")");
 				}
 				_ => {
-					write_arithmetic_operand(writer, left, *op, false, &["--", "#"], |w, expr| {
-						self.write_simple_expr(w, expr);
-					});
+					self.write_binary_operand(writer, left, *op, false);
 					writer.push_space();
 					writer.push(op.as_str());
 					writer.push_space();
-					write_arithmetic_operand(writer, right, *op, true, &["--", "#"], |w, expr| {
-						self.write_simple_expr(w, expr);
-					});
+					self.write_binary_operand(writer, right, *op, true);
 				}
 			},
 			SimpleExpr::Unary(op, expr) => {
 				writer.push(op.as_str());
 				writer.push_space();
-				self.write_simple_expr(writer, expr);
+				write_not_operand(writer, expr, &["--", "#"], |w, expr| {
+					self.write_simple_expr(w, expr);
+				});
 			}
 			SimpleExpr::FunctionCall(func_name, args) => {
 				writer.push(&super::safe_function_name(func_name, '`'));
@@ -369,9 +367,9 @@ impl MySqlQueryBuilder {
 				writer.push(sql);
 			}
 			SimpleExpr::LikeWithEscape(expr, pattern) => {
-				self.write_simple_expr(writer, expr);
+				self.write_binary_operand(writer, expr, BinOper::Like, false);
 				writer.push(" LIKE ");
-				self.write_simple_expr(writer, pattern);
+				self.write_binary_operand(writer, pattern, BinOper::Like, true);
 				// A hex literal is valid with either string-literal backslash mode.
 				writer.push(" ESCAPE 0x5C");
 			}
@@ -425,8 +423,36 @@ impl MySqlQueryBuilder {
 		}
 	}
 
+	/// Write an operand of a binary operator, preserving the expression tree's grouping.
+	fn write_binary_operand(
+		&self,
+		writer: &mut SqlWriter,
+		expr: &SimpleExpr,
+		parent: BinOper,
+		right_operand: bool,
+	) {
+		write_binary_operand(
+			writer,
+			expr,
+			parent,
+			right_operand,
+			&["--", "#"],
+			|w, expr| {
+				self.write_simple_expr(w, expr);
+			},
+		);
+	}
+
 	/// Write a condition
-	fn write_condition(&self, writer: &mut SqlWriter, condition: &Condition) {
+	///
+	/// `parent` is the logical operator that joins this condition to its
+	/// siblings, or `None` when the condition stands alone.
+	fn write_condition(
+		&self,
+		writer: &mut SqlWriter,
+		condition: &Condition,
+		parent: Option<BinOper>,
+	) {
 		use crate::expr::ConditionType;
 
 		if condition.conditions.is_empty() {
@@ -438,17 +464,24 @@ impl MySqlQueryBuilder {
 		}
 
 		if condition.conditions.len() == 1 {
-			self.write_condition_expr(writer, &condition.conditions[0]);
+			if condition.negate {
+				writer.push("(");
+				self.write_condition_expr(writer, &condition.conditions[0], Some(BinOper::Or));
+				writer.push(")");
+			} else {
+				// A one-child condition contributes no logical operator of its own.
+				self.write_condition_expr(writer, &condition.conditions[0], parent);
+			}
 			return;
 		}
 
 		writer.push("(");
-		let separator = match condition.condition_type {
-			ConditionType::All => " AND ",
-			ConditionType::Any => " OR ",
+		let (separator, parent) = match condition.condition_type {
+			ConditionType::All => (" AND ", BinOper::And),
+			ConditionType::Any => (" OR ", BinOper::Or),
 		};
 		writer.push_list(&condition.conditions, separator, |w, cond_expr| {
-			self.write_condition_expr(w, cond_expr);
+			self.write_condition_expr(w, cond_expr, Some(parent));
 		});
 		writer.push(")");
 	}
@@ -458,15 +491,20 @@ impl MySqlQueryBuilder {
 		&self,
 		writer: &mut SqlWriter,
 		cond_expr: &crate::expr::ConditionExpression,
+		parent: Option<BinOper>,
 	) {
 		use crate::expr::ConditionExpression;
 
 		match cond_expr {
 			ConditionExpression::Condition(cond) => {
-				self.write_condition(writer, cond);
+				self.write_condition(writer, cond, parent);
 			}
 			ConditionExpression::SimpleExpr(expr) => {
-				self.write_simple_expr(writer, expr);
+				if let Some(parent) = parent {
+					self.write_binary_operand(writer, expr, parent, false);
+				} else {
+					self.write_simple_expr(writer, expr);
+				}
 			}
 		}
 	}
@@ -502,7 +540,7 @@ impl MySqlQueryBuilder {
 				JoinOn::Condition(cond) => {
 					writer.push_keyword("ON");
 					writer.push_space();
-					self.write_condition(writer, cond);
+					self.write_condition(writer, cond, None);
 				}
 				JoinOn::Using(cols) => {
 					writer.push_keyword("USING");
@@ -735,8 +773,9 @@ impl QueryBuilder for MySqlQueryBuilder {
 			writer.push_keyword("WHERE");
 			writer.push_space();
 			// Write all conditions in the ConditionHolder with AND
+			let parent = (stmt.r#where.conditions.len() > 1).then_some(BinOper::And);
 			writer.push_list(&stmt.r#where.conditions, " AND ", |w, cond_expr| {
-				self.write_condition_expr(w, cond_expr);
+				self.write_condition_expr(w, cond_expr, parent);
 			});
 		}
 
@@ -754,8 +793,9 @@ impl QueryBuilder for MySqlQueryBuilder {
 			writer.push_keyword("HAVING");
 			writer.push_space();
 			// Write all conditions in the ConditionHolder with AND
+			let parent = (stmt.having.conditions.len() > 1).then_some(BinOper::And);
 			writer.push_list(&stmt.having.conditions, " AND ", |w, cond_expr| {
-				self.write_condition_expr(w, cond_expr);
+				self.write_condition_expr(w, cond_expr, parent);
 			});
 		}
 
@@ -985,8 +1025,9 @@ impl QueryBuilder for MySqlQueryBuilder {
 		if !stmt.r#where.is_empty() {
 			writer.push_keyword("WHERE");
 			writer.push_space();
+			let parent = (stmt.r#where.conditions.len() > 1).then_some(BinOper::And);
 			writer.push_list(&stmt.r#where.conditions, " AND ", |w, cond_expr| {
-				self.write_condition_expr(w, cond_expr);
+				self.write_condition_expr(w, cond_expr, parent);
 			});
 		}
 
@@ -1015,8 +1056,9 @@ impl QueryBuilder for MySqlQueryBuilder {
 		if !stmt.r#where.is_empty() {
 			writer.push_keyword("WHERE");
 			writer.push_space();
+			let parent = (stmt.r#where.conditions.len() > 1).then_some(BinOper::And);
 			writer.push_list(&stmt.r#where.conditions, " AND ", |w, cond_expr| {
-				self.write_condition_expr(w, cond_expr);
+				self.write_condition_expr(w, cond_expr, parent);
 			});
 		}
 

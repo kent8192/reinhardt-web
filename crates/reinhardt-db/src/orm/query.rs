@@ -7022,23 +7022,22 @@ mod tests {
 	}
 
 	#[rstest]
-	#[case::empty_and(crate::orm::expressions::Q::empty(), "TRUE", "TRUE")]
+	#[case::empty_and(crate::orm::expressions::Q::empty(), "TRUE")]
 	#[case::empty_or(crate::orm::expressions::Q::Combined {
 		operator: crate::orm::expressions::QOperator::Or,
 		conditions: vec![],
-	}, "FALSE", "FALSE")]
+	}, "FALSE")]
 	#[case::empty_not(crate::orm::expressions::Q::Combined {
 		operator: crate::orm::expressions::QOperator::Not,
 		conditions: vec![],
-	}, "NOT (TRUE)", "NOT ((TRUE))")]
-	#[case::negated_and(crate::orm::expressions::Q::empty().not(), "NOT (TRUE)", "NOT ((TRUE))")]
+	}, "NOT ((TRUE))")]
+	#[case::negated_and(crate::orm::expressions::Q::empty().not(), "NOT ((TRUE))")]
 	#[case::nested(crate::orm::expressions::Q::empty().or(
 		crate::orm::expressions::Q::empty().not()
-	).and(crate::orm::expressions::Q::empty()), "((TRUE OR NOT (TRUE)) AND TRUE)", "(((TRUE OR NOT ((TRUE)))) AND TRUE)")]
+	).and(crate::orm::expressions::Q::empty()), "(((TRUE OR NOT ((TRUE)))) AND TRUE)")]
 	fn case_empty_conditions_render_for_each_backend(
 		#[case] condition: crate::orm::expressions::Q,
 		#[case] expected_condition: &str,
-		#[case] expected_postgres_condition: &str,
 		#[values(
 			DatabaseBackend::Postgres,
 			DatabaseBackend::MySql,
@@ -7061,11 +7060,7 @@ mod tests {
 			DatabaseBackend::Sqlite => statement.build(SqliteQueryBuilder),
 		};
 		// Assert: identities are SQL constants, independent of placeholders or backend.
-		// PostgreSQL also groups custom AST operands in its renderer.
-		let expected_condition = match backend {
-			DatabaseBackend::Postgres => expected_postgres_condition,
-			DatabaseBackend::MySql | DatabaseBackend::Sqlite => expected_condition,
-		};
+		// Every renderer groups custom AST operands of NOT and of AND/OR.
 		assert_eq!(
 			sql,
 			format!("SELECT CASE WHEN {expected_condition} THEN 1 ELSE 0 END")
