@@ -9,6 +9,9 @@
 //! - **HMAC signing**: Encrypted data is signed to prevent tampering
 //! - **Size limitation**: Handles cookie size limits (max 4096 bytes)
 //! - **Secure**: Protects against tampering and eavesdropping
+//! - **Expiry**: The TTL passed to `save` is sealed into the signed payload as an
+//!   absolute expiry; once it passes, `load` returns `None`, `exists` returns
+//!   `false`, and the stored session is removed
 //!
 //! ## Example
 //!
@@ -45,6 +48,7 @@ use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -53,6 +57,37 @@ const MAX_COOKIE_SIZE: usize = 4096;
 
 /// Nonce size for AES-GCM (96 bits / 12 bytes)
 const NONCE_SIZE: usize = 12;
+
+/// Plaintext sealed inside each encrypted, signed session value
+///
+/// The expiry is part of the authenticated payload, so changing it fails
+/// signature verification.
+#[derive(Serialize, Deserialize)]
+struct StoredSession {
+	data: serde_json::Value,
+	/// Absolute expiry in milliseconds since the Unix epoch; `None` never expires
+	expires_at_ms: Option<u64>,
+}
+
+/// Current wall-clock time in milliseconds since the Unix epoch
+fn now_unix_millis() -> u64 {
+	SystemTime::now()
+		.duration_since(UNIX_EPOCH)
+		.map_or(0, |elapsed| {
+			u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX)
+		})
+}
+
+/// Absolute expiry for a TTL in seconds, saturating instead of overflowing
+fn expiry_from_ttl(ttl: Option<u64>, now_ms: u64) -> Option<u64> {
+	ttl.map(|secs| now_ms.saturating_add(secs.saturating_mul(1000)))
+}
+
+/// A session expires once the current time is past its expiry, as in the
+/// other session backends
+fn is_expired(expires_at_ms: Option<u64>, now_ms: u64) -> bool {
+	expires_at_ms.is_some_and(|expires_at| now_ms > expires_at)
+}
 
 /// Cookie session backend configuration
 ///
@@ -198,6 +233,37 @@ impl CookieSessionBackend {
 		})?;
 		Ok(())
 	}
+
+	/// Load the stored session for `session_key`, treating an expired one as missing
+	///
+	/// An expired value is removed only if it is still the value that was read,
+	/// so a concurrent `save` for the same key is not discarded.
+	async fn load_unexpired(
+		&self,
+		session_key: &str,
+	) -> Result<Option<StoredSession>, SessionError> {
+		let Some(encoded) = self.storage.read().await.get(session_key).cloned() else {
+			return Ok(None);
+		};
+
+		// Verify and decrypt
+		let decrypted = self.verify_and_decrypt(&encoded)?;
+
+		// Deserialize
+		let stored: StoredSession = serde_json::from_slice(&decrypted).map_err(|e| {
+			SessionError::SerializationError(format!("Deserialization failed: {}", e))
+		})?;
+
+		if is_expired(stored.expires_at_ms, now_unix_millis()) {
+			let mut storage = self.storage.write().await;
+			if storage.get(session_key) == Some(&encoded) {
+				storage.remove(session_key);
+			}
+			return Ok(None);
+		}
+
+		Ok(Some(stored))
+	}
 }
 
 #[async_trait]
@@ -206,17 +272,11 @@ impl SessionBackend for CookieSessionBackend {
 	where
 		T: for<'de> Deserialize<'de> + Send,
 	{
-		let storage = self.storage.read().await;
-		let encoded = match storage.get(session_key) {
-			Some(data) => data,
-			None => return Ok(None),
+		let Some(stored) = self.load_unexpired(session_key).await? else {
+			return Ok(None);
 		};
 
-		// Verify and decrypt
-		let decrypted = self.verify_and_decrypt(encoded)?;
-
-		// Deserialize
-		let data: T = serde_json::from_slice(&decrypted).map_err(|e| {
+		let data: T = serde_json::from_value(stored.data).map_err(|e| {
 			SessionError::SerializationError(format!("Deserialization failed: {}", e))
 		})?;
 
@@ -227,13 +287,19 @@ impl SessionBackend for CookieSessionBackend {
 		&self,
 		session_key: &str,
 		data: &T,
-		_ttl: Option<u64>,
+		ttl: Option<u64>,
 	) -> Result<(), SessionError>
 	where
 		T: Serialize + Send + Sync,
 	{
-		// Serialize data
-		let json_bytes = serde_json::to_vec(data).map_err(|e| {
+		// Serialize data together with its absolute expiry
+		let stored = StoredSession {
+			data: serde_json::to_value(data).map_err(|e| {
+				SessionError::SerializationError(format!("Serialization failed: {}", e))
+			})?,
+			expires_at_ms: expiry_from_ttl(ttl, now_unix_millis()),
+		};
+		let json_bytes = serde_json::to_vec(&stored).map_err(|e| {
 			SessionError::SerializationError(format!("Serialization failed: {}", e))
 		})?;
 
@@ -263,18 +329,159 @@ impl SessionBackend for CookieSessionBackend {
 	}
 
 	async fn exists(&self, session_key: &str) -> Result<bool, SessionError> {
-		let storage = self.storage.read().await;
-		Ok(storage.contains_key(session_key))
+		Ok(self.load_unexpired(session_key).await?.is_some())
 	}
 }
 
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use serde_json::json;
+	use std::time::Duration;
 
 	const TEST_ENCRYPTION_KEY: &[u8; 32] = b"test_encryption_key_32bytes_ok!!";
 	const TEST_SIGNING_SECRET: &[u8] = b"test_signing_secret_key";
+
+	/// Store a sealed session with an explicit expiry, bypassing `save`
+	async fn insert_stored_session(
+		backend: &CookieSessionBackend,
+		session_key: &str,
+		expires_at_ms: Option<u64>,
+	) {
+		let stored = StoredSession {
+			data: json!({"user_id": 7}),
+			expires_at_ms,
+		};
+		let encoded = backend
+			.encrypt_and_sign(&serde_json::to_vec(&stored).unwrap())
+			.unwrap();
+		backend
+			.storage
+			.write()
+			.await
+			.insert(session_key.to_string(), encoded);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_save_with_ttl_is_rejected_after_expiry() {
+		// Arrange
+		let backend = CookieSessionBackend::new(TEST_ENCRYPTION_KEY, TEST_SIGNING_SECRET);
+		backend
+			.save("ttl_session", &json!({"user_id": 42}), Some(1))
+			.await
+			.unwrap();
+		let before_expiry: Option<serde_json::Value> = backend.load("ttl_session").await.unwrap();
+
+		// Act
+		tokio::time::sleep(Duration::from_millis(1_100)).await;
+		let after_expiry: Option<serde_json::Value> = backend.load("ttl_session").await.unwrap();
+		let exists_after_expiry = backend.exists("ttl_session").await.unwrap();
+
+		// Assert
+		assert_eq!(before_expiry, Some(json!({"user_id": 42})));
+		assert_eq!(after_expiry, None);
+		assert!(!exists_after_expiry);
+		assert!(!backend.storage.read().await.contains_key("ttl_session"));
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_save_with_unexpired_ttl_loads() {
+		// Arrange
+		let backend = CookieSessionBackend::new(TEST_ENCRYPTION_KEY, TEST_SIGNING_SECRET);
+		backend
+			.save("ttl_session", &json!({"user_id": 42}), Some(3600))
+			.await
+			.unwrap();
+
+		// Act
+		let loaded: Option<serde_json::Value> = backend.load("ttl_session").await.unwrap();
+		let exists = backend.exists("ttl_session").await.unwrap();
+
+		// Assert
+		assert_eq!(loaded, Some(json!({"user_id": 42})));
+		assert!(exists);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_load_removes_expired_session() {
+		// Arrange
+		let backend = CookieSessionBackend::new(TEST_ENCRYPTION_KEY, TEST_SIGNING_SECRET);
+		insert_stored_session(&backend, "expired", Some(now_unix_millis() - 1_000)).await;
+
+		// Act
+		let loaded: Option<serde_json::Value> = backend.load("expired").await.unwrap();
+
+		// Assert
+		assert_eq!(loaded, None);
+		assert!(!backend.storage.read().await.contains_key("expired"));
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_exists_removes_expired_session() {
+		// Arrange
+		let backend = CookieSessionBackend::new(TEST_ENCRYPTION_KEY, TEST_SIGNING_SECRET);
+		insert_stored_session(&backend, "expired", Some(now_unix_millis() - 1_000)).await;
+
+		// Act
+		let exists = backend.exists("expired").await.unwrap();
+
+		// Assert
+		assert!(!exists);
+		assert!(!backend.storage.read().await.contains_key("expired"));
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_session_without_expiry_loads() {
+		// Arrange
+		let backend = CookieSessionBackend::new(TEST_ENCRYPTION_KEY, TEST_SIGNING_SECRET);
+		insert_stored_session(&backend, "no_expiry", None).await;
+
+		// Act
+		let loaded: Option<serde_json::Value> = backend.load("no_expiry").await.unwrap();
+
+		// Assert
+		assert_eq!(loaded, Some(json!({"user_id": 7})));
+	}
+
+	#[rstest]
+	#[case::no_expiry(None, u64::MAX, false)]
+	#[case::before_expiry(Some(1_000), 999, false)]
+	#[case::at_expiry(Some(1_000), 1_000, false)]
+	#[case::past_expiry(Some(1_000), 1_001, true)]
+	fn test_is_expired_boundary(
+		#[case] expires_at_ms: Option<u64>,
+		#[case] now_ms: u64,
+		#[case] expected: bool,
+	) {
+		// Act
+		let expired = is_expired(expires_at_ms, now_ms);
+
+		// Assert
+		assert_eq!(expired, expected);
+	}
+
+	#[rstest]
+	#[case::no_ttl(None, 5_000, None)]
+	#[case::zero_ttl(Some(0), 5_000, Some(5_000))]
+	#[case::finite_ttl(Some(60), 5_000, Some(65_000))]
+	#[case::overflowing_ttl(Some(u64::MAX), 5_000, Some(u64::MAX))]
+	fn test_expiry_from_ttl(
+		#[case] ttl: Option<u64>,
+		#[case] now_ms: u64,
+		#[case] expected: Option<u64>,
+	) {
+		// Act
+		let expires_at_ms = expiry_from_ttl(ttl, now_ms);
+
+		// Assert
+		assert_eq!(expires_at_ms, expected);
+	}
 
 	#[tokio::test]
 	async fn test_cookie_backend_save_and_load() {
