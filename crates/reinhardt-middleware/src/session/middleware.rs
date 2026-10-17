@@ -679,6 +679,34 @@ mod tests {
 		assert!(resumed.expires_at > original_expiry);
 	}
 
+	/// Sessions that handlers do save stay within the store's hard limit.
+	#[rstest]
+	#[tokio::test]
+	async fn saved_sessions_stay_within_the_store_limit() {
+		// Arrange
+		let store = Arc::new(SessionStore::new());
+		store.set_max_sessions(std::num::NonZeroUsize::new(5).unwrap());
+		let middleware = SessionMiddleware::from_arc(
+			SessionConfig::new("sessionid".to_string(), Duration::from_secs(3600)),
+			Arc::clone(&store),
+		);
+		let handler: Arc<dyn Handler> = Arc::new(SessionSavingHandler::new(&middleware));
+
+		for _ in 0..50 {
+			// Act
+			let response = middleware
+				.process(request_without_cookie(), Arc::clone(&handler))
+				.await
+				.unwrap();
+
+			// Assert: the newest session is kept and advertised.
+			let session_id =
+				session_cookie_id(&response).expect("a saved session must be advertised");
+			assert!(store.contains_valid(&session_id));
+			assert!(store.len() <= 5);
+		}
+	}
+
 	#[rstest]
 	fn test_session_middleware_di_registrations_returns_store() {
 		// Arrange: build a middleware (which internally creates an Arc<SessionStore>).
