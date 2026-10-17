@@ -1597,7 +1597,9 @@ impl AnalyzeBuilder {
 
 	/// Build the ANALYZE SQL statement
 	///
-	/// Returns the SQL string appropriate for the database backend.
+	/// Returns the SQL string appropriate for the database backend. Table and
+	/// column names are always rendered as quoted identifiers with embedded
+	/// quote characters escaped, so a name cannot terminate the statement.
 	/// This rendering method does not validate the target. On MySQL, specify a
 	/// non-empty table with [`Self::table`] before executing the statement.
 	pub fn build(&self) -> String {
@@ -1618,13 +1620,14 @@ impl AnalyzeBuilder {
 		}
 
 		if let Some(ref table) = self.table {
-			sql.push_str(&format!(" \"{}\"", table));
+			sql.push(' ');
+			sql.push_str(&quote_ident(table, DatabaseType::Postgres));
 
 			if !self.columns.is_empty() {
 				let cols = self
 					.columns
 					.iter()
-					.map(|c| format!("\"{}\"", c))
+					.map(|c| quote_ident(c, DatabaseType::Postgres))
 					.collect::<Vec<_>>()
 					.join(", ");
 				sql.push_str(&format!(" ({})", cols));
@@ -1636,7 +1639,7 @@ impl AnalyzeBuilder {
 
 	fn build_mysql(&self) -> String {
 		if let Some(ref table) = self.table {
-			format!("ANALYZE TABLE `{}`", table)
+			format!("ANALYZE TABLE {}", quote_ident(table, DatabaseType::Mysql))
 		} else {
 			// Preserve standalone rendering; execute rejects the unsupported target.
 			String::from("ANALYZE TABLE")
@@ -1645,7 +1648,7 @@ impl AnalyzeBuilder {
 
 	fn build_sqlite(&self) -> String {
 		if let Some(ref table) = self.table {
-			format!("ANALYZE \"{}\"", table)
+			format!("ANALYZE {}", quote_ident(table, DatabaseType::Sqlite))
 		} else {
 			// SQLite: ANALYZE without arguments analyzes the entire database
 			String::from("ANALYZE")
@@ -2678,6 +2681,54 @@ mod tests {
 		let builder = AnalyzeBuilder::new(backend).table("users");
 		let sql = builder.build();
 		assert_eq!(sql, "ANALYZE \"users\"");
+	}
+
+	#[rstest]
+	#[case::postgres(
+		DatabaseType::Postgres,
+		"ANALYZE VERBOSE \"safe\"\"; INSERT INTO audit_probe (id) VALUES (7); --\" (\"col\"\"; DROP TABLE users; --\", \"tick`col\")"
+	)]
+	#[case::mysql(
+		DatabaseType::Mysql,
+		"ANALYZE TABLE `safe\"; INSERT INTO audit_probe (id) VALUES (7); --`"
+	)]
+	#[case::sqlite(
+		DatabaseType::Sqlite,
+		"ANALYZE \"safe\"\"; INSERT INTO audit_probe (id) VALUES (7); --\""
+	)]
+	fn test_analyze_builder_escapes_embedded_quotes_in_identifiers(
+		#[case] db_type: DatabaseType,
+		#[case] expected_sql: &str,
+	) {
+		// Arrange
+		let backend: Arc<dyn DatabaseBackend> = match db_type {
+			DatabaseType::Postgres => Arc::new(MockBackend),
+			DatabaseType::Mysql => Arc::new(MockMysqlBackend),
+			DatabaseType::Sqlite => Arc::new(MockSqliteBackend),
+		};
+		let builder = AnalyzeBuilder::new(backend)
+			.table("safe\"; INSERT INTO audit_probe (id) VALUES (7); --")
+			.columns(vec!["col\"; DROP TABLE users; --", "tick`col"])
+			.verbose(true);
+
+		// Act
+		let sql = builder.build();
+
+		// Assert: every name stays inside one quoted identifier.
+		assert_eq!(sql, expected_sql);
+	}
+
+	#[test]
+	fn test_analyze_builder_mysql_escapes_embedded_backticks() {
+		// Arrange
+		let backend = Arc::new(MockMysqlBackend);
+		let builder = AnalyzeBuilder::new(backend).table("safe`; DROP TABLE users; -- ");
+
+		// Act
+		let sql = builder.build();
+
+		// Assert
+		assert_eq!(sql, "ANALYZE TABLE `safe``; DROP TABLE users; -- `");
 	}
 
 	// ==========================================

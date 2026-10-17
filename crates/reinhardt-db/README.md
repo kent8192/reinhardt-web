@@ -8,6 +8,13 @@ Django-style database layer for Reinhardt framework
 
 This crate provides a comprehensive database layer organized into multiple modules to deliver a unified database experience.
 
+File and image fields accept a single filename component and a relative upload
+directory; path separators, parent traversal, and absolute paths are rejected
+before storage is written. `QuerySet::values` accepts column names and the
+supported `COUNT`, `SUM`, `AVG`, `MIN`, and `MAX` aggregate forms. Other
+projection text is treated as an identifier, never as executable SQL. Use an
+explicit raw-query interface for trusted custom SQL.
+
 `InsertBuilder::value` accepts `QueryValue::Now` as a database current-time
 expression. PostgreSQL, MySQL, and SQLite render it as `CURRENT_TIMESTAMP`.
 Rows containing `Now` use a typed `INSERT ... SELECT` source: current time and
@@ -310,7 +317,7 @@ Add this to your `Cargo.toml`:
 <!-- reinhardt-version-sync -->
 ```toml
 [dependencies]
-reinhardt-db = "0.3.23"
+reinhardt-db = "0.3.24"
 ```
 
 ### Optional Features
@@ -320,7 +327,7 @@ Enable specific features based on your needs:
 <!-- reinhardt-version-sync -->
 ```toml
 [dependencies]
-reinhardt-db = { version = "0.3.23", features = ["postgres", "orm", "migrations"] }
+reinhardt-db = { version = "0.3.24", features = ["postgres", "orm", "migrations"] }
 ```
 
 Available features:

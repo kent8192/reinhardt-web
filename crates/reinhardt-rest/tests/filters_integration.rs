@@ -281,7 +281,7 @@ async fn search_backend_uses_double_quotes_for_postgresql_dialect() {
 	// Assert
 	assert_eq!(
 		result,
-		"SELECT * FROM products WHERE (\"name\" LIKE '%test%' ESCAPE '\\')"
+		"SELECT * FROM products WHERE (\"name\" LIKE '%test%')"
 	);
 }
 

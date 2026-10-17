@@ -94,15 +94,8 @@ impl UploadProgress {
 
 	/// Update progress with new chunk
 	fn update(&mut self, chunk_size: usize) {
-		self.chunks_uploaded += 1;
-		self.bytes_uploaded += chunk_size;
-
-		// On the final chunk, update total_bytes to reflect actual cumulative
-		// byte count, which may differ from the declared total_size if the
-		// last chunk is smaller than chunk_size.
-		if self.chunks_uploaded >= self.total_chunks {
-			self.total_bytes = self.bytes_uploaded;
-		}
+		self.chunks_uploaded = self.chunks_uploaded.saturating_add(1);
+		self.bytes_uploaded = self.bytes_uploaded.saturating_add(chunk_size);
 
 		self.percentage = if self.total_bytes > 0 {
 			(self.bytes_uploaded as f64 / self.total_bytes as f64) * 100.0
@@ -386,8 +379,32 @@ impl ChunkedUploadManager {
 		// Validate chunk number
 		if chunk_number >= session.total_chunks {
 			return Err(ChunkedUploadError::InvalidChunk {
-				expected: session.total_chunks - 1,
+				expected: session.total_chunks.saturating_sub(1),
 				actual: chunk_number,
+			});
+		}
+		let expected_size = if chunk_number + 1 == session.total_chunks {
+			session.total_size - chunk_number * session.chunk_size
+		} else {
+			session.chunk_size
+		};
+		if data.len() != expected_size {
+			return Err(ChunkedUploadError::InvalidChunk {
+				expected: expected_size,
+				actual: data.len(),
+			});
+		}
+		if session
+			.progress
+			.bytes_uploaded
+			.checked_add(data.len())
+			.is_none_or(|size| size > session.total_size)
+		{
+			return Err(ChunkedUploadError::InvalidChunk {
+				expected: session
+					.total_size
+					.saturating_sub(session.progress.bytes_uploaded),
+				actual: data.len(),
 			});
 		}
 
@@ -587,6 +604,53 @@ mod tests {
 		assert_eq!(session.received_chunks, 1);
 
 		manager.cleanup_session("session2").unwrap();
+	}
+
+	#[rstest::rstest]
+	fn oversized_chunk_is_rejected_before_disk_write() {
+		let directory = tempfile::tempdir().unwrap();
+		let manager = ChunkedUploadManager::new(directory.path().to_path_buf());
+		let session = manager
+			.start_session("bounded".into(), "file.bin".into(), 150, 100)
+			.unwrap();
+
+		assert!(matches!(
+			manager.upload_chunk("bounded", 0, &[0; 101]),
+			Err(ChunkedUploadError::InvalidChunk {
+				expected: 100,
+				actual: 101
+			})
+		));
+		assert!(!session.chunk_path(0).exists());
+		assert_eq!(
+			manager
+				.get_session("bounded")
+				.unwrap()
+				.progress
+				.bytes_uploaded,
+			0
+		);
+	}
+
+	#[rstest::rstest]
+	fn final_chunk_must_match_declared_remaining_bytes() {
+		let directory = tempfile::tempdir().unwrap();
+		let manager = ChunkedUploadManager::new(directory.path().to_path_buf());
+		manager
+			.start_session("partial".into(), "file.bin".into(), 150, 100)
+			.unwrap();
+		manager.upload_chunk("partial", 0, &[0; 100]).unwrap();
+		assert!(matches!(
+			manager.upload_chunk("partial", 1, &[0; 51]),
+			Err(ChunkedUploadError::InvalidChunk {
+				expected: 50,
+				actual: 51
+			})
+		));
+		let completed = manager.upload_chunk("partial", 1, &[0; 50]).unwrap();
+		assert_eq!(completed.progress.bytes_uploaded, 150);
+		assert_eq!(completed.progress.total_bytes, 150);
+		assert!(completed.is_complete());
 	}
 
 	#[test]

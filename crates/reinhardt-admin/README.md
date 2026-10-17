@@ -34,10 +34,10 @@ Add `reinhardt` to your `Cargo.toml`:
 <!-- reinhardt-version-sync:2 -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.3.23", features = ["admin"] }
+reinhardt = { version = "0.3.24", features = ["admin"] }
 
 # Or use a preset:
-# reinhardt = { version = "0.3.23", features = ["full"] }  # All features
+# reinhardt = { version = "0.3.24", features = ["full"] }  # All features
 ```
 
 Then import admin features:
@@ -157,6 +157,12 @@ individual modules under `src/server/`:
 - `import_data` — import data
 - `admin_login` / `admin_login_with_header` — admin authentication
 - `admin_logout` — admin session termination
+
+For non-superusers, create and import apply the model admin's `object_filters`
+to each new record. Equality filters supply missing scoped fields and reject
+conflicting values; predicates that cannot be checked before insertion deny
+the operation. CSV and TSV exports prefix spreadsheet formula cells with an
+apostrophe.
 
 ### Routing
 

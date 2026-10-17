@@ -42,11 +42,22 @@ pub enum QuoteStyle {
 
 impl QuoteStyle {
 	/// Quote an identifier using this style, escaping embedded quote characters
-	fn quote_identifier(&self, ident: &str) -> String {
+	pub(crate) fn quote_identifier(&self, ident: &str) -> String {
 		match self {
 			QuoteStyle::Ansi => format!("\"{}\"", ident.replace('"', "\"\"")),
 			QuoteStyle::Backtick => format!("`{}`", ident.replace('`', "``")),
 		}
+	}
+
+	/// Quote a dot-qualified name (e.g. `schema.table`) part by part
+	///
+	/// Each segment is escaped independently, so a `.` can only separate
+	/// quoted identifiers and never terminates one.
+	pub(crate) fn quote_qualified_identifier(&self, name: &str) -> String {
+		name.split('.')
+			.map(|part| self.quote_identifier(part))
+			.collect::<Vec<_>>()
+			.join(".")
 	}
 }
 

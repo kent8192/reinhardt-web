@@ -28,6 +28,14 @@ malicious. A plugin's requested capabilities do not establish trust.
 - Protected deployments must enforce WASM memory, fuel, and wall-clock limits
   and bound host calls. The current runtime applies fuel but does not
   automatically enforce every configured memory or timeout value.
+- HTTP host calls buffer responses in host memory, outside guest memory and
+  fuel limits, so `HostState` bounds them with `HttpResourceLimits`. A
+  response whose declared `Content-Length` exceeds the body cap is rejected
+  before its body is read; other bodies are streamed through a byte counter
+  and the connection is dropped at the cap. Oversized request bodies are
+  rejected before they are copied or sent, each call has a total deadline that
+  also applies to custom clients, and a per-plugin concurrency budget shared by
+  `HostState` clones bounds the response memory one plugin holds at once.
 - Database access is available only through its granted host interface and
   intended SQL boundary. Plugins cannot acquire raw connections, credentials,
   or a broader database identity, and untrusted values remain parameterized or
@@ -54,6 +62,14 @@ malicious. A plugin's requested capabilities do not establish trust.
   not check the stored owner. Numeric subscription IDs alone do not prove
   ownership, so protected deployments must isolate event buses or add an owner
   check around these operations.
+- Plugin events are bounded in bytes as well as counts. `EventBus` rejects
+  event names and payloads above `EventByteLimits` before queuing them, shares
+  one copy of each event among all receiving queues, and caps queued bytes per
+  subscription, per subscription owner, and per bus. Making room only drops
+  the receiving subscription's own oldest events; it never evicts another
+  subscription's queue, so a subscription that cannot make room skips the
+  event. Byte budgets bound memory, not delivery: plugins that stop polling
+  can consume the bus budget and cause other subscriptions to skip events.
 
 ## Reportable Findings
 

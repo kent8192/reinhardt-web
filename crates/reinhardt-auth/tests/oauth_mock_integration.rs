@@ -27,9 +27,9 @@ use serde_json::json;
 use wiremock::matchers::{bearer_token, body_string_contains, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-use reinhardt_auth::social::core::OAuth2Client;
 use reinhardt_auth::social::core::claims::IdToken;
 use reinhardt_auth::social::core::config::ProviderConfig;
+use reinhardt_auth::social::core::{OAuth2Client, SocialAuthError};
 use reinhardt_auth::social::flow::{RefreshFlow, TokenExchangeFlow};
 use reinhardt_auth::social::oidc::id_token::ValidationConfig;
 use reinhardt_auth::social::oidc::{IdTokenValidator, JwksCache, UserInfoClient};
@@ -155,12 +155,14 @@ async fn mock_env() -> MockEnv {
 // Helpers
 // ---------------------------------------------------------------------------
 
-fn test_provider(redirect_uri: String) -> ProviderConfig {
-	ProviderConfig::github(
-		"test_client_id".to_string(),
-		"test_client_secret".to_string(),
-		redirect_uri,
-	)
+fn test_provider(env: &MockEnv) -> ProviderConfig {
+	let mut config = ProviderConfig::github(
+		"test_client_id".into(),
+		"test_client_secret".into(),
+		"http://localhost/callback".into(),
+	);
+	config.oauth2.as_mut().unwrap().token_endpoint = env.token_url();
+	config
 }
 
 fn base_id_token(iss: &str, aud: &str) -> IdToken {
@@ -207,10 +209,7 @@ async fn token_exchange_parses_full_token_response(#[future] mock_env: MockEnv) 
 		.mount(&env.server)
 		.await;
 
-	let flow = TokenExchangeFlow::new(
-		OAuth2Client::new(),
-		test_provider("http://localhost/callback".into()),
-	);
+	let flow = TokenExchangeFlow::new(OAuth2Client::new(), test_provider(&env));
 
 	// Act
 	let response = flow
@@ -234,19 +233,21 @@ async fn token_exchange_reports_provider_error(#[future] mock_env: MockEnv) {
 	Mock::given(method("POST"))
 		.and(path("/token"))
 		.respond_with(ResponseTemplate::new(400).set_body_string("invalid_grant"))
+		.expect(1)
 		.mount(&env.server)
 		.await;
 
-	let flow = TokenExchangeFlow::new(
-		OAuth2Client::new(),
-		test_provider("http://localhost/callback".into()),
-	);
+	let flow = TokenExchangeFlow::new(OAuth2Client::new(), test_provider(&env));
 
 	// Act
 	let result = flow.exchange(&env.token_url(), "bad_code", None).await;
 
 	// Assert
-	assert!(result.is_err(), "400 response should surface as error");
+	assert!(
+		matches!(result, Err(SocialAuthError::TokenExchangeError(message))
+			if message.contains("400") && message.contains("invalid_grant")),
+		"the provider response should surface as a token exchange error"
+	);
 }
 
 // ---------------------------------------------------------------------------
@@ -271,10 +272,7 @@ async fn refresh_flow_returns_new_access_token(#[future] mock_env: MockEnv) {
 		.mount(&env.server)
 		.await;
 
-	let flow = RefreshFlow::new(
-		OAuth2Client::new(),
-		test_provider("http://localhost/callback".into()),
-	);
+	let flow = RefreshFlow::new(OAuth2Client::new(), test_provider(&env));
 
 	// Act
 	let response = flow
@@ -286,6 +284,44 @@ async fn refresh_flow_returns_new_access_token(#[future] mock_env: MockEnv) {
 	assert_eq!(response.access_token, "access-refreshed");
 	assert_eq!(response.token_type, "Bearer");
 	assert_eq!(response.expires_in, Some(7200));
+}
+
+#[rstest]
+#[case::exchange(false)]
+#[case::refresh(true)]
+#[tokio::test]
+async fn token_flows_reject_unconfigured_endpoint(
+	#[future] mock_env: MockEnv,
+	#[case] refresh: bool,
+) {
+	// Arrange
+	let env = mock_env.await;
+	let config = test_provider(&env);
+	let unconfigured_endpoint = format!("{}/unconfigured-token", env.base_url());
+	Mock::given(method("POST"))
+		.and(path("/unconfigured-token"))
+		.respond_with(ResponseTemplate::new(200))
+		.expect(0)
+		.mount(&env.server)
+		.await;
+
+	// Act
+	let result = if refresh {
+		RefreshFlow::new(OAuth2Client::new(), config)
+			.refresh(&unconfigured_endpoint, "refresh-secret")
+			.await
+	} else {
+		TokenExchangeFlow::new(OAuth2Client::new(), config)
+			.exchange(&unconfigured_endpoint, "authorization-secret", None)
+			.await
+	};
+
+	// Assert
+	assert!(
+		matches!(result, Err(SocialAuthError::InsecureEndpoint(message))
+		if message == "token endpoint differs from provider configuration")
+	);
+	env.server.verify().await;
 }
 
 // ---------------------------------------------------------------------------

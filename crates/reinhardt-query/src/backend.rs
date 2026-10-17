@@ -26,7 +26,7 @@ use crate::{
 		RefreshMaterializedViewStatement, ReindexStatement, RepairTableStatement, SelectStatement,
 		TruncateTableStatement, UpdateStatement, VacuumStatement,
 	},
-	types::BinOper,
+	types::{BinOper, DynIden},
 	value::Values,
 };
 
@@ -41,6 +41,45 @@ pub use mysql::MySqlQueryBuilder;
 pub use postgres::PostgresQueryBuilder;
 pub use sql_writer::SqlWriter;
 pub use sqlite::SqliteQueryBuilder;
+
+/// Render a function name as identifiers, never as executable SQL syntax.
+fn safe_function_name(name: &DynIden, quote: char) -> String {
+	name.to_string()
+		.split('.')
+		.map(|segment| {
+			let mut chars = segment.chars();
+			if chars
+				.next()
+				.is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+				&& chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+			{
+				segment.to_owned()
+			} else {
+				format!(
+					"{quote}{}{quote}",
+					segment.replace(quote, &format!("{quote}{quote}"))
+				)
+			}
+		})
+		.collect::<Vec<_>>()
+		.join(".")
+}
+
+#[cfg(test)]
+mod security_tests {
+	use super::safe_function_name;
+	use crate::types::IntoIden;
+
+	#[rstest::rstest]
+	fn function_name_cannot_escape_identifier() {
+		let name = "count); DROP TABLE users; --".into_iden();
+		assert_eq!(
+			safe_function_name(&name, '"'),
+			"\"count); DROP TABLE users; --\""
+		);
+		assert_eq!(safe_function_name(&"COUNT".into_iden(), '"'), "COUNT");
+	}
+}
 
 // Precedence levels shared by the MySQL and SQLite writers.
 const PORTABLE_NOT_PRECEDENCE: u8 = 3;

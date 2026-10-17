@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.24](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.3.23...reinhardt-web@v0.3.24) - 2026-10-14
+
+### Documentation
+
+- add release announcement(s)
+- *(agents)* attribute AI work to the agent and model that wrote it
+
+### Fixed
+
+- *(ci)* allow bit-set 0.8 alongside proptest 1.12 in deny policy
+- *(db)* emit nullability changes in forward AlterColumn SQL
+- *(db)* keep NOT NULL when AlterColumn demotes a primary key
+- *(admin)* propagate database errors from scoped detail fetches
+- *(auth)* accept NAT64 addresses that embed public IPv4
+- *(dentdelion)* accept NAT64 addresses that embed public IPv4
+- *(middleware)* issue CSRF token for the rotated session ID
+- *(dentdelion)* port owner-scoped event bus calls to shared bus state
+
 ## [0.3.23](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.3.22...reinhardt-web@v0.3.23) - 2026-10-08
 
 ### Documentation

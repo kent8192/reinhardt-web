@@ -22,11 +22,11 @@ Add `reinhardt` to your `Cargo.toml`:
 <!-- reinhardt-version-sync:3 -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.3.23", features = ["dentdelion"] }
+reinhardt = { version = "0.3.24", features = ["dentdelion"] }
 
 # Or use a preset:
-# reinhardt = { version = "0.3.23", features = ["standard"] }  # Recommended
-# reinhardt = { version = "0.3.23", features = ["full"] }      # All features
+# reinhardt = { version = "0.3.24", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.3.24", features = ["full"] }      # All features
 ```
 
 Then import dentdelion features:
@@ -62,7 +62,7 @@ pub struct MyPlugin {
 impl MyPlugin {
     pub fn new() -> Self {
         Self {
-            metadata: PluginMetadata::builder("my-plugin", "0.3.23")
+            metadata: PluginMetadata::builder("my-plugin", "0.3.24")
                 .description("My custom plugin")
                 .author("Your Name")
                 .build()
@@ -231,7 +231,7 @@ Dentdelion uses the WebAssembly Interface Types (WIT) standard for plugin interf
 
 <!-- reinhardt-version-sync -->
 ```wit
-package reinhardt:dentdelion@0.3.23;
+package reinhardt:dentdelion@0.3.24;
 
 // Host functions available to plugins
 interface host {
@@ -304,6 +304,32 @@ Host functions check capabilities at runtime:
 - `db_query`/`db_execute` require `DatabaseAccess` capability
 - Unauthorized calls return `PluginError` with code 403
 
+### HTTP Resource Limits
+
+`http_get`/`http_post` buffer responses in host memory, outside the guest's
+memory and fuel limits, so each `HostState` bounds them with
+`HttpResourceLimits`:
+
+| Limit | Default | Error code when exceeded |
+|-------|---------|--------------------------|
+| `max_response_body_bytes` | 10 MiB | 502 |
+| `max_request_body_bytes` | 10 MiB | 413 |
+| `request_timeout` (connect, send, and full body) | 30 s | 504 |
+| `max_concurrent_requests` per plugin | 4 | 429 |
+
+```rust
+use reinhardt::dentdelion::wasm::{HostStateBuilder, HttpResourceLimits};
+use std::time::Duration;
+
+let mut limits = HttpResourceLimits::default();
+limits.max_response_body_bytes = 1024 * 1024;
+limits.request_timeout = Duration::from_secs(5);
+
+let host_state = HostStateBuilder::new("my-plugin")
+    .http_limits(limits)
+    .build();
+```
+
 ### Loading WASM Plugins
 
 ```rust
@@ -330,9 +356,30 @@ for path in discovered {
 ### Limitations
 
 - **Models capability is NOT supported** for WASM plugins (requires compile-time integration)
-- Memory limit: 128MB default (configurable via `WasmRuntimeConfig`)
-- Execution timeout: 30 seconds default (configurable)
+- Aggregate linear-memory limit: 128MB per store by default (configurable via
+  `WasmRuntimeConfig`). Initial allocations and growth across memories/instances
+  share the budget; unsupported shared memories are rejected.
+- Execution timeout: 30 seconds by default (configurable). A wall-clock bound
+  covers each complete lifecycle invocation, including asynchronous host imports;
+  Wasmtime epoch interruption also stops guest CPU execution.
 - Fuel-based CPU metering: 100M instructions default (configurable)
+- Plugin HTTP requests resolve DNS asynchronously, reject internal/reserved
+  addresses, pin every validated DNS result, and never follow redirects or
+  environment proxies. IPv6 special assignments exclude non-global ranges and
+  ORCHID/DET overlay identifiers while preserving routable anycast, AMT and AS112
+  locators (RFC 7343 and RFC 9374 distinguish identifiers from IPv6 locators).
+- JavaScript evaluation and result conversion share one elapsed-time timeout,
+  with a separate
+  `TsResourceLimits::loop_iteration_limit` (default: 1,000,000 iterations per
+  loop). Native builtins can synchronously reenter JavaScript, so the interpreter
+  guard remains necessary even with cooperative deadline checks. Interpreter
+  limits report `TsError::RuntimeLimitExceeded`, rather than `ExecutionTimeout`.
+- Custom plugin HTTP clients use `HostStateBuilder::http_client_factory` so CA
+  roots, client certificates, and default headers survive construction. The host
+  applies validated DNS pinning and no redirects/proxies after the factory, and
+  every call stays bounded by `HttpResourceLimits` (30-second `request_timeout`
+  by default). Opaque clients passed to `http_client` return a migration error
+  because their settings cannot be safely extracted.
 - Config values must be MessagePack-serializable
 
 ## CLI Integration

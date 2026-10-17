@@ -6,7 +6,21 @@
 use crate::types::{AdminError, AdminResult};
 use csv::Writer;
 use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
 use std::collections::HashMap;
+
+/// Prevent spreadsheet programs from evaluating exported text as a formula.
+pub(crate) fn formula_safe_cell(value: &str) -> Cow<'_, str> {
+	let first_visible = value
+		.trim_start_matches(|ch: char| ch.is_whitespace() || ch.is_control())
+		.chars()
+		.next();
+	if matches!(first_visible, Some('=' | '+' | '-' | '@')) {
+		Cow::Owned(format!("'{value}"))
+	} else {
+		Cow::Borrowed(value)
+	}
+}
 
 /// Export format
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -260,21 +274,29 @@ impl CsvExporter {
 
 		// Write headers
 		if include_headers {
-			writer.write_record(fields).map_err(|e| {
-				AdminError::ValidationError(format!("Failed to write CSV headers: {}", e))
-			})?;
+			let header_cells: Vec<_> = fields
+				.iter()
+				.map(|field| formula_safe_cell(field))
+				.collect();
+			writer
+				.write_record(header_cells.iter().map(|cell| cell.as_bytes()))
+				.map_err(|e| {
+					AdminError::ValidationError(format!("Failed to write CSV headers: {}", e))
+				})?;
 		}
 
 		// Write data rows
 		for row in data {
-			let values: Vec<&str> = fields
+			let values: Vec<Cow<'_, str>> = fields
 				.iter()
-				.map(|field| row.get(field).map(|v| v.as_str()).unwrap_or(""))
+				.map(|field| formula_safe_cell(row.get(field).map(String::as_str).unwrap_or("")))
 				.collect();
 
-			writer.write_record(&values).map_err(|e| {
-				AdminError::ValidationError(format!("Failed to write CSV row: {}", e))
-			})?;
+			writer
+				.write_record(values.iter().map(|cell| cell.as_bytes()))
+				.map_err(|e| {
+					AdminError::ValidationError(format!("Failed to write CSV row: {}", e))
+				})?;
 		}
 
 		// Flush and get the output
@@ -331,7 +353,11 @@ impl TsvExporter {
 
 		// Write headers
 		if include_headers {
-			let header_line = fields.join("\t");
+			let header_line = fields
+				.iter()
+				.map(|field| formula_safe_cell(field).into_owned())
+				.collect::<Vec<_>>()
+				.join("\t");
 			output.extend_from_slice(header_line.as_bytes());
 			output.extend_from_slice(b"\r\n");
 		}
@@ -343,9 +369,11 @@ impl TsvExporter {
 				.map(|field| {
 					// Escape tabs, newlines, and carriage returns to prevent field corruption
 					// Replace \r\n first to avoid double-space from individual \r and \n replacements
-					row.get(field)
+					let escaped = row
+						.get(field)
 						.map(|v| v.replace("\r\n", " ").replace(['\t', '\n', '\r'], " "))
-						.unwrap_or_default()
+						.unwrap_or_default();
+					formula_safe_cell(&escaped).into_owned()
 				})
 				.collect();
 			let line = values.join("\t");
@@ -481,6 +509,26 @@ impl ExportBuilder {
 mod tests {
 	use super::*;
 	use rstest::rstest;
+
+	#[rstest]
+	#[case("=1+1", "'=1+1")]
+	#[case(" \t@SUM(1)", "' \t@SUM(1)")]
+	#[case("\r\n-2", "'\r\n-2")]
+	#[case("ordinary", "ordinary")]
+	fn formula_cells_are_escaped(#[case] input: &str, #[case] expected: &str) {
+		assert_eq!(super::formula_safe_cell(input), expected);
+	}
+
+	#[rstest]
+	fn delimited_exporters_escape_formula_cells() {
+		let fields = vec!["name".to_string()];
+		let data = vec![HashMap::from([("name".to_string(), "=1+1".to_string())])];
+
+		let csv = String::from_utf8(CsvExporter::export(&fields, &data, true).unwrap()).unwrap();
+		let tsv = String::from_utf8(TsvExporter::export(&fields, &data, true).unwrap()).unwrap();
+		assert!(csv.contains("'=1+1"));
+		assert!(tsv.contains("'=1+1"));
+	}
 
 	#[test]
 	fn test_export_format_extension() {

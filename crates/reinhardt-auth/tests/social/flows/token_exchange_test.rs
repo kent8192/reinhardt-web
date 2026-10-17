@@ -1,22 +1,25 @@
 //! Token exchange flow tests
 
 use helpers::mock_server::MockOAuth2Server;
-use reinhardt_auth::social::core::OAuth2Client;
 use reinhardt_auth::social::core::config::ProviderConfig;
+use reinhardt_auth::social::core::{OAuth2Client, SocialAuthError};
 use reinhardt_auth::social::flow::TokenExchangeFlow;
+use rstest::rstest;
 
 #[path = "../../helpers.rs"]
 mod helpers;
 
+#[rstest]
 #[tokio::test]
 async fn test_token_exchange_with_mock_server() {
 	// Arrange
 	let server = MockOAuth2Server::new().await;
-	let config = ProviderConfig::github(
+	let mut config = ProviderConfig::github(
 		"test_client_id".into(),
 		"test_client_secret".into(),
 		"http://localhost:8080/callback".into(),
 	);
+	config.oauth2.as_mut().unwrap().token_endpoint = server.token_url();
 	let flow = TokenExchangeFlow::new(OAuth2Client::new(), config);
 
 	// Act
@@ -34,15 +37,17 @@ async fn test_token_exchange_with_mock_server() {
 	assert_eq!(response.token_type, "Bearer");
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_token_exchange_with_pkce() {
 	// Arrange
 	let server = MockOAuth2Server::new().await;
-	let config = ProviderConfig::github(
+	let mut config = ProviderConfig::github(
 		"test_client_id".into(),
 		"test_client_secret".into(),
 		"http://localhost:8080/callback".into(),
 	);
+	config.oauth2.as_mut().unwrap().token_endpoint = server.token_url();
 	let flow = TokenExchangeFlow::new(OAuth2Client::new(), config);
 	let (verifier, _challenge) = reinhardt_auth::social::flow::PkceFlow::generate();
 
@@ -61,16 +66,18 @@ async fn test_token_exchange_with_pkce() {
 	assert!(!response.access_token.is_empty());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_token_exchange_server_error() {
 	// Arrange
 	let mut server = MockOAuth2Server::new().await;
 	server.set_error_mode(helpers::mock_server::ErrorMode::ServerError);
-	let config = ProviderConfig::github(
+	let mut config = ProviderConfig::github(
 		"test_client_id".into(),
 		"test_client_secret".into(),
 		"http://localhost:8080/callback".into(),
 	);
+	config.oauth2.as_mut().unwrap().token_endpoint = server.token_url();
 	let flow = TokenExchangeFlow::new(OAuth2Client::new(), config);
 
 	// Act
@@ -78,21 +85,23 @@ async fn test_token_exchange_server_error() {
 
 	// Assert
 	assert!(
-		result.is_err(),
-		"Token exchange should fail on server error"
+		matches!(result, Err(SocialAuthError::TokenExchangeError(message)) if message.contains("500")),
+		"Token exchange should report the mock server error"
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_token_exchange_invalid_response() {
 	// Arrange
 	let mut server = MockOAuth2Server::new().await;
 	server.set_error_mode(helpers::mock_server::ErrorMode::InvalidResponse);
-	let config = ProviderConfig::github(
+	let mut config = ProviderConfig::github(
 		"test_client_id".into(),
 		"test_client_secret".into(),
 		"http://localhost:8080/callback".into(),
 	);
+	config.oauth2.as_mut().unwrap().token_endpoint = server.token_url();
 	let flow = TokenExchangeFlow::new(OAuth2Client::new(), config);
 
 	// Act
@@ -100,7 +109,7 @@ async fn test_token_exchange_invalid_response() {
 
 	// Assert
 	assert!(
-		result.is_err(),
-		"Token exchange should fail on invalid JSON response"
+		matches!(result, Err(SocialAuthError::TokenExchangeError(_))),
+		"Token exchange should fail while parsing the mock response"
 	);
 }

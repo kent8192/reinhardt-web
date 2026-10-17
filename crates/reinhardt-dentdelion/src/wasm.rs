@@ -48,8 +48,8 @@ pub mod ssr;
 mod ts_runtime;
 mod types;
 
-pub use events::{Event, EventBus, EventBusError, SharedEventBus};
-pub use host::{HostState, HostStateBuilder};
+pub use events::{Event, EventBus, EventBusError, EventByteLimits, EventEmitError, SharedEventBus};
+pub use host::{HostState, HostStateBuilder, HttpResourceLimits};
 pub use instance::WasmPluginInstance;
 pub use loader::WasmPluginLoader;
 pub use models::{

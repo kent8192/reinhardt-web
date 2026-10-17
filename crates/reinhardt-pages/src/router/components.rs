@@ -206,7 +206,12 @@ impl Redirect {
 	pub fn new(to: impl Into<String>) -> Self {
 		let url = to.into();
 		assert!(
-			url.starts_with('/') && !url.starts_with("//"),
+			url.starts_with('/')
+				&& reinhardt_core::security::redirect::validate_redirect_url(
+					&url,
+					&std::collections::HashSet::new(),
+				)
+				.is_ok(),
 			"Redirect::new only accepts relative URLs starting with '/'. Use Redirect::validated for absolute URLs."
 		);
 		Self {
@@ -339,6 +344,12 @@ mod tests {
 	#[should_panic(expected = "Redirect::new only accepts relative URLs")]
 	fn test_redirect_rejects_protocol_relative() {
 		Redirect::new("//evil.com/path");
+	}
+
+	#[rstest::rstest]
+	#[should_panic(expected = "Redirect::new only accepts relative URLs")]
+	fn test_redirect_rejects_backslash_network_path() {
+		Redirect::new("/\\evil.com/path");
 	}
 
 	#[test]
