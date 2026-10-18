@@ -17,6 +17,8 @@ wasm = [
 	"dep:wasmtime",
 	"dep:wasmtime-wasi",
 	"dep:rmp-serde",
+	"dep:rmp",
+	"dep:futures-util",
 	"tokio/rt",
 	"tokio/fs",
 	"dep:reqwest",
@@ -67,6 +69,8 @@ wasmtime = { version = "36.0.6", optional = true, features = [
 ] }
 wasmtime-wasi = { version = "36.0.6", optional = true }
 rmp-serde = { workspace = true, optional = true }
+# Encodes the result array header of incrementally serialized database rows
+rmp = { version = "0.8", optional = true }
 tokio = { workspace = true, optional = true }
 
 # CLI support (optional)
@@ -76,6 +80,8 @@ reqwest = { workspace = true, optional = true }
 # Database access (optional, for WASM plugins)
 # SQL parser for query validation (used with wasm feature)
 sqlparser = { version = "0.53", optional = true }
+# Consumes streamed query rows (used with wasm feature)
+futures-util = { workspace = true, optional = true }
 
 # JavaScript runtime (optional, for SSR support)
 # Provides pure Rust JavaScript execution for React/Preact SSR
@@ -100,3 +106,4 @@ insta = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 tempfile = { workspace = true }
 rstest = { workspace = true }
+reinhardt-db = { workspace = true, features = ["backends", "sqlite"] }

@@ -158,8 +158,8 @@ impl HttpsRedirectMiddleware {
 	fn validate_host<'a>(&self, host: Option<&'a str>) -> Option<&'a str> {
 		let host = host?;
 
-		// Reject hosts containing path separators or whitespace (injection attempts)
-		if host.contains('/') || host.contains('\\') || host.contains(char::is_whitespace) {
+		// Host is an authority, never a URL with credentials or a path.
+		if host.contains(['/', '\\', '@', '?', '#', '%']) || host.contains(char::is_whitespace) {
 			return None;
 		}
 
@@ -168,15 +168,18 @@ impl HttpsRedirectMiddleware {
 			return None;
 		}
 
-		// Strip port for comparison (e.g., "example.com:8080" -> "example.com")
-		let host_without_port = host.split(':').next().unwrap_or(host);
+		let parsed = url::Url::parse(&format!("http://{host}/")).ok()?;
+		let parsed_host = parsed.host_str()?;
+		if parsed.username() != "" || parsed.password().is_some() {
+			return None;
+		}
 
 		// Check against allowed hosts list
-		let is_allowed = self.config.allowed_hosts.iter().any(|allowed| {
-			let allowed_lower = allowed.to_lowercase();
-			let host_lower = host_without_port.to_lowercase();
-			allowed_lower == host_lower
-		});
+		let is_allowed = self
+			.config
+			.allowed_hosts
+			.iter()
+			.any(|allowed| allowed.eq_ignore_ascii_case(parsed_host));
 
 		if is_allowed { Some(host) } else { None }
 	}
@@ -410,6 +413,38 @@ mod tests {
 	}
 
 	#[rstest]
+	#[case::userinfo_with_password("example.com:secret@evil.com")]
+	#[case::userinfo_with_empty_password("example.com:@evil.com")]
+	#[case::userinfo_with_port_shaped_password("example.com:443@evil.com")]
+	#[tokio::test]
+	async fn test_reject_userinfo_after_allowed_host_prefix(#[case] host: &str) {
+		// Arrange - the text before the first colon names an allowed host, but
+		// a URL parser reads it as userinfo and resolves the host after `@`
+		let config = config_with_allowed_hosts(vec!["example.com"]);
+		let middleware = HttpsRedirectMiddleware::new(config);
+		let handler = Arc::new(TestHandler);
+
+		let mut headers = HeaderMap::new();
+		headers.insert(hyper::header::HOST, host.parse().unwrap());
+
+		let request = Request::builder()
+			.method(Method::GET)
+			.uri("/test")
+			.version(Version::HTTP_11)
+			.headers(headers)
+			.body(Bytes::new())
+			.build()
+			.unwrap();
+
+		// Act
+		let response = middleware.process(request, handler).await.unwrap();
+
+		// Assert - must not emit a Location that redirects to another host
+		assert_eq!(response.status, StatusCode::BAD_REQUEST);
+		assert!(response.headers.get("Location").is_none());
+	}
+
+	#[rstest]
 	#[tokio::test]
 	async fn test_reject_missing_host_header() {
 		// Arrange - no host header at all
@@ -487,6 +522,17 @@ mod tests {
 			response.headers.get("Location").unwrap(),
 			"https://example.com:8080/test"
 		);
+	}
+
+	#[rstest]
+	#[case("example.com@evil.com")]
+	#[case("evil.com@example.com")]
+	#[case("example.com:invalid")]
+	#[case("example.com\\@evil.com")]
+	fn rejects_malformed_host_authorities(#[case] host: &str) {
+		let middleware =
+			HttpsRedirectMiddleware::new(config_with_allowed_hosts(vec!["example.com"]));
+		assert!(middleware.validate_host(Some(host)).is_none());
 	}
 
 	#[rstest]

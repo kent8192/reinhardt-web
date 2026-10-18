@@ -6202,8 +6202,7 @@ mod parser_tests {
 	}
 
 	#[test]
-	#[cfg(not(feature = "pgvector"))]
-	fn drop_named_index_tokens_reparse_without_pgvector() {
+	fn drop_named_index_tokens_reparse() {
 		let operation = Operation::DropNamedIndex {
 			table: "articles".to_string(),
 			name: "idx_articles_title".to_string(),

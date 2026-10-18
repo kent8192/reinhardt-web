@@ -332,6 +332,8 @@ pub fn create_rate_limit_config_from_settings(
 /// Redis channel layer settings fragment.
 ///
 /// Maps to the `[ws_redis]` section. Requires the `redis-channel` feature.
+/// The credential and TLS fields combine with `url` as described on
+/// [`RedisConfig`].
 #[cfg(feature = "redis-channel")]
 #[settings(fragment = true, section = "ws_redis")]
 #[non_exhaustive]
@@ -349,17 +351,18 @@ pub struct RedisChannelSettings {
 	/// Message expiry time, in seconds.
 	#[serde(default = "default_redis_message_expiry")]
 	pub message_expiry: u64,
-	/// Redis password for authentication.
+	/// Redis password for authentication; must match a password embedded in `url`.
 	#[setting(secret)]
 	#[serde(default)]
 	pub password: Option<String>,
-	/// Redis username for authentication (Redis 6+ ACL).
+	/// Redis username for authentication (Redis 6+ ACL); requires a password.
 	#[serde(default)]
 	pub username: Option<String>,
-	/// Enable TLS for secure connection.
+	/// Enable TLS for secure connection; upgrades a `redis://` URL to TLS.
 	#[serde(default)]
 	pub tls: bool,
-	/// Require authentication (warns if disabled without credentials).
+	/// Require authentication: connecting fails unless `url` or `password`
+	/// supplies a password.
 	#[serde(default = "default_redis_require_auth")]
 	pub require_auth: bool,
 }

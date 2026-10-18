@@ -21,6 +21,7 @@ Practical tutorials and recipes for the Reinhardt framework.
 - [Pagination](pagination/)
 - [Request Body Parsing](request-body-parsing/)
 - [Response Serialization](response-serialization/)
+- [Request Admission](request-admission/)
 
 ## Overview
 
@@ -34,6 +35,7 @@ The Cookbook provides practical guides for solving common tasks.
 - **Pagination**: Cursor-based and offset-based pagination strategies
 - **Request Body Parsing**: JSON, form data, multipart, and raw body extraction
 - **Response Serialization**: JSON responses, custom serialization, streaming
+- **Request Admission**: Body budgets, receive timeouts, and overload rejection before the body is read, in deployment and under `runserver`
 
 ## See Also
 

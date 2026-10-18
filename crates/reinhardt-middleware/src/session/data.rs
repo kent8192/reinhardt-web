@@ -49,6 +49,16 @@ pub struct SessionData {
 	pub id_holder: Option<ActiveSessionId>,
 }
 
+/// Session that `SessionMiddleware` started for a request without a valid
+/// session cookie.
+///
+/// It lives only in the request extensions, never in the store, so requests
+/// that do not save their session leave nothing behind. `SessionData::inject`
+/// falls back to it when the store has no entry for the request's session ID;
+/// saving the injected session to the store is what persists it.
+#[derive(Debug, Clone)]
+pub(super) struct PendingSession(pub(super) SessionData);
+
 impl SessionData {
 	/// Create a new session
 	pub fn new(ttl: Duration) -> Self {
@@ -73,7 +83,13 @@ impl SessionData {
 	///
 	/// See #3827.
 	pub fn regenerate_id(&mut self) -> String {
-		let old_id = std::mem::replace(&mut self.id, Uuid::now_v7().to_string());
+		self.replace_id(Uuid::now_v7().to_string())
+	}
+
+	/// Replace the session ID with `new_id`, keeping the request-scoped
+	/// [`ActiveSessionId`] in sync, and return the previous ID.
+	pub(super) fn replace_id(&mut self, new_id: String) -> String {
+		let old_id = std::mem::replace(&mut self.id, new_id);
 		if let Some(holder) = &self.id_holder {
 			holder.set(self.id.clone());
 		}

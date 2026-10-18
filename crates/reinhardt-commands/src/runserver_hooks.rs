@@ -1,11 +1,15 @@
 //! Runserver lifecycle hooks for extending server startup behavior.
 //!
 //! Hooks are auto-discovered via `inventory` and invoked by
-//! [`crate::RunServerCommand`] at two lifecycle points:
+//! [`crate::RunServerCommand`] at three lifecycle points:
 //!
 //! 1. **Validation** ([`RunserverHook::validate`]) — before DI setup; return `Err` to abort.
 //! 2. **Startup** ([`RunserverHook::on_server_start`]) — after DI is ready and
 //!    native protocol preflight has completed, before listeners bind.
+//! 3. **Request admission** ([`RunserverHook::request_admission`]) — after
+//!    every hook's startup phase, before the HTTP server is built; at most one
+//!    hook may return the admission policy that the server applies before it
+//!    reads request bodies.
 //!
 //! With `--with-pages`, [`RunserverHook::static_response_headers`] also lets a
 //! hook attach response headers to the SPA shell and static asset responses.
@@ -19,11 +23,13 @@
 //!
 //! When the `autoreload` feature is enabled and `runserver` is invoked
 //! without `--noreload`, only [`RunserverHook::validate`] runs in the parent
-//! process; [`RunserverHook::on_server_start`] runs **only inside the spawned
+//! process; [`RunserverHook::on_server_start`] and
+//! [`RunserverHook::request_admission`] run **only inside the spawned
 //! `--noreload` child** that actually binds the listening port. Listeners
 //! opened in `on_server_start` therefore live in the child and exit with the
 //! child on each rebuild, which prevents parent-side listeners from blocking
-//! the child's HTTP bind (#4244).
+//! the child's HTTP bind (#4244). Each rebuilt child also starts with a fresh
+//! admission policy.
 //!
 //! # Hot-reload
 //!
@@ -57,9 +63,10 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use reinhardt_di::InjectionContext;
-use reinhardt_server::ShutdownCoordinator;
+use reinhardt_server::{RequestAdmission, ShutdownCoordinator};
 
-/// Context passed to [`RunserverHook::on_server_start`].
+/// Context passed to [`RunserverHook::on_server_start`] and
+/// [`RunserverHook::request_admission`].
 pub struct RunserverContext {
 	/// Shutdown coordinator for subscribing to graceful shutdown signals.
 	///
@@ -84,15 +91,19 @@ pub struct RunserverContext {
 ///    before the server starts listening.
 ///    Spawn concurrent services here and subscribe to shutdown via
 ///    `ctx.shutdown_coordinator.subscribe()`.
+/// 3. `request_admission()` is called after every hook's `on_server_start()`
+///    has completed, before the HTTP server is built.
+///    Return the admission policy that the server applies before it reads
+///    request bodies.
 ///
-/// Both methods have default no-op implementations. Implement only
-/// the phases your hook needs.
+/// Every method has a default implementation. Implement only the phases
+/// your hook needs.
 ///
 /// Under the `autoreload` feature, `validate()` runs once in the parent
-/// (and again in each child invocation) while `on_server_start()` runs
-/// **only inside the spawned `--noreload` child** so concurrent-service
-/// listeners do not survive across rebuilds and do not collide with the
-/// child's own server bind (#4244).
+/// (and again in each child invocation) while `on_server_start()` and
+/// `request_admission()` run **only inside the spawned `--noreload` child**
+/// so concurrent-service listeners do not survive across rebuilds and do not
+/// collide with the child's own server bind (#4244).
 ///
 /// # Examples
 ///
@@ -197,6 +208,77 @@ pub trait RunserverHook: Send + Sync {
 	/// ```
 	fn static_response_headers(&self) -> hyper::HeaderMap {
 		hyper::HeaderMap::new()
+	}
+
+	/// Admission policy that `runserver` applies before it reads request bodies.
+	///
+	/// Router middleware runs only after the server has collected the request
+	/// body, so it cannot cap the body size, bound body receipt, or shed load
+	/// before the body arrives. Return the policy that the project passes to
+	/// [`HttpServer::with_request_admission`](reinhardt_server::HttpServer::with_request_admission)
+	/// in deployment, so `runserver` admits requests the same way. Without a
+	/// policy, `runserver` collects bodies up to the server's default size limit
+	/// with no receive timeout.
+	///
+	/// Called on every hook after every hook's [`RunserverHook::on_server_start`]
+	/// has completed and before `runserver` builds its HTTP server, so a hook
+	/// can return a policy that a startup phase registered in `ctx.di_context`.
+	/// At most one hook may return a policy. Hook discovery order is not stable
+	/// across builds, so when several hooks return one, `runserver` aborts
+	/// startup and names every supplying hook instead of picking one. Returning
+	/// `Err` also aborts startup.
+	///
+	/// The policy admits every request on the HTTP listener, including the
+	/// `--with-pages` static and SPA responses, OpenAPI routes, and WebSocket
+	/// handshakes. A policy that must treat development-only routes differently
+	/// can branch on [`RequestHead::uri`](reinhardt_server::RequestHead#structfield.uri).
+	/// The policy does not apply to the gRPC listener.
+	///
+	/// The default implementation returns `Ok(None)`.
+	///
+	/// # Examples
+	///
+	/// Return the policy that `on_server_start` registered, so request handlers
+	/// that resolve it from DI share its concurrency permits:
+	///
+	/// ```rust,ignore
+	/// use std::sync::Arc;
+	/// use reinhardt::commands::{RunserverContext, RunserverHook};
+	/// use reinhardt::server::RequestAdmission;
+	///
+	/// #[reinhardt::hook(on = runserver)]
+	/// struct AdmissionHook;
+	///
+	/// #[async_trait]
+	/// impl RunserverHook for AdmissionHook {
+	///     async fn on_server_start(
+	///         &self,
+	///         ctx: &RunserverContext,
+	///     ) -> Result<(), Box<dyn Error + Send + Sync>> {
+	///         // `Protection` implements `RequestAdmission`.
+	///         ctx.di_context.singleton_scope().set(Protection::new(64));
+	///         Ok(())
+	///     }
+	///
+	///     async fn request_admission(
+	///         &self,
+	///         ctx: &RunserverContext,
+	///     ) -> Result<Option<Arc<dyn RequestAdmission>>, Box<dyn Error + Send + Sync>> {
+	///         let protection = ctx
+	///             .di_context
+	///             .singleton_scope()
+	///             .get::<Protection>()
+	///             .ok_or("Protection is not registered")?;
+	///         Ok(Some(protection))
+	///     }
+	/// }
+	/// ```
+	async fn request_admission(
+		&self,
+		ctx: &RunserverContext,
+	) -> Result<Option<Arc<dyn RequestAdmission>>, Box<dyn Error + Send + Sync>> {
+		let _ = ctx;
+		Ok(None)
 	}
 }
 
@@ -461,6 +543,20 @@ mod tests {
 
 		// Assert
 		assert!(headers.is_empty());
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn default_request_admission_returns_none() {
+		// Arrange
+		let hook = NoOpHook;
+		let ctx = make_runserver_context();
+
+		// Act
+		let admission = hook.request_admission(&ctx).await.unwrap();
+
+		// Assert
+		assert!(admission.is_none());
 	}
 
 	#[rstest]
