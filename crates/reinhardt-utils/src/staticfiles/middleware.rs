@@ -594,7 +594,7 @@ impl StaticFilesMiddleware {
 	///
 	/// Priority:
 	/// 1. `index_file` — explicit path (can be outside `root_dir`)
-	/// 2. `index_files` — searched within `root_dir`
+	/// 2. `index_files` — searched within `root_dir`, confined to it
 	async fn serve_spa_fallback(&self) -> Option<Response> {
 		// Priority 1: Explicit index file path (can be outside root_dir)
 		if let Some(ref index_path) = self.config.index_file {
@@ -602,14 +602,10 @@ impl StaticFilesMiddleware {
 			return self.build_spa_response(content, index_path);
 		}
 
-		// Priority 2: Search within root_dir (existing behavior)
-		for index_file in &self.config.index_files {
-			let path = self.config.root_dir.join(index_file);
-			if let Ok(content) = tokio::fs::read(&path).await {
-				return self.build_spa_response(content, &path);
-			}
-		}
-		None
+		// Priority 2: The root directory index. The handler was built with
+		// `index_files` and rejects an index that resolves outside root_dir.
+		let file = self.handler.serve("/").await.ok()?;
+		self.build_spa_response(file.content, &file.path)
 	}
 
 	/// Build a SPA response from raw file content, injecting WASM script if applicable.
@@ -2029,6 +2025,62 @@ mod tests {
 		assert_eq!(
 			body, "/* served */",
 			"with empty passthrough_prefixes the file under root_dir wins"
+		);
+	}
+
+	/// Builds a default (SPA mode) middleware whose root and nested `docs/`
+	/// directory indexes are symlinks to a file outside `root_dir`.
+	#[cfg(unix)]
+	fn middleware_with_escaping_index_symlinks() -> (tempfile::TempDir, StaticFilesMiddleware) {
+		let dir = tempfile::tempdir().unwrap();
+		let outside = dir.path().join("outside.txt");
+		std::fs::write(&outside, "outside secret").unwrap();
+		let dist = dir.path().join("dist");
+		std::fs::create_dir_all(dist.join("docs")).unwrap();
+		std::os::unix::fs::symlink(&outside, dist.join("index.html")).unwrap();
+		std::os::unix::fs::symlink(&outside, dist.join("docs/index.html")).unwrap();
+		let middleware = StaticFilesMiddleware::new(StaticFilesConfig::new(&dist));
+		(dir, middleware)
+	}
+
+	#[cfg(unix)]
+	#[tokio::test]
+	async fn test_serve_spa_fallback_rejects_index_symlink_outside_root() {
+		// Arrange
+		let (_dir, middleware) = middleware_with_escaping_index_symlinks();
+
+		// Act
+		let response = middleware.serve_spa_fallback().await;
+
+		// Assert
+		assert!(
+			response.is_none(),
+			"SPA fallback must not serve an index symlink that resolves outside root_dir"
+		);
+	}
+
+	#[cfg(unix)]
+	#[rstest]
+	#[case::root_directory("/")]
+	#[case::nested_directory("/docs/")]
+	#[case::spa_route("/dashboard")]
+	#[tokio::test]
+	async fn test_process_never_serves_index_symlink_outside_root(#[case] request_path: &str) {
+		// Arrange
+		let (_dir, middleware) = middleware_with_escaping_index_symlinks();
+		let next: Arc<dyn Handler> = Arc::new(PassthroughProbeHandler);
+
+		// Act
+		let response = middleware
+			.process(build_request(request_path), next)
+			.await
+			.unwrap();
+
+		// Assert
+		let body = String::from_utf8(response.body.to_vec()).unwrap();
+		assert_eq!(
+			body, "from-next-handler",
+			"an index symlink escaping root_dir must fall through instead of being served"
 		);
 	}
 }
