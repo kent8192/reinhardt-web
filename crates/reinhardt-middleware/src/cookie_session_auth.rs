@@ -17,11 +17,11 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 #[cfg(feature = "sessions")]
+use crate::auth_extensions::install_auth_state;
+#[cfg(feature = "sessions")]
 use crate::session::AsyncSessionBackend;
 #[cfg(feature = "sessions")]
-use reinhardt_http::{
-	AuthState, Handler, IsActive, IsAdmin, IsAuthenticated, Middleware, Request, Response, Result,
-};
+use reinhardt_http::{AuthState, Handler, Middleware, Request, Response, Result};
 
 /// Configuration for cookie-based session authentication.
 #[cfg(feature = "sessions")]
@@ -189,15 +189,7 @@ impl<B: AsyncSessionBackend + 'static> Middleware for CookieSessionAuthMiddlewar
 									.unwrap_or(false);
 
 								let is_admin = is_staff || is_superuser;
-								let is_active = true;
-
-								// Insert backward compat values
-								request.extensions.insert(user_id.clone());
-								request.extensions.insert(IsAuthenticated(true));
-								request.extensions.insert(IsAdmin(is_admin));
-								request.extensions.insert(IsActive(is_active));
-
-								AuthState::authenticated(user_id, is_admin, is_active)
+								AuthState::authenticated(user_id, is_admin, true)
 							}
 						}
 					}
@@ -206,7 +198,7 @@ impl<B: AsyncSessionBackend + 'static> Middleware for CookieSessionAuthMiddlewar
 			}
 		};
 
-		request.extensions.insert(auth_state);
+		install_auth_state(&request.extensions, auth_state);
 		let response = next.handle(request).await?;
 
 		// Fire-and-forget: touch session to reset sliding TTL
@@ -230,6 +222,9 @@ impl<B: AsyncSessionBackend + 'static> Middleware for CookieSessionAuthMiddlewar
 #[cfg(all(test, feature = "sessions"))]
 mod tests {
 	use super::*;
+	use crate::auth_extensions::test_support::{
+		AuthEntriesHandler, anonymous_entries, auth_entries, expected_entries, seed_prior_principal,
+	};
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, Version};
 	use reinhardt_http::{AuthState, Handler, Middleware, Request, Response};
@@ -578,5 +573,54 @@ mod tests {
 		let body = parse_response_body(&response);
 		assert_eq!(body["is_authenticated"], true);
 		assert_eq!(body["user_id"], "user-multi");
+	}
+
+	#[rstest]
+	#[case::missing_cookie(None)]
+	#[case::unknown_session(Some("sessionid=nonexistent"))]
+	#[case::corrupted_session(Some("sessionid=sess-corrupt"))]
+	#[tokio::test]
+	async fn test_auth_failure_clears_prior_legacy_principal(#[case] cookie: Option<&str>) {
+		// Arrange
+		let backend = Arc::new(MockBackend::new());
+		backend.insert(make_session("sess-corrupt", "", false, false));
+		let middleware = CookieSessionAuthMiddleware::new(Arc::clone(&backend));
+		let request = match cookie {
+			Some(value) => create_request_with_cookie(value),
+			None => create_request_without_cookie(),
+		};
+		seed_prior_principal(&request);
+
+		// Act
+		let response = middleware
+			.process(request, Arc::new(AuthEntriesHandler))
+			.await
+			.unwrap();
+
+		// Assert
+		assert_eq!(auth_entries(&response), anonymous_entries());
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_valid_session_replaces_prior_legacy_principal() {
+		// Arrange
+		let backend = Arc::new(MockBackend::new());
+		backend.insert(make_session("sess-123", "user-42", false, false));
+		let middleware = CookieSessionAuthMiddleware::new(Arc::clone(&backend));
+		let request = create_request_with_cookie("sessionid=sess-123");
+		seed_prior_principal(&request);
+
+		// Act
+		let response = middleware
+			.process(request, Arc::new(AuthEntriesHandler))
+			.await
+			.unwrap();
+
+		// Assert
+		assert_eq!(
+			auth_entries(&response),
+			expected_entries("user-42", true, false, true)
+		);
 	}
 }

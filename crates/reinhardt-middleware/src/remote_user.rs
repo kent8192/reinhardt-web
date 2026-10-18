@@ -4,11 +4,11 @@ use async_trait::async_trait;
 use std::sync::Arc;
 
 #[cfg(feature = "sessions")]
+use crate::auth_extensions::install_auth_state;
+#[cfg(feature = "sessions")]
 use reinhardt_auth::{AuthBackend, AuthIdentity};
 #[cfg(feature = "sessions")]
-use reinhardt_http::{
-	AuthState, Handler, IsActive, IsAdmin, IsAuthenticated, Middleware, Request, Response, Result,
-};
+use reinhardt_http::{AuthState, Handler, Middleware, Request, Response, Result};
 
 /// Default HTTP header name for the remote user.
 #[cfg(feature = "sessions")]
@@ -124,26 +124,13 @@ impl<A: AuthBackend> RemoteUserMiddleware<A> {
 		self.auth_backend.get_user(username).await.ok().flatten()
 	}
 
-	/// Inserts user information into request extensions.
-	fn insert_user_extensions(request: &Request, user: &dyn AuthIdentity) {
-		let is_authenticated = user.is_authenticated();
-		let is_admin = user.is_admin();
-		let is_active = user.is_account_active();
-		let user_id = user.id();
-
-		// Insert individual values for backward compatibility
-		request.extensions.insert(user_id.clone());
-		request.extensions.insert(IsAuthenticated(is_authenticated));
-		request.extensions.insert(IsAdmin(is_admin));
-		request.extensions.insert(IsActive(is_active));
-
-		// Insert AuthState object
-		let auth_state = if is_authenticated {
-			AuthState::authenticated(user_id, is_admin, is_active)
+	/// Builds the authentication state for a resolved user.
+	fn user_auth_state(user: &dyn AuthIdentity) -> AuthState {
+		if user.is_authenticated() {
+			AuthState::authenticated(user.id(), user.is_admin(), user.is_account_active())
 		} else {
 			AuthState::anonymous()
-		};
-		request.extensions.insert(auth_state);
+		}
 	}
 }
 
@@ -158,14 +145,14 @@ impl<A: AuthBackend + 'static> Middleware for RemoteUserMiddleware<A> {
 			.map(|s| s.to_string());
 
 		if let Some(username) = remote_user {
-			if let Some(user) = self.get_user_by_name(&username).await {
-				Self::insert_user_extensions(&request, user.as_ref());
-			} else {
-				request.extensions.insert(AuthState::anonymous());
-			}
+			let auth_state = match self.get_user_by_name(&username).await {
+				Some(user) => Self::user_auth_state(user.as_ref()),
+				None => AuthState::anonymous(),
+			};
+			install_auth_state(&request.extensions, auth_state);
 		} else if self.force_logout_if_no_header {
 			// No header and force logout: set anonymous
-			request.extensions.insert(AuthState::anonymous());
+			install_auth_state(&request.extensions, AuthState::anonymous());
 		}
 		// If !force_logout_if_no_header and no header: don't touch
 		// extensions, preserve existing auth state from upstream middleware.
@@ -258,6 +245,10 @@ impl<A: AuthBackend + 'static> Middleware for PersistentRemoteUserMiddleware<A> 
 #[cfg(all(test, feature = "sessions"))]
 mod tests {
 	use super::*;
+	use crate::auth_extensions::test_support::{
+		AuthEntriesHandler, PRIOR_USER_ID, anonymous_entries, auth_entries, expected_entries,
+		seed_prior_principal,
+	};
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, Version};
 	use reinhardt_auth::AuthenticationError;
@@ -514,5 +505,87 @@ mod tests {
 		let body: serde_json::Value = serde_json::from_str(&body_str).unwrap();
 		assert_eq!(body["is_authenticated"], true);
 		assert_eq!(body["user_id"], expected_id);
+	}
+
+	fn remote_user_middleware(persistent: bool, user: Option<TestUser>) -> Arc<dyn Middleware> {
+		let auth_backend = Arc::new(TestAuthBackend { user });
+		if persistent {
+			Arc::new(PersistentRemoteUserMiddleware::new(auth_backend))
+		} else {
+			Arc::new(RemoteUserMiddleware::new(auth_backend))
+		}
+	}
+
+	#[rstest]
+	#[case::unknown_user(false, Some("unknown-user"))]
+	#[case::missing_header_forces_logout(false, None)]
+	#[case::persistent_unknown_user(true, Some("unknown-user"))]
+	#[tokio::test]
+	async fn test_auth_failure_clears_prior_legacy_principal(
+		#[case] persistent: bool,
+		#[case] remote_user: Option<&str>,
+	) {
+		// Arrange
+		let middleware = remote_user_middleware(persistent, None);
+		let request = match remote_user {
+			Some(username) => create_request_with_header("REMOTE_USER", username),
+			None => create_request_without_header(),
+		};
+		seed_prior_principal(&request);
+
+		// Act
+		let response = middleware
+			.process(request, Arc::new(AuthEntriesHandler))
+			.await
+			.unwrap();
+
+		// Assert
+		assert_eq!(auth_entries(&response), anonymous_entries());
+	}
+
+	#[rstest]
+	#[case::standard(false)]
+	#[case::persistent(true)]
+	#[tokio::test]
+	async fn test_known_user_replaces_prior_legacy_principal(#[case] persistent: bool) {
+		// Arrange
+		let user = test_user();
+		let expected_id = user.id.to_string();
+		let middleware = remote_user_middleware(persistent, Some(user));
+		let request = create_request_with_header("REMOTE_USER", "proxy-user");
+		seed_prior_principal(&request);
+
+		// Act
+		let response = middleware
+			.process(request, Arc::new(AuthEntriesHandler))
+			.await
+			.unwrap();
+
+		// Assert
+		assert_eq!(
+			auth_entries(&response),
+			expected_entries(&expected_id, true, false, true)
+		);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_persistent_middleware_preserves_prior_legacy_principal_when_no_header() {
+		// Arrange
+		let middleware = remote_user_middleware(true, Some(test_user()));
+		let request = create_request_without_header();
+		seed_prior_principal(&request);
+
+		// Act
+		let response = middleware
+			.process(request, Arc::new(AuthEntriesHandler))
+			.await
+			.unwrap();
+
+		// Assert
+		assert_eq!(
+			auth_entries(&response),
+			expected_entries(PRIOR_USER_ID, true, true, true)
+		);
 	}
 }
