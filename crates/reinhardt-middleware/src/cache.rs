@@ -11,7 +11,7 @@ use hyper::header::{AUTHORIZATION, CACHE_CONTROL, COOKIE, SET_COOKIE, VARY};
 use reinhardt_http::{AuthState, Handler, IsAuthenticated, Middleware, Request, Response, Result};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 
@@ -112,7 +112,64 @@ fn cache_control_forbids_shared_storage(value: &str) -> bool {
 #[derive(Debug, Default)]
 pub struct CacheStore {
 	/// Entries
-	entries: RwLock<HashMap<String, CacheEntry>>,
+	entries: RwLock<CacheEntries>,
+}
+
+/// Cached entries plus their insertion order.
+///
+/// The order index lets a capacity-bounded insertion find the oldest entry
+/// without scanning every key under the write lock.
+#[derive(Debug, Default)]
+struct CacheEntries {
+	/// Entries by cache key, tagged with their insertion sequence
+	by_key: HashMap<String, (u64, CacheEntry)>,
+	/// Cache keys by insertion sequence, oldest first
+	by_age: BTreeMap<u64, String>,
+	/// Sequence assigned to the next inserted entry
+	next_sequence: u64,
+}
+
+impl CacheEntries {
+	/// Insert an entry as the newest one.
+	///
+	/// With `max_entries`, the oldest entries are evicted first so the store
+	/// never holds more than `max_entries` entries afterwards.
+	fn insert(&mut self, key: String, entry: CacheEntry, max_entries: Option<usize>) {
+		self.remove(&key);
+
+		if let Some(max_entries) = max_entries {
+			while self.by_key.len() >= max_entries
+				&& let Some((_, oldest)) = self.by_age.pop_first()
+			{
+				self.by_key.remove(&oldest);
+			}
+			if max_entries == 0 {
+				return;
+			}
+		}
+
+		let sequence = self.next_sequence;
+		self.next_sequence += 1;
+		self.by_age.insert(sequence, key.clone());
+		self.by_key.insert(key, (sequence, entry));
+	}
+
+	fn remove(&mut self, key: &str) {
+		if let Some((sequence, _)) = self.by_key.remove(key) {
+			self.by_age.remove(&sequence);
+		}
+	}
+
+	fn remove_expired(&mut self) {
+		self.by_key.retain(|_, (_, entry)| !entry.is_expired());
+		let by_key = &self.by_key;
+		self.by_age.retain(|_, key| by_key.contains_key(key));
+	}
+
+	fn clear(&mut self) {
+		self.by_key.clear();
+		self.by_age.clear();
+	}
 }
 
 impl CacheStore {
@@ -124,13 +181,24 @@ impl CacheStore {
 	/// Get an entry
 	pub fn get(&self, key: &str) -> Option<CacheEntry> {
 		let entries = self.entries.read().unwrap_or_else(|e| e.into_inner());
-		entries.get(key).cloned()
+		entries.by_key.get(key).map(|(_, entry)| entry.clone())
 	}
 
 	/// Set an entry
+	///
+	/// The store does not limit its own size. [`CacheMiddleware`] applies
+	/// [`CacheConfig::max_entries`] when it stores responses.
 	pub fn set(&self, key: String, entry: CacheEntry) {
+		self.set_bounded(key, entry, None);
+	}
+
+	/// Set an entry, evicting the oldest entries to stay within `max_entries`.
+	///
+	/// Eviction and insertion share one write lock, so concurrent writers
+	/// cannot push the store past the limit between the two steps.
+	fn set_bounded(&self, key: String, entry: CacheEntry, max_entries: Option<usize>) {
 		let mut entries = self.entries.write().unwrap_or_else(|e| e.into_inner());
-		entries.insert(key, entry);
+		entries.insert(key, entry, max_entries);
 	}
 
 	/// Delete an entry
@@ -142,7 +210,7 @@ impl CacheStore {
 	/// Clean up expired entries
 	pub fn cleanup(&self) {
 		let mut entries = self.entries.write().unwrap_or_else(|e| e.into_inner());
-		entries.retain(|_, entry| !entry.is_expired());
+		entries.remove_expired();
 	}
 
 	/// Clear the store
@@ -154,13 +222,13 @@ impl CacheStore {
 	/// Get the number of entries
 	pub fn len(&self) -> usize {
 		let entries = self.entries.read().unwrap_or_else(|e| e.into_inner());
-		entries.len()
+		entries.by_key.len()
 	}
 
 	/// Check if the store is empty
 	pub fn is_empty(&self) -> bool {
 		let entries = self.entries.read().unwrap_or_else(|e| e.into_inner());
-		entries.is_empty()
+		entries.by_key.is_empty()
 	}
 }
 
@@ -191,7 +259,11 @@ pub struct CacheConfig {
 	pub cacheable_status_codes: Vec<u16>,
 	/// Paths to exclude
 	pub exclude_paths: Vec<String>,
-	/// Maximum cache size
+	/// Maximum number of cached responses
+	///
+	/// Storing a response into a full cache evicts the oldest entries first,
+	/// so distinct live cache keys never exceed this limit. `Some(0)` disables
+	/// storage and `None` leaves the cache unbounded.
 	pub max_entries: Option<usize>,
 }
 
@@ -521,14 +593,8 @@ impl Middleware for CacheMiddleware {
 			&& self.is_shareable_response(&response)
 		{
 			let entry = CacheEntry::new(&response, self.config.default_ttl);
-			self.store.set(cache_key, entry);
-
-			// Clean up expired entries if max entries exceeded
-			if let Some(max_entries) = self.config.max_entries
-				&& self.store.len() > max_entries
-			{
-				self.store.cleanup();
-			}
+			self.store
+				.set_bounded(cache_key, entry, self.config.max_entries);
 		}
 
 		// Add X-Cache header
@@ -1015,6 +1081,164 @@ mod tests {
 
 		assert_eq!(store.len(), 0);
 		assert!(store.is_empty());
+	}
+
+	fn get_request(path: &str) -> Request {
+		Request::builder()
+			.method(Method::GET)
+			.uri(path)
+			.version(Version::HTTP_11)
+			.headers(HeaderMap::new())
+			.body(Bytes::new())
+			.build()
+			.unwrap()
+	}
+
+	fn fresh_entry() -> CacheEntry {
+		CacheEntry::new(&Response::new(StatusCode::OK), Duration::from_secs(60))
+	}
+
+	fn index_len(store: &CacheStore) -> usize {
+		store.entries.read().unwrap().by_age.len()
+	}
+
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn max_entries_bounds_live_distinct_cache_keys() {
+		// Arrange
+		let config = CacheConfig::new(Duration::from_secs(60), CacheKeyStrategy::UrlOnly)
+			.with_max_entries(3);
+		let middleware = CacheMiddleware::new(config);
+		let handler = Arc::new(TestHandler::new(StatusCode::OK));
+
+		// Act
+		for i in 0..5 {
+			let request = get_request(&format!("/item/{i}"));
+			middleware.process(request, handler.clone()).await.unwrap();
+		}
+
+		// Assert
+		assert_eq!(middleware.store().len(), 3);
+		for i in [4, 3, 2] {
+			let request = get_request(&format!("/item/{i}"));
+			let response = middleware.process(request, handler.clone()).await.unwrap();
+			assert_eq!(response.headers.get("x-cache").unwrap(), "HIT");
+		}
+		assert_eq!(handler.get_call_count(), 5);
+		let response = middleware
+			.process(get_request("/item/0"), handler.clone())
+			.await
+			.unwrap();
+		assert_eq!(response.headers.get("x-cache").unwrap(), "MISS");
+		assert_eq!(handler.get_call_count(), 6);
+		assert_eq!(middleware.store().len(), 3);
+	}
+
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn zero_max_entries_never_stores_responses() {
+		// Arrange
+		let config = CacheConfig::new(Duration::from_secs(60), CacheKeyStrategy::UrlOnly)
+			.with_max_entries(0);
+		let middleware = CacheMiddleware::new(config);
+		let handler = Arc::new(TestHandler::new(StatusCode::OK));
+
+		// Act
+		let responses = [
+			middleware
+				.process(get_request("/item"), handler.clone())
+				.await
+				.unwrap(),
+			middleware
+				.process(get_request("/item"), handler.clone())
+				.await
+				.unwrap(),
+		];
+
+		// Assert
+		for response in responses {
+			assert_eq!(response.headers.get("x-cache").unwrap(), "MISS");
+		}
+		assert_eq!(handler.get_call_count(), 2);
+		assert!(middleware.store().is_empty());
+	}
+
+	#[rstest::rstest]
+	fn bounded_set_replacing_a_key_refreshes_its_age() {
+		// Arrange
+		let store = CacheStore::new();
+		store.set_bounded("a".to_string(), fresh_entry(), Some(2));
+		store.set_bounded("b".to_string(), fresh_entry(), Some(2));
+
+		// Act
+		store.set_bounded("a".to_string(), fresh_entry(), Some(2));
+		let len_after_replace = store.len();
+		store.set_bounded("c".to_string(), fresh_entry(), Some(2));
+
+		// Assert
+		assert_eq!(len_after_replace, 2);
+		assert!(store.get("a").is_some());
+		assert!(store.get("b").is_none());
+		assert!(store.get("c").is_some());
+		assert_eq!(store.len(), 2);
+	}
+
+	#[rstest::rstest]
+	fn bounded_set_trims_a_store_filled_past_the_limit() {
+		// Arrange
+		let store = CacheStore::new();
+		for key in ["a", "b", "c", "d"] {
+			store.set(key.to_string(), fresh_entry());
+		}
+
+		// Act
+		store.set_bounded("e".to_string(), fresh_entry(), Some(2));
+
+		// Assert
+		assert_eq!(store.len(), 2);
+		assert!(store.get("d").is_some());
+		assert!(store.get("e").is_some());
+	}
+
+	#[rstest::rstest]
+	fn unbounded_set_keeps_every_entry() {
+		// Arrange
+		let store = CacheStore::new();
+
+		// Act
+		for i in 0..5 {
+			store.set(format!("key{i}"), fresh_entry());
+		}
+
+		// Assert
+		assert_eq!(store.len(), 5);
+		assert_eq!(index_len(&store), 5);
+	}
+
+	#[rstest::rstest]
+	fn age_index_tracks_entries_through_every_mutation() {
+		// Arrange
+		let store = CacheStore::new();
+		let mut expired = fresh_entry();
+		expired.cached_at = Some(Instant::now() - Duration::from_secs(120));
+
+		// Act & Assert
+		for _ in 0..3 {
+			store.set("replaced".to_string(), fresh_entry());
+		}
+		assert_eq!((store.len(), index_len(&store)), (1, 1));
+
+		store.set("expired".to_string(), expired);
+		store.set("deleted".to_string(), fresh_entry());
+		store.delete("deleted");
+		assert_eq!((store.len(), index_len(&store)), (2, 2));
+
+		store.cleanup();
+		assert_eq!((store.len(), index_len(&store)), (1, 1));
+		assert!(store.get("replaced").is_some());
+
+		store.clear();
+		assert_eq!((store.len(), index_len(&store)), (0, 0));
 	}
 
 	#[tokio::test]
