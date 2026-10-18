@@ -240,7 +240,7 @@ impl Expression {
 			Self::Multiply(left, right) => Self::grouped(value(left).mul(value(right))).into(),
 			Self::Divide(left, right) => Self::grouped(value(left).div(value(right))).into(),
 			Self::Case { whens, default } => {
-				// Preserve CASE's scalar result grammar while recursively lowering expressions.
+				// Conditions and runtime text bind; typed constant results stay inline.
 				let value = Self::value_to_query_expr;
 				let mut case = Expr::case();
 				for when in whens {
@@ -261,6 +261,14 @@ impl Expression {
 	fn value_to_query_expr(value: &AnnotationValue) -> Expr {
 		match value {
 			AnnotationValue::Expression(expression) => expression.to_query_expr(),
+			// Runtime text is bound; typed constants keep the inline result grammar.
+			AnnotationValue::Value(Value::String(text)) => Expr::val(text.clone()),
+			// Field references are backend-quoted columns, as everywhere else in
+			// the lowering. `F::to_sql` emits ANSI double quotes, which MySQL
+			// without `ANSI_QUOTES` reads as a string literal.
+			AnnotationValue::Field(field) => {
+				Expr::col(super::query::parse_column_reference(&field.field))
+			}
 			_ => Expr::cust(value.to_sql()),
 		}
 	}
@@ -268,8 +276,17 @@ impl Expression {
 	fn condition_to_query_expr(condition: &Q) -> SimpleExpr {
 		use crate::orm::expressions::QOperator;
 		match condition {
-			// Keep the established scalar grammar and explicit raw-SQL boundary.
-			Q::Condition { .. } => Self::grouped(Expr::cust(condition.to_sql())),
+			// Only the explicit raw-SQL form (`Q::from_raw_sql`) keeps its SQL text.
+			Q::Condition {
+				field,
+				operator,
+				value,
+			} if field.is_empty() && operator.is_empty() => Self::grouped(Expr::cust(value.clone())),
+			Q::Condition {
+				field,
+				operator,
+				value,
+			} => Self::grouped(Self::comparison_to_query_expr(field, operator, value)),
 			Q::Combined {
 				operator,
 				conditions,
@@ -292,6 +309,105 @@ impl Expression {
 				}
 			}
 		}
+	}
+
+	/// Lower one `Q::new` comparison with the closed operator grammar of `Q::to_sql`.
+	///
+	/// The field becomes a backend-quoted column and every runtime operand a
+	/// bound value, so backend string-escape rules never apply to request data.
+	/// Unknown fields and operators evaluate to `FALSE`, as in `Q::to_sql`.
+	fn comparison_to_query_expr(field: &str, operator: &str, value: &str) -> SimpleExpr {
+		let Some(left) = Self::condition_field_to_query_expr(field) else {
+			return Expr::constant_false().into_simple_expr();
+		};
+		let operand = || Self::condition_value_to_query_expr(value);
+		match operator.to_ascii_uppercase().as_str() {
+			"=" => left.eq(operand()),
+			"!=" | "<>" => left.ne(operand()),
+			">" => left.gt(operand()),
+			">=" => left.gte(operand()),
+			"<" => left.lt(operand()),
+			"<=" => left.lte(operand()),
+			"LIKE" => left.like(operand()),
+			"IS NULL" => left.is_null(),
+			"IS NOT NULL" => left.is_not_null(),
+			membership @ ("IN" | "NOT IN") => {
+				let values = value
+					.trim()
+					.trim_start_matches('(')
+					.trim_end_matches(')')
+					.split(',')
+					.map(Self::condition_value_to_query_expr);
+				if membership == "IN" {
+					left.is_in(values)
+				} else {
+					left.is_not_in(values)
+				}
+			}
+			_ => Expr::constant_false().into_simple_expr(),
+		}
+	}
+
+	/// Accept the identifiers and aggregate forms that `Q::to_sql` accepts.
+	fn condition_field_to_query_expr(field: &str) -> Option<SimpleExpr> {
+		let column = |field: &str| {
+			let valid = !field.is_empty()
+				&& field.split('.').all(|part| {
+					!part.is_empty()
+						&& part
+							.chars()
+							.all(|character| character.is_ascii_alphanumeric() || character == '_')
+				});
+			valid.then(|| Expr::col(super::query::parse_column_reference(field)).into_simple_expr())
+		};
+		for function in ["COUNT", "SUM", "AVG", "MAX", "MIN"] {
+			let Some(argument) = field
+				.strip_prefix(function)
+				.and_then(|suffix| suffix.strip_prefix('('))
+				.and_then(|suffix| suffix.strip_suffix(')'))
+			else {
+				continue;
+			};
+			let argument = if argument == "*" {
+				Expr::asterisk().into_simple_expr()
+			} else {
+				column(argument)?
+			};
+			return Some(match function {
+				"COUNT" => Func::count(argument),
+				"SUM" => Func::sum(argument),
+				"AVG" => Func::avg(argument),
+				"MAX" => Func::max(argument),
+				"MIN" => Func::min(argument),
+				_ => unreachable!("closed aggregate function list"),
+			});
+		}
+		column(field)
+	}
+
+	/// Type a legacy `Q` scalar the way `Q::to_sql` classifies it, then bind it.
+	fn condition_value_to_query_expr(value: &str) -> SimpleExpr {
+		let value = value.trim();
+		if value.eq_ignore_ascii_case("NULL") {
+			return Expr::null().into_simple_expr();
+		}
+		if value.eq_ignore_ascii_case("TRUE") || value.eq_ignore_ascii_case("FALSE") {
+			return Expr::val(value.eq_ignore_ascii_case("TRUE")).into_simple_expr();
+		}
+		if let Ok(number) = value.parse::<i64>() {
+			return Expr::val(number).into_simple_expr();
+		}
+		// Other numeric literals stay exact decimals instead of lossy floats.
+		if let Ok(number) = value.parse() {
+			return Expr::val(reinhardt_query::Value::BigDecimal(Some(Box::new(number))))
+				.into_simple_expr();
+		}
+		// Optional outer quotes delimit the data; inner quotes are part of the value.
+		let value = value
+			.strip_prefix('\'')
+			.and_then(|value| value.strip_suffix('\''))
+			.unwrap_or(value);
+		Expr::val(value.to_owned()).into_simple_expr()
 	}
 
 	fn grouped(expression: impl Into<SimpleExpr>) -> SimpleExpr {
@@ -450,6 +566,93 @@ mod tests {
 		assert_eq!(
 			ann.to_sql(),
 			"(\"total_sales\" / \"num_orders\") AS \"avg_order_value\""
+		);
+	}
+
+	fn render_conditions(conditions: &[Q]) -> (String, reinhardt_query::prelude::Values) {
+		use reinhardt_query::prelude::{PostgresQueryBuilder, Query, QueryStatementBuilder};
+
+		let mut statement = Query::select();
+		for condition in conditions {
+			statement.expr(Expression::condition_to_query_expr(condition));
+		}
+		statement.build(PostgresQueryBuilder)
+	}
+
+	#[rstest::rstest]
+	fn case_condition_operands_keep_q_scalar_classification() {
+		use reinhardt_query::prelude::Values;
+
+		// Arrange: quoted NULL stays text, numbers stay exact, and list items bind singly.
+		let decimal = "9007199254740993.000000000001";
+		let integer = "18446744073709551615";
+		let conditions = [
+			Q::new("username", "=", "'NULL'"),
+			Q::new("id", "=", "NULL"),
+			Q::new("id", "IS NULL", "ignored"),
+			Q::new("enabled", "=", "false"),
+			Q::new("id", ">", decimal),
+			Q::new("id", "<", integer),
+			Q::new("username", "IN", "('text', '42', NULL, 5)"),
+			Q::new("username", "like", "'a%'"),
+		];
+
+		// Act
+		let (sql, values) = render_conditions(&conditions);
+
+		// Assert
+		assert_eq!(
+			sql,
+			"SELECT (\"username\" = $1), (\"id\" = NULL), (\"id\" IS NULL), (\"enabled\" = $2), (\"id\" > $3), (\"id\" < $4), (\"username\" IN ($5, $6, NULL, $7)), (\"username\" LIKE $8)"
+		);
+		assert_eq!(
+			values,
+			Values(vec![
+				"NULL".into(),
+				false.into(),
+				reinhardt_query::Value::BigDecimal(Some(Box::new(decimal.parse().unwrap()))),
+				reinhardt_query::Value::BigDecimal(Some(Box::new(integer.parse().unwrap()))),
+				"text".into(),
+				"42".into(),
+				5_i64.into(),
+				"a%".into(),
+			])
+		);
+	}
+
+	#[rstest::rstest]
+	fn case_conditions_keep_closed_grammar_and_explicit_raw_boundary() {
+		use reinhardt_query::prelude::Values;
+
+		// Arrange: invalid structure fails closed; only `Q::from_raw_sql` stays raw SQL.
+		let conditions = [
+			Q::new("id; DROP TABLE test_users", "=", "1"),
+			Q::new("id", "OR 1=1", "1"),
+			Q::new("COUNT(*)", ">", "0"),
+			Q::new("SUM(price)", ">=", "10"),
+			Q::new("SUM(price) OR 1", ">=", "10"),
+			Q::new("users.id", "!=", "7"),
+			Q::new("id", "NOT IN", "(1, 2)"),
+			Q::from_raw_sql("trusted_function()"),
+		];
+
+		// Act
+		let (sql, values) = render_conditions(&conditions);
+
+		// Assert
+		assert_eq!(
+			sql,
+			"SELECT (FALSE), (FALSE), (COUNT(*) > $1), (SUM(\"price\") >= $2), (FALSE), (\"users\".\"id\" <> $3), (\"id\" NOT IN ($4, $5)), (trusted_function())"
+		);
+		assert_eq!(
+			values,
+			Values(vec![
+				0_i64.into(),
+				10_i64.into(),
+				7_i64.into(),
+				1_i64.into(),
+				2_i64.into(),
+			])
 		);
 	}
 }
