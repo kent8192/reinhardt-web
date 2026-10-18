@@ -8,6 +8,7 @@
 //! Some host functions require specific capabilities:
 //! - HTTP functions: Require `NetworkAccess` capability
 //! - Database functions: Require `DatabaseAccess` capability
+//! - Event functions: Require `Signals` capability
 //! - SSR rendering: Requires `Verified` or `Trusted` trust level
 //! - JavaScript execution: Requires `Trusted` trust level only
 //!
@@ -1048,10 +1049,33 @@ impl HostState {
 	}
 
 	// ===== Event Bus API =====
+	//
+	// The public methods below act on the event bus as this plugin without
+	// checking its grants, like `event_bus()`. Plugin-originated calls arrive
+	// through the WIT `events` interface, which first requires `Signals`.
 
 	/// Get a reference to the shared event bus.
 	pub fn event_bus(&self) -> &SharedEventBus {
 		&self.event_bus
+	}
+
+	/// Check if event bus access is allowed.
+	fn has_signals_capability(&self) -> bool {
+		use crate::capability::PluginCapability;
+		self.capabilities
+			.contains(&Capability::Core(PluginCapability::Signals))
+	}
+
+	/// Reject a plugin event host call unless `Signals` is granted.
+	///
+	/// Every WIT `events` call runs this before touching the event bus, so a
+	/// plugin without the grant cannot emit, subscribe, unsubscribe, or poll,
+	/// and cannot tell whether a subscription ID exists.
+	fn authorize_event_call(&self) -> Result<(), WitPluginError> {
+		if !self.has_signals_capability() {
+			return Err(WitPluginError::new(403, "Event access not permitted"));
+		}
+		Ok(())
 	}
 
 	/// Emit an event to all matching subscribers.
@@ -1768,6 +1792,9 @@ impl crate::wasm::runtime::reinhardt::dentdelion::events::Host for HostState {
 		name: String,
 		payload: Vec<u8>,
 	) -> wasmtime::Result<Result<(), GeneratedPluginError>> {
+		if let Err(e) = self.authorize_event_call() {
+			return Ok(Err(to_generated_error(e)));
+		}
 		match self.try_emit_event(&name, payload) {
 			Ok(_delivered) => Ok(Ok(())),
 			Err(e) => Ok(Err(to_generated_error(WitPluginError::new(
@@ -1781,6 +1808,9 @@ impl crate::wasm::runtime::reinhardt::dentdelion::events::Host for HostState {
 		&mut self,
 		pattern: String,
 	) -> wasmtime::Result<Result<u64, GeneratedPluginError>> {
+		if let Err(e) = self.authorize_event_call() {
+			return Ok(Err(to_generated_error(e)));
+		}
 		match self.subscribe_events(&pattern) {
 			Ok(subscription_id) => Ok(Ok(subscription_id)),
 			Err(e) => Ok(Err(to_generated_error(WitPluginError::new(
@@ -1791,6 +1821,9 @@ impl crate::wasm::runtime::reinhardt::dentdelion::events::Host for HostState {
 	}
 
 	async fn unsubscribe(&mut self, id: u64) -> wasmtime::Result<Result<(), GeneratedPluginError>> {
+		if let Err(e) = self.authorize_event_call() {
+			return Ok(Err(to_generated_error(e)));
+		}
 		let removed = self.unsubscribe_events(id);
 		if removed {
 			Ok(Ok(()))
@@ -1803,6 +1836,11 @@ impl crate::wasm::runtime::reinhardt::dentdelion::events::Host for HostState {
 	}
 
 	async fn poll_events(&mut self, id: u64, limit: u32) -> wasmtime::Result<Vec<GeneratedEvent>> {
+		// `poll-events` has no error channel in the WIT ABI, so a denied call
+		// returns an empty list and leaves the queue untouched.
+		if self.authorize_event_call().is_err() {
+			return Ok(Vec::new());
+		}
 		let events = self.poll_pending_events(id, limit as usize);
 		Ok(events.into_iter().map(to_generated_event).collect())
 	}
@@ -2124,6 +2162,23 @@ mod tests {
 		Arc::new(EventBus::new().with_byte_limits(limits))
 	}
 
+	/// Capability that authorizes the WIT `events` interface.
+	fn signals_grant() -> Capability {
+		Capability::Core(crate::capability::PluginCapability::Signals)
+	}
+
+	/// Host state for `name` on `event_bus` holding exactly `capabilities`.
+	fn event_plugin(
+		name: &str,
+		event_bus: &SharedEventBus,
+		capabilities: impl IntoIterator<Item = Capability>,
+	) -> HostState {
+		HostStateBuilder::new(name)
+			.event_bus(event_bus.clone())
+			.capabilities(capabilities)
+			.build()
+	}
+
 	#[cfg(feature = "wasm")]
 	#[tokio::test]
 	async fn wit_emit_rejects_payload_over_event_bus_limit() {
@@ -2134,9 +2189,7 @@ mod tests {
 		let consumer = HostStateBuilder::new("consumer")
 			.event_bus(event_bus.clone())
 			.build();
-		let mut producer = HostStateBuilder::new("producer")
-			.event_bus(event_bus.clone())
-			.build();
+		let mut producer = event_plugin("producer", &event_bus, [signals_grant()]);
 		let sub_ids: Vec<u64> = (0..3)
 			.map(|_| consumer.subscribe_events("*").unwrap())
 			.collect();
@@ -2169,9 +2222,7 @@ mod tests {
 		let consumer = HostStateBuilder::new("consumer")
 			.event_bus(event_bus.clone())
 			.build();
-		let mut producer = HostStateBuilder::new("producer")
-			.event_bus(event_bus.clone())
-			.build();
+		let mut producer = event_plugin("producer", &event_bus, [signals_grant()]);
 		let sub_id = consumer.subscribe_events("*").unwrap();
 		let name = "e".repeat(event_bus.byte_limits().max_name_bytes + 1);
 
@@ -2195,12 +2246,8 @@ mod tests {
 
 		// Arrange
 		let event_bus = event_bus_with_payload_limit(16);
-		let mut consumer = HostStateBuilder::new("consumer")
-			.event_bus(event_bus.clone())
-			.build();
-		let mut producer = HostStateBuilder::new("producer")
-			.event_bus(event_bus.clone())
-			.build();
+		let mut consumer = event_plugin("consumer", &event_bus, [signals_grant()]);
+		let mut producer = event_plugin("producer", &event_bus, [signals_grant()]);
 		let sub_ids: Vec<u64> = (0..3)
 			.map(|_| consumer.subscribe_events("user.*").unwrap())
 			.collect();
@@ -2222,6 +2269,152 @@ mod tests {
 			assert_eq!(events[0].source, "producer");
 		}
 		assert_eq!(event_bus.total_pending_bytes(), 0);
+	}
+
+	/// WIT `events` calls require the `Signals` grant (GHSA-gcxp-frpr-r8qm).
+	///
+	/// Each denial case uses a plugin that holds no grant, an unrelated grant,
+	/// or `SignalReceivers`, which is a separate capability and does not stand
+	/// in for `Signals`.
+	#[cfg(feature = "wasm")]
+	mod event_grants {
+		use super::*;
+		use crate::capability::PluginCapability;
+		use crate::wasm::runtime::reinhardt::dentdelion::events::Host;
+		use rstest::rstest;
+
+		#[rstest]
+		#[case::no_grant(None)]
+		#[case::network_access(Some(PluginCapability::NetworkAccess))]
+		#[case::signal_receivers(Some(PluginCapability::SignalReceivers))]
+		#[tokio::test]
+		async fn emit_without_signals_is_denied(#[case] grant: Option<PluginCapability>) {
+			// Arrange
+			let event_bus: SharedEventBus = Arc::new(EventBus::new());
+			let consumer = event_plugin("consumer", &event_bus, [signals_grant()]);
+			let sub_id = consumer.subscribe_events("*").unwrap();
+			let mut intruder = event_plugin("intruder", &event_bus, grant.map(Capability::Core));
+
+			// Act
+			let result = Host::emit(&mut intruder, "user.created".to_string(), vec![1, 2, 3])
+				.await
+				.expect("host adapter should return a plugin result");
+
+			// Assert
+			assert_eq!(
+				result
+					.expect_err("emit without Signals should be denied")
+					.code,
+				403
+			);
+			assert_eq!(event_bus.pending_count(sub_id), 0);
+			assert_eq!(event_bus.total_pending_bytes(), 0);
+		}
+
+		#[rstest]
+		#[case::no_grant(None)]
+		#[case::network_access(Some(PluginCapability::NetworkAccess))]
+		#[case::signal_receivers(Some(PluginCapability::SignalReceivers))]
+		#[tokio::test]
+		async fn subscribe_without_signals_is_denied(#[case] grant: Option<PluginCapability>) {
+			// Arrange
+			let event_bus: SharedEventBus = Arc::new(EventBus::new());
+			let mut intruder = event_plugin("intruder", &event_bus, grant.map(Capability::Core));
+
+			// Act
+			let result = Host::subscribe(&mut intruder, "*".to_string())
+				.await
+				.expect("host adapter should return a plugin result");
+
+			// Assert
+			assert_eq!(
+				result
+					.expect_err("subscribe without Signals should be denied")
+					.code,
+				403
+			);
+			assert_eq!(event_bus.subscription_count(), 0);
+		}
+
+		// The subscription is created through the host-side API and owned by
+		// the intruder, so only the missing grant can explain the denial.
+		#[rstest]
+		#[case::no_grant(None)]
+		#[case::network_access(Some(PluginCapability::NetworkAccess))]
+		#[case::signal_receivers(Some(PluginCapability::SignalReceivers))]
+		#[tokio::test]
+		async fn poll_without_signals_returns_nothing_and_keeps_queue(
+			#[case] grant: Option<PluginCapability>,
+		) {
+			// Arrange
+			let event_bus: SharedEventBus = Arc::new(EventBus::new());
+			let mut intruder = event_plugin("intruder", &event_bus, grant.map(Capability::Core));
+			let sub_id = intruder.subscribe_events("user.*").unwrap();
+			let mut producer = event_plugin("producer", &event_bus, [signals_grant()]);
+			Host::emit(&mut producer, "user.created".to_string(), vec![1, 2, 3])
+				.await
+				.expect("host adapter should return a plugin result")
+				.expect("granted producer should emit");
+
+			// Act
+			let events = Host::poll_events(&mut intruder, sub_id, 10)
+				.await
+				.expect("host adapter should return polled events");
+
+			// Assert
+			assert!(events.is_empty());
+			assert_eq!(event_bus.pending_count(sub_id), 1);
+		}
+
+		// As above, the intruder owns the subscription it tries to remove.
+		#[rstest]
+		#[case::no_grant(None)]
+		#[case::network_access(Some(PluginCapability::NetworkAccess))]
+		#[case::signal_receivers(Some(PluginCapability::SignalReceivers))]
+		#[tokio::test]
+		async fn unsubscribe_without_signals_is_denied(#[case] grant: Option<PluginCapability>) {
+			// Arrange
+			let event_bus: SharedEventBus = Arc::new(EventBus::new());
+			let mut intruder = event_plugin("intruder", &event_bus, grant.map(Capability::Core));
+			let sub_id = intruder.subscribe_events("*").unwrap();
+
+			// Act
+			let result = Host::unsubscribe(&mut intruder, sub_id)
+				.await
+				.expect("host adapter should return a plugin result");
+
+			// Assert
+			assert_eq!(
+				result
+					.expect_err("unsubscribe without Signals should be denied")
+					.code,
+				403
+			);
+			assert!(event_bus.has_subscription(sub_id));
+		}
+
+		#[rstest]
+		#[tokio::test]
+		async fn signals_grant_allows_subscribe_and_unsubscribe() {
+			// Arrange
+			let event_bus: SharedEventBus = Arc::new(EventBus::new());
+			let mut plugin = event_plugin("plugin", &event_bus, [signals_grant()]);
+
+			// Act
+			let sub_id = Host::subscribe(&mut plugin, "*".to_string())
+				.await
+				.expect("host adapter should return a plugin result")
+				.expect("Signals grant should allow subscribe");
+			let subscribed = event_bus.has_subscription(sub_id);
+			let result = Host::unsubscribe(&mut plugin, sub_id)
+				.await
+				.expect("host adapter should return a plugin result");
+
+			// Assert
+			assert!(subscribed);
+			assert!(result.is_ok());
+			assert!(!event_bus.has_subscription(sub_id));
+		}
 	}
 
 	#[test]

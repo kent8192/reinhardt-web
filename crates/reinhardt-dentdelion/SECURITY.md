@@ -55,6 +55,12 @@ malicious. A plugin's requested capabilities do not establish trust.
 	the caller's output-encoding and response-security rules and cannot gain
 	ambient server privileges through rendering context or serialization. Both
 	direct and WIT host calls pass through the same plugin trust check.
+- Plugin event access is a capability grant. Every WIT `events` call (`emit`,
+  `subscribe`, `unsubscribe`, `poll-events`) checks the `Signals` grant before
+  it touches the event bus; a denied poll returns no events and leaves the
+  queue intact. `SignalReceivers` does not substitute for `Signals`. The public
+  `HostState` event methods act for the plugin without this check and are for
+  trusted host code only.
 - Registry entries, lifecycle state, and event delivery must be isolated by
   plugin identity. Host integrations must carry the authenticated owner into
   poll and unsubscribe operations; the current `HostState` forwards only the
