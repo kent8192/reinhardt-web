@@ -12,6 +12,15 @@ use quick_xml::events::{Event, attributes::Attributes};
 use quick_xml::{Reader, XmlVersion};
 use serde_json::{Map, Value, json};
 
+/// Maximum element nesting depth accepted by [`XMLParser`].
+///
+/// The parser walks the document iteratively, but the value it builds nests
+/// one level per element, and dropping, cloning or serializing a
+/// `serde_json::Value` recurses once per level. Each element costs only a few
+/// bytes on the wire, so the body size limit alone does not bound that
+/// recursion. The value matches the nesting limit of `ProtobufParser`.
+const MAX_NESTING_DEPTH: usize = 64;
+
 /// XML parser configuration
 #[derive(Debug, Clone)]
 pub struct XmlParserConfig {
@@ -156,6 +165,14 @@ impl XmlParserConfigBuilder {
 
 /// XML parser for request bodies
 ///
+/// # Nesting Limit
+///
+/// Elements may nest at most 64 levels deep, counting the root element as the
+/// first level. A deeper document is rejected with [`Error::Validation`] as
+/// soon as its first over-deep start tag or empty-element tag is read,
+/// because traversing and dropping the generated value recurses once per
+/// level.
+///
 /// # Examples
 ///
 /// ```
@@ -213,6 +230,9 @@ impl XMLParser {
 		loop {
 			match reader.read_event() {
 				Ok(Event::Start(e)) => {
+					// Check before doing any work on the element: the
+					// generated value nests one level per open element.
+					Self::check_nesting_depth(stack.len())?;
 					let name = String::from_utf8_lossy(e.name().as_ref()).to_string();
 					let mut obj = Map::new();
 
@@ -271,6 +291,9 @@ impl XMLParser {
 				}
 
 				Ok(Event::Empty(e)) => {
+					// Check before doing any work on the element: the
+					// generated value nests one level per open element.
+					Self::check_nesting_depth(stack.len())?;
 					let name = String::from_utf8_lossy(e.name().as_ref()).to_string();
 					let mut obj = Map::new();
 
@@ -309,6 +332,17 @@ impl XMLParser {
 		}
 
 		Ok(Value::Null)
+	}
+
+	/// Fails when an element opened inside `open_elements` enclosing elements
+	/// would nest deeper than [`MAX_NESTING_DEPTH`].
+	fn check_nesting_depth(open_elements: usize) -> ParseResult<()> {
+		if open_elements >= MAX_NESTING_DEPTH {
+			return Err(Error::Validation(format!(
+				"XML element nesting exceeds the maximum depth of {MAX_NESTING_DEPTH}"
+			)));
+		}
+		Ok(())
 	}
 
 	/// Process XML attributes
@@ -402,6 +436,23 @@ impl Parser for XMLParser {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
+
+	/// Builds a document of `levels` nested `<a>` elements whose innermost
+	/// element holds the text `x`.
+	fn nested_elements(levels: usize) -> Bytes {
+		Bytes::from(format!(
+			"{}x{}",
+			"<a>".repeat(levels),
+			"</a>".repeat(levels)
+		))
+	}
+
+	/// Builds a document of `open` nested `<a>` elements around an empty `<x/>`
+	/// element, which therefore sits at depth `open + 1`.
+	fn nested_empty_element(open: usize) -> Bytes {
+		Bytes::from(format!("{}<x/>{}", "<a>".repeat(open), "</a>".repeat(open)))
+	}
 
 	#[tokio::test]
 	async fn test_xml_parser_simple() {
@@ -649,5 +700,69 @@ mod tests {
 		// Note: quick-xml may be lenient with some errors
 		// This test ensures we handle malformed XML gracefully
 		let _ = result;
+	}
+
+	#[rstest]
+	#[case::single_level(1)]
+	#[case::at_limit(64)]
+	#[tokio::test]
+	async fn test_xml_parser_accepts_nesting_within_depth_limit(#[case] levels: usize) {
+		// Arrange
+		let parser = XMLParser::new();
+		let body = nested_elements(levels);
+		let headers = HeaderMap::new();
+
+		// Act
+		let result = parser.parse(Some("application/xml"), body, &headers).await;
+
+		// Assert
+		let ParsedData::Xml(value) = result.expect("nesting within the limit must parse") else {
+			panic!("Expected XML variant");
+		};
+		let innermost_text = format!("{}/#text", "/a".repeat(levels));
+		assert_eq!(value.pointer(&innermost_text), Some(&json!("x")));
+	}
+
+	#[tokio::test]
+	async fn test_xml_parser_accepts_empty_element_at_depth_limit() {
+		// Arrange
+		let parser = XMLParser::new();
+		let body = nested_empty_element(63);
+		let headers = HeaderMap::new();
+
+		// Act
+		let result = parser.parse(Some("application/xml"), body, &headers).await;
+
+		// Assert
+		let ParsedData::Xml(value) = result.expect("nesting within the limit must parse") else {
+			panic!("Expected XML variant");
+		};
+		let empty_element = format!("{}/x", "/a".repeat(63));
+		assert_eq!(value.pointer(&empty_element), Some(&Value::Null));
+	}
+
+	#[rstest]
+	#[case::one_past_limit(nested_elements(65))]
+	#[case::empty_element_past_limit(nested_empty_element(64))]
+	// Deep enough to overflow the stack when the resulting value is dropped if
+	// the nesting were unbounded.
+	#[case::stack_exhausting(nested_elements(100_000))]
+	#[tokio::test]
+	async fn test_xml_parser_rejects_nesting_beyond_depth_limit(#[case] body: Bytes) {
+		// Arrange
+		let parser = XMLParser::new();
+		let headers = HeaderMap::new();
+
+		// Act
+		let result = parser.parse(Some("application/xml"), body, &headers).await;
+
+		// Assert
+		match result {
+			Err(Error::Validation(message)) => assert_eq!(
+				message,
+				"XML element nesting exceeds the maximum depth of 64"
+			),
+			other => panic!("Expected nesting validation error, got {other:?}"),
+		}
 	}
 }
