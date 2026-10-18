@@ -10608,7 +10608,6 @@ mod tests {
 		);
 	}
 
-	#[cfg(not(feature = "pgvector"))]
 	#[test]
 	fn named_legacy_drop_index_reverse_preserves_definition_without_state() {
 		let operation = Operation::DropNamedIndex {
@@ -10636,7 +10635,6 @@ mod tests {
 		);
 	}
 
-	#[cfg(not(feature = "pgvector"))]
 	#[test]
 	fn named_legacy_drop_index_reverse_omits_mysql_predicate() {
 		let operation = Operation::DropNamedIndex {
