@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-rest@v0.4.0-alpha.20...reinhardt-rest@v0.4.0-alpha.21) - 2026-10-18
+
+### Documentation
+
+- *(rest)* narrow the parameterized-construction claim in SECURITY.md
+- *(rest)* scope the SimpleSearchBackend output guarantee to its condition
+
+### Fixed
+
+- *(rest)* keep SimpleSearchBackend output scannable by chained filters
+
+### Maintenance
+
+- *(sync)* merge main into develop/0.4.0
+
+### Security
+
+- *(rest)* keep search text literal in SQL-rendering filters
+- *(rest)* skip quoted text when locating filter SQL clauses
+- *(rest)* reject backend-dependent literals when locating clauses
+- *(rest)* require dialect-independent comment boundaries
+- *(rest)* reject unterminated SQL regions and inserted line breaks
+- *(rest)* keep line breaks when composing filter SQL
+- *(rest)* filter relevance score without the SELECT alias
+
+### Testing
+
+- *(rest)* run search filter SQL against MySQL in both string modes
+
 ## [0.4.0-alpha.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-rest@v0.4.0-alpha.17...reinhardt-rest@v0.4.0-alpha.18) - 2026-09-27
 
 ### Fixed

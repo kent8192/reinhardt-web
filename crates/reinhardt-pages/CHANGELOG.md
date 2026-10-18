@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.4.0-alpha.20...reinhardt-pages@v0.4.0-alpha.21) - 2026-10-18
+
+### Added
+
+- *(pages)* expose the current route to components and add active links
+
+### Documentation
+
+- *(pages)* clarify RouterNotInstalled handling for route readers
+
+### Fixed
+
+- *(pages)* let an explicit class attribute win over Link active_class
+
+### Security
+
+- *(pages)* check Redirect::new targets with the redirect validator
+
+### Testing
+
+- *(pages)* flush passive effects in the active-link wasm test
+- *(pages)* cover quoted targets in Redirect::validated
+
 ## [0.4.0-alpha.19](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.4.0-alpha.18...reinhardt-pages@v0.4.0-alpha.19) - 2026-10-03
 
 ### Documentation

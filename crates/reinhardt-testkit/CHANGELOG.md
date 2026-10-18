@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit@v0.4.0-alpha.20...reinhardt-testkit@v0.4.0-alpha.21) - 2026-10-18
+
+### Added
+
+- *(test)* add method-aware async stub router
+- *(testkit)* add redirect policy to APIClientBuilder
+
+### Documentation
+
+- *(test)* document async stub routes through test facades
+- *(test)* record SimpleHandler migration and removal timeline
+- *(testkit)* describe shared guard lifetime on TestServerClient constructors
+
+### Fixed
+
+- *(testkit)* correct SimpleHandler deprecation guidance
+- *(testkit)* make native NATS JetStream fixture future Send
+- *(testkit)* share the server guard across TestServerClient forks
+
+### Maintenance
+
+- *(test)* merge develop/0.4.0 into stub router branch
+- *(testkit)* merge develop client transport changes
+- *(testkit)* sync latest develop after conflict resolution
+
+### Testing
+
+- *(testkit)* move HTTP stub route coverage to integration suite
+- *(testkit)* move redirect integration coverage to workspace tests
+- *(testkit)* compare form fields independently of map order
+
 ### Added
 
 - `stub::StubRouter` registers capturing async closures for explicit HTTP

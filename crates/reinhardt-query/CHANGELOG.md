@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-query@v0.4.0-alpha.20...reinhardt-query@v0.4.0-alpha.21) - 2026-10-18
+
+### Added
+
+- feat!(query): make sequence definition types non-exhaustive
+
+### Fixed
+
+- *(query)* preserve MySQL and SQLite boolean grouping
+
+### Maintenance
+
+- *(sync)* merge main into develop/0.4.0
+
 ### Breaking Changes
 
 - `SequenceOption` and `OwnedBy` are now `#[non_exhaustive]` (#6511). Existing variants remain constructible, but downstream `match` expressions must add a wildcard arm; interpreters should return an explicit unsupported-option error from that arm instead of skipping the value. `SequenceDef` is also marked `#[non_exhaustive]`; its fields were already crate-private, so construction through `SequenceDef::new` and its builder methods is unchanged.
