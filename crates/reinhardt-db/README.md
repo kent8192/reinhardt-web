@@ -877,9 +877,12 @@ remain separate APIs.
 The former synchronous descriptors moved to
 `orm::legacy_file_fields::LegacyFileField` and `LegacyImageField`, with
 `LegacyFileFieldError`; the explicit `Legacy*` top-level names are deprecated
-compatibility exports. The unprefixed `orm::FileField` is now the typed model
-value. The unprefixed `orm::ImageField` is the storage-backed image value when
-both `file-storage` and `image-fields` are enabled.
+compatibility exports. Their `save`, `exists`, and `delete` methods stay inside
+the storage root: empty, absolute, prefixed, and `..` paths are rejected, and
+symlinks that lead outside the root fail. The unprefixed `orm::FileField` is
+now the typed model value. The unprefixed `orm::ImageField` is the
+storage-backed image value when both `file-storage` and `image-fields` are
+enabled.
 
 Changing `file_storage` for rows that already exist changes the backend alias,
 not the object location. Perform an object/data migration that copies (and,

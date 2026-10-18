@@ -174,10 +174,34 @@
 //! assert_eq!(query.to_string(SqliteQueryBuilder), "SELECT (\"price\" + \"fee\") * \"quantity\"");
 //! ```
 //!
-//! When a grouped arithmetic operand contains a possible `--` line comment,
-//! MySQL and SQLite insert a newline before the closing parenthesis so the
-//! comment cannot consume it. MySQL also recognizes possible `#` line comments.
-//! This also covers nested custom SQL expressions.
+//! Boolean expressions retain their grouping on every backend as well. An
+//! alternative combined with a mandatory filter stays inside the filter, whether
+//! it is nested in one expression, added as a separate `and_where`, or negated:
+//!
+//! ```rust
+//! use reinhardt_query::{Expr, ExprTrait, MySqlQueryBuilder, Query, QueryStatementBuilder, SqliteQueryBuilder};
+//!
+//! let query = Query::select()
+//!     .column("id")
+//!     .from("documents")
+//!     .and_where(Expr::col("tenant_id").eq(1))
+//!     .and_where(Expr::col("owner_id").eq(2).or(Expr::col("is_public").eq(true)))
+//!     .to_owned();
+//!
+//! assert_eq!(
+//!     query.to_string(MySqlQueryBuilder),
+//!     "SELECT `id` FROM `documents` WHERE `tenant_id` = 1 AND (`owner_id` = 2 OR `is_public` = TRUE)"
+//! );
+//! assert_eq!(
+//!     query.build(SqliteQueryBuilder).0,
+//!     r#"SELECT "id" FROM "documents" WHERE "tenant_id" = ? AND ("owner_id" = ? OR "is_public" = ?)"#
+//! );
+//! ```
+//!
+//! When a grouped operand contains a possible `--` line comment, MySQL and
+//! SQLite insert a newline before the closing parenthesis so the comment cannot
+//! consume it. MySQL also recognizes possible `#` line comments. This also
+//! covers nested custom SQL expressions.
 //!
 //! ## DDL Examples
 //!

@@ -170,7 +170,7 @@ model-info = []
 backends = ["db-deps", "pool"]
 backends-pool = ["db-deps", "pool"]
 pool = ["db-deps"]
-orm = ["backends", "db-deps", "hybrid"]
+orm = ["backends", "db-deps", "dep:cap-std", "hybrid"]
 file-storage = ["orm", "dep:reinhardt-storages"]
 migrations = [
   "db-deps",
