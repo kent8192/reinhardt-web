@@ -1,6 +1,7 @@
 //! PostgreSQL dialect implementation
 
 use async_trait::async_trait;
+use futures::{StreamExt, stream::BoxStream};
 use sqlx::{Column, PgPool, Postgres, Transaction, postgres::PgRow};
 use std::sync::Arc;
 use uuid::Uuid;
@@ -178,6 +179,38 @@ impl DatabaseBackend for PostgresBackend {
 		let query = uncached_postgres_query(&mut connection, query).await?;
 		let row = query.fetch_optional(&mut *connection).await?;
 		row.map(Self::convert_row).transpose()
+	}
+
+	fn __fetch_stream<'a>(
+		&'a self,
+		sql: String,
+		params: Vec<QueryValue>,
+	) -> Result<BoxStream<'a, Result<Row>>> {
+		let pool = Arc::clone(&self.pool);
+		Ok(Box::pin(async_stream::stream! {
+			let mut query = sqlx::query(&sql);
+			for param in &params {
+				query = Self::bind_value(query, param);
+			}
+			let mut connection = match pool.acquire().await {
+				Ok(connection) => connection,
+				Err(error) => {
+					yield Err(error.into());
+					return;
+				}
+			};
+			let query = match uncached_postgres_query(&mut connection, query).await {
+				Ok(query) => query,
+				Err(error) => {
+					yield Err(error.into());
+					return;
+				}
+			};
+			let mut rows = query.fetch(&mut *connection);
+			while let Some(row) = rows.next().await {
+				yield row.map_err(Into::into).and_then(Self::convert_row);
+			}
+		}))
 	}
 
 	async fn begin(&self) -> Result<Box<dyn TransactionExecutor>> {
@@ -695,6 +728,70 @@ mod statement_cache_tests {
 		assert_eq!(row.get::<i64, _>("cached_width"), 9);
 		assert_eq!(row.get::<String, _>("native_type"), "integer");
 		assert!(connection.cached_statements_size() > 0);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn fetch_stream_bypasses_incompatible_raw_cache_entries(
+		#[future] postgres_fixture: PostgresFixture,
+	) {
+		// Arrange: the only pooled connection retains a raw INT4 statement for the same SQL.
+		let fixture = postgres_fixture.await;
+		let backend = PostgresBackend::new(fixture.pool.clone());
+		let sql = "SELECT $1::BIGINT AS cached_width, pg_typeof($1)::TEXT AS native_type";
+		{
+			let mut connection = fixture.pool.acquire().await.unwrap();
+			sqlx::query(sql)
+				.bind(7_i32)
+				.fetch_one(&mut *connection)
+				.await
+				.unwrap();
+			assert!(connection.cached_statements_size() > 0);
+		}
+
+		// Act
+		let rows: Vec<_> = backend
+			.__fetch_stream(sql.to_string(), vec![QueryValue::Int(1_i64 << 40)])
+			.unwrap()
+			.collect()
+			.await;
+
+		// Assert: the streamed value keeps its native INT8 signature.
+		assert_eq!(rows.len(), 1);
+		let row = rows.into_iter().next().unwrap().unwrap();
+		assert_eq!(row.get::<i64>("cached_width").unwrap(), 1_i64 << 40);
+		assert_eq!(row.get::<String>("native_type").unwrap(), "bigint");
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn dropped_fetch_stream_returns_connection_to_pool(
+		#[future] postgres_fixture: PostgresFixture,
+	) {
+		// Arrange: a result larger than the rows read, on a single-connection pool.
+		let fixture = postgres_fixture.await;
+		let backend = PostgresBackend::new(fixture.pool.clone());
+		let mut rows = backend
+			.__fetch_stream(
+				"SELECT x::BIGINT AS x FROM generate_series(1, 100000) AS x".to_string(),
+				vec![],
+			)
+			.unwrap();
+		let first = rows.next().await.unwrap().unwrap();
+
+		// Act
+		drop(rows);
+		let row = tokio::time::timeout(
+			std::time::Duration::from_secs(30),
+			backend.fetch_one("SELECT 1::BIGINT AS one", vec![]),
+		)
+		.await
+		.expect("dropping the stream must return the only pooled connection")
+		.unwrap();
+
+		// Assert
+		assert_eq!(first.get::<i64>("x").unwrap(), 1);
+		assert_eq!(row.get::<i64>("one").unwrap(), 1);
 	}
 
 	#[rstest]

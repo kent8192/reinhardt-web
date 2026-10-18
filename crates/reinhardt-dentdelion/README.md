@@ -330,6 +330,39 @@ let host_state = HostStateBuilder::new("my-plugin")
     .build();
 ```
 
+### Database Resource Limits
+
+`db_query` encodes its result in host memory before copying it into the
+guest, so each `HostState` bounds it with `DatabaseResourceLimits`. Rows are
+streamed from the database and encoded one at a time, and the call fails as
+soon as a limit is crossed instead of materializing the full result:
+
+| Limit | Default | Error code when exceeded |
+|-------|---------|--------------------------|
+| `max_result_rows` | 10,000 | 413 |
+| `max_result_bytes` (MessagePack-encoded rows) | 10 MiB | 413 |
+| `query_timeout` (statement and every row) | 30 s | 504 |
+| `max_concurrent_queries` per plugin | 4 | 429 |
+
+The connection's backend must support row streaming (the built-in
+PostgreSQL, MySQL, and SQLite backends do); otherwise `db_query` fails rather
+than buffering the whole result. These limits bound host memory and waiting,
+not database work, so also give the plugin's connection a least-privilege role
+with a server-side statement timeout.
+
+```rust
+use reinhardt::dentdelion::wasm::{DatabaseResourceLimits, HostStateBuilder};
+use std::time::Duration;
+
+let mut limits = DatabaseResourceLimits::default();
+limits.max_result_rows = 1_000;
+limits.query_timeout = Duration::from_secs(5);
+
+let host_state = HostStateBuilder::new("my-plugin")
+    .db_limits(limits)
+    .build();
+```
+
 ### Loading WASM Plugins
 
 ```rust
