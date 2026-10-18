@@ -5,9 +5,12 @@
 #[cfg(test)]
 mod integration_tests {
 	use crate::orm::two_phase_commit::core::{
-		MockParticipant, TransactionState, TwoPhaseCoordinator,
+		MockParticipant, TransactionState, TwoPhaseCoordinator, TwoPhaseError,
 	};
-	use crate::orm::two_phase_commit::transaction_log::{InMemoryTransactionLog, TransactionLog};
+	use crate::orm::two_phase_commit::transaction_log::{
+		FileTransactionLog, INVALID_FILE_LOG_TRANSACTION_ID, InMemoryTransactionLog, TransactionLog,
+	};
+	use rstest::rstest;
 	use std::sync::Arc;
 
 	#[tokio::test]
@@ -174,5 +177,30 @@ mod integration_tests {
 		assert_eq!(entry.state, TransactionState::Active);
 		assert_eq!(entry.participants, vec!["db1"]);
 		assert!(!entry.timestamp.timestamp().is_negative());
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_coordinator_file_log_rejects_id_escaping_log_dir() {
+		// Arrange
+		let root = tempfile::tempdir().unwrap();
+		let log = Arc::new(FileTransactionLog::new(root.path().join("logs")).unwrap());
+		let mut coordinator = TwoPhaseCoordinator::with_log("../escape", log);
+		coordinator
+			.add_participant(Box::new(MockParticipant::new("db1")))
+			.await
+			.unwrap();
+
+		// Act
+		let result = coordinator.begin().await;
+
+		// Assert
+		assert_eq!(
+			result,
+			Err(TwoPhaseError::LogError(
+				INVALID_FILE_LOG_TRANSACTION_ID.to_string()
+			))
+		);
+		assert!(!root.path().join("escape.json").exists());
 	}
 }

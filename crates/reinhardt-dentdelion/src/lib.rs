@@ -150,9 +150,11 @@
 //!
 //! ## Capabilities
 //!
-//! Two special capabilities are available for WASM plugins:
+//! WASM host functions that reach shared resources require a granted capability:
 //! - `NetworkAccess` - Required for `http_get`/`http_post` host functions
 //! - `DatabaseAccess` - Required for `db_query`/`db_execute` host functions
+//! - `Signals` - Required for the `emit`/`subscribe`/`unsubscribe`/`poll_events`
+//!   event host functions
 //!
 //! # Architecture
 //!

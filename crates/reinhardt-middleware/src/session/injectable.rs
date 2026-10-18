@@ -13,7 +13,7 @@ use reinhardt_di::{DiError, DiResult, Injectable, InjectionContext};
 use reinhardt_http::Request;
 
 use super::cookie::find_cookie_value;
-use super::data::SessionData;
+use super::data::{PendingSession, SessionData};
 use super::id::{ActiveSessionId, SessionCookieName, SessionId};
 use super::store::SessionStore;
 
@@ -85,10 +85,21 @@ impl Injectable for SessionData {
 		// Load SessionData from store, attaching the request-scoped active session
 		// ID holder so `SessionData::regenerate_id` can keep the middleware's
 		// `Set-Cookie` value in sync with rotations. See #3827.
+		//
+		// A request without a valid session cookie gets a session that
+		// SessionMiddleware keeps only in the request extensions until a
+		// handler saves it, so fall back to that one when the store has none.
 		let id_holder = request.extensions.get::<ActiveSessionId>();
 		let mut session = store
 			.get(&session_id)
 			.filter(|s| s.is_valid())
+			.or_else(|| {
+				request
+					.extensions
+					.get::<PendingSession>()
+					.map(|pending| pending.0)
+					.filter(|pending| pending.id == session_id)
+			})
 			.ok_or_else(|| {
 				DiError::NotFound("Valid session not found. Session may have expired.".to_string())
 			})?;

@@ -8,6 +8,7 @@
 //! Some host functions require specific capabilities:
 //! - HTTP functions: Require `NetworkAccess` capability
 //! - Database functions: Require `DatabaseAccess` capability
+//! - Event functions: Require `Signals` capability
 //! - SSR rendering: Requires `Verified` or `Trusted` trust level
 //! - JavaScript execution: Requires `Trusted` trust level only
 //!
@@ -21,6 +22,14 @@
 //! and fuel limits. Every call is therefore bounded by [`HttpResourceLimits`]:
 //! a response-body cap, a request-body cap, a total deadline, and a per-plugin
 //! concurrency budget.
+//!
+//! # Database Resource Limits
+//!
+//! Query results are encoded in host memory before they are copied into the
+//! guest, so `db_query` is bounded by [`DatabaseResourceLimits`] in the same
+//! way: rows are streamed and encoded one at a time under a row cap and an
+//! encoded-byte cap, inside a total deadline and a per-plugin concurrency
+//! budget.
 
 use crate::capability::{Capability, TrustLevel};
 use crate::error::PluginResult;
@@ -188,6 +197,212 @@ fn response_body_too_large(limit: usize) -> WitPluginError {
 	)
 }
 
+/// Default maximum number of rows returned per database query host call.
+const DEFAULT_DB_MAX_RESULT_ROWS: usize = 10_000;
+
+/// Default maximum encoded result size returned per database query host call (10 MiB).
+const DEFAULT_DB_MAX_RESULT_BYTES: usize = 10 * 1024 * 1024;
+
+/// Default deadline for one database query host call, including every row.
+const DEFAULT_DB_QUERY_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Default number of database query host calls one plugin may have in flight.
+const DEFAULT_DB_MAX_CONCURRENT_QUERIES: usize = 4;
+
+/// Resource limits applied to capability-authorized database query host calls.
+///
+/// A plugin holding `DatabaseAccess` chooses the SQL it runs, so the size of
+/// a result (including joins that expand into very many rows) is
+/// attacker-influenced. Results are encoded in host memory before they are
+/// copied into the guest, where guest memory and fuel limits do not apply.
+/// These limits bound that host-side work:
+///
+/// - Rows are streamed from the backend and encoded one at a time. The call
+///   fails as soon as the result exceeds
+///   [`max_result_rows`](Self::max_result_rows) rows or
+///   [`max_result_bytes`](Self::max_result_bytes) encoded bytes, and the row
+///   stream is dropped so the host buffers no further rows.
+/// - [`query_timeout`](Self::query_timeout) covers running the statement and
+///   reading every row.
+/// - At most [`max_concurrent_queries`](Self::max_concurrent_queries) query
+///   calls per plugin are in flight. Clones of a [`HostState`] share this
+///   budget, so the result memory one plugin can hold at once is bounded by
+///   `max_concurrent_queries * max_result_bytes`.
+///
+/// These limits bound host memory and how long a call waits, not the work the
+/// database does. An abandoned statement can keep running on the server, and
+/// a pooled network connection discards its remaining output before reuse.
+/// Configure a server-side statement timeout and a least-privilege role for
+/// the plugin's database connection to bound that work.
+///
+/// The backend must support row streaming. A connection whose backend cannot
+/// stream rows rejects every query instead of materializing the full result.
+///
+/// # Examples
+///
+/// ```
+/// use reinhardt_dentdelion::wasm::{DatabaseResourceLimits, HostStateBuilder};
+///
+/// let mut limits = DatabaseResourceLimits::default();
+/// limits.max_result_rows = 500;
+///
+/// let state = HostStateBuilder::new("my-plugin").db_limits(limits).build();
+/// assert_eq!(state.db_limits().max_result_rows, 500);
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct DatabaseResourceLimits {
+	/// Maximum number of rows returned per call.
+	pub max_result_rows: usize,
+	/// Maximum MessagePack-encoded size of the returned rows per call, in
+	/// bytes. The enclosing array header (at most 5 bytes) is not counted.
+	pub max_result_bytes: usize,
+	/// Deadline covering the statement and reading every row.
+	pub query_timeout: Duration,
+	/// Maximum number of query calls one plugin may have in flight.
+	///
+	/// Calls beyond this budget fail immediately instead of queueing.
+	/// `0` rejects every query host call.
+	pub max_concurrent_queries: usize,
+}
+
+impl Default for DatabaseResourceLimits {
+	fn default() -> Self {
+		Self {
+			max_result_rows: DEFAULT_DB_MAX_RESULT_ROWS,
+			max_result_bytes: DEFAULT_DB_MAX_RESULT_BYTES,
+			query_timeout: DEFAULT_DB_QUERY_TIMEOUT,
+			max_concurrent_queries: DEFAULT_DB_MAX_CONCURRENT_QUERIES,
+		}
+	}
+}
+
+/// Create the in-flight permit pool for a set of database limits.
+fn new_db_permits(limits: &DatabaseResourceLimits) -> Arc<Semaphore> {
+	// `Semaphore::new` panics above `MAX_PERMITS`; larger budgets are
+	// indistinguishable from it in practice.
+	Arc::new(Semaphore::new(
+		limits.max_concurrent_queries.min(Semaphore::MAX_PERMITS),
+	))
+}
+
+/// Rows a backend may read ahead of the host's accounting.
+///
+/// Every row is counted and encoded as soon as it arrives, so the stream does
+/// not need to batch rows ahead of the limits.
+#[cfg(feature = "wasm")]
+const DB_ROW_STREAM_CHUNK_SIZE: usize = 1;
+
+/// Largest MessagePack array header, reserved before the encoded rows.
+#[cfg(feature = "wasm")]
+const MAX_MSGPACK_ARRAY_HEADER_LEN: usize = 5;
+
+/// Byte sink that refuses writes once its buffer would exceed `limit` bytes.
+///
+/// Encoding through it stops as soon as a value would cross the limit, so an
+/// oversized row never grows the result past the budget. Buffer growth is
+/// capped at the limit as well, so the allocation stays within it.
+#[cfg(feature = "wasm")]
+struct LimitedWriter<'a> {
+	buf: &'a mut Vec<u8>,
+	limit: usize,
+	exceeded: bool,
+}
+
+#[cfg(feature = "wasm")]
+impl std::io::Write for LimitedWriter<'_> {
+	fn write(&mut self, data: &[u8]) -> std::io::Result<usize> {
+		if data.len() > self.limit.saturating_sub(self.buf.len()) {
+			self.exceeded = true;
+			return Err(std::io::Error::other("result byte limit exceeded"));
+		}
+		// Grow geometrically, but never past the limit.
+		if data.len() > self.buf.capacity() - self.buf.len() {
+			let target = self
+				.buf
+				.len()
+				.saturating_mul(2)
+				.max(self.buf.len() + data.len())
+				.min(self.limit);
+			self.buf.reserve_exact(target - self.buf.len());
+		}
+		self.buf.extend_from_slice(data);
+		Ok(data.len())
+	}
+
+	fn flush(&mut self) -> std::io::Result<()> {
+		Ok(())
+	}
+}
+
+/// Encode a row stream as a MessagePack array, failing once it exceeds `limits`.
+///
+/// The output is byte-for-byte what `rmp_serde::to_vec` produces for the
+/// equivalent `Vec<HashMap<String, QueryValue>>`. Each row is encoded and
+/// dropped as soon as it arrives, and encoding stops at the byte limit even
+/// within a row. Returning early drops the stream, so no further rows reach
+/// host memory. The driver still materializes each row it yields; only the
+/// database can bound the size of a single value.
+#[cfg(feature = "wasm")]
+async fn encode_limited_rows(
+	mut rows: reinhardt_db::backends::types::RowStream<'_>,
+	limits: &DatabaseResourceLimits,
+) -> Result<Vec<u8>, WitPluginError> {
+	use futures_util::StreamExt;
+
+	// The array header's size depends on the final row count, so reserve the
+	// largest one and trim the unused prefix at the end.
+	let mut encoded = vec![0; MAX_MSGPACK_ARRAY_HEADER_LEN];
+	let mut writer = LimitedWriter {
+		buf: &mut encoded,
+		limit: MAX_MSGPACK_ARRAY_HEADER_LEN.saturating_add(limits.max_result_bytes),
+		exceeded: false,
+	};
+	let mut row_count: usize = 0;
+	while let Some(row) = rows.next().await {
+		let row = row.map_err(|e| {
+			WitPluginError::with_details(500, "Database query failed", e.to_string())
+		})?;
+		if row_count == limits.max_result_rows {
+			return Err(db_result_too_large(format!(
+				"limit is {} rows",
+				limits.max_result_rows
+			)));
+		}
+		row_count += 1;
+
+		if let Err(error) = rmp_serde::encode::write(&mut writer, &row.data) {
+			return Err(if writer.exceeded {
+				db_result_too_large(format!("limit is {} bytes", limits.max_result_bytes))
+			} else {
+				db_serialize_failed(error)
+			});
+		}
+	}
+
+	// MessagePack arrays hold at most `u32::MAX` items.
+	let row_count = u32::try_from(row_count)
+		.map_err(|_| db_result_too_large(format!("limit is {} rows", u32::MAX)))?;
+	let mut header = Vec::with_capacity(MAX_MSGPACK_ARRAY_HEADER_LEN);
+	rmp::encode::write_array_len(&mut header, row_count).map_err(db_serialize_failed)?;
+	let start = MAX_MSGPACK_ARRAY_HEADER_LEN - header.len();
+	encoded[start..MAX_MSGPACK_ARRAY_HEADER_LEN].copy_from_slice(&header);
+	encoded.drain(..start);
+	Ok(encoded)
+}
+
+/// Error returned when a query result exceeds a configured limit.
+#[cfg(feature = "wasm")]
+fn db_result_too_large(details: String) -> WitPluginError {
+	WitPluginError::with_details(413, "Database query result exceeds the host limit", details)
+}
+
+/// Error returned when query rows cannot be encoded.
+#[cfg(feature = "wasm")]
+fn db_serialize_failed(error: impl std::fmt::Display) -> WitPluginError {
+	WitPluginError::with_details(500, "Failed to serialize results", error.to_string())
+}
+
 #[cfg(feature = "ts")]
 use super::ts_runtime::SharedTsRuntime;
 
@@ -348,6 +563,10 @@ pub struct HostState {
 	db_connection: Option<Arc<DatabaseConnection>>,
 	#[cfg(not(feature = "wasm"))]
 	db_connection: Option<()>,
+	/// Resource limits applied to database query host calls
+	db_limits: DatabaseResourceLimits,
+	/// In-flight database query permits, shared with clones of this state
+	db_permits: Arc<Semaphore>,
 	/// Event bus for inter-plugin communication
 	event_bus: SharedEventBus,
 	/// Model registry for schema and migration registration
@@ -400,6 +619,7 @@ impl HostState {
 		ssr_proxy: SharedSsrProxy,
 	) -> Self {
 		let http_limits = HttpResourceLimits::default();
+		let db_limits = DatabaseResourceLimits::default();
 		Self {
 			plugin_name: plugin_name.into(),
 			trust_level: TrustLevel::default(),
@@ -411,6 +631,8 @@ impl HostState {
 			http_permits: new_http_permits(&http_limits),
 			http_limits,
 			db_connection: None,
+			db_permits: new_db_permits(&db_limits),
+			db_limits,
 			event_bus,
 			model_registry,
 			ssr_proxy,
@@ -682,7 +904,17 @@ impl HostState {
 			.contains(&Capability::Core(PluginCapability::DatabaseAccess))
 	}
 
+	/// Get the resource limits applied to database query host calls.
+	pub fn db_limits(&self) -> &DatabaseResourceLimits {
+		&self.db_limits
+	}
+
 	/// Execute a SQL query.
+	///
+	/// Returns the rows as a MessagePack array of column-name maps. The call
+	/// is bounded by this state's [`DatabaseResourceLimits`]: rows are
+	/// streamed and encoded one at a time, and the call fails instead of
+	/// materializing a result beyond the limits.
 	#[cfg(feature = "wasm")]
 	pub async fn db_query(&self, sql: &str, params: &[u8]) -> Result<Vec<u8>, WitPluginError> {
 		if !self.has_db_capability() {
@@ -706,19 +938,36 @@ impl HostState {
 			WitPluginError::with_details(400, "Invalid query parameters", e.to_string())
 		})?;
 
-		// Execute query
-		let rows = conn.fetch_all(sql, params_vec).await.map_err(|e| {
-			WitPluginError::with_details(500, "Database query failed", e.to_string())
+		let limits = &self.db_limits;
+		let _permit = self.db_permits.try_acquire().map_err(|_| {
+			WitPluginError::with_details(
+				429,
+				"Too many concurrent database queries",
+				format!("limit is {} per plugin", limits.max_concurrent_queries),
+			)
 		})?;
 
-		// Convert rows to serializable format (Vec<HashMap>)
-		let serializable_rows: Vec<HashMap<String, QueryValue>> =
-			rows.into_iter().map(|row| row.data).collect();
+		// Stream the rows instead of `fetch_all`, which would materialize the
+		// whole result before any limit could apply. A backend without row
+		// streaming fails here rather than falling back to that path.
+		let query = async {
+			let rows = conn
+				.fetch_stream(sql.to_owned(), params_vec, DB_ROW_STREAM_CHUNK_SIZE)
+				.map_err(|e| {
+					WitPluginError::with_details(500, "Database query failed", e.to_string())
+				})?;
+			encode_limited_rows(rows, limits).await
+		};
 
-		// Serialize results to MessagePack
-		rmp_serde::to_vec(&serializable_rows).map_err(|e| {
-			WitPluginError::with_details(500, "Failed to serialize results", e.to_string())
-		})
+		tokio::time::timeout(limits.query_timeout, query)
+			.await
+			.map_err(|_| {
+				WitPluginError::with_details(
+					504,
+					"Database query timed out",
+					format!("deadline is {:?}", limits.query_timeout),
+				)
+			})?
 	}
 
 	#[cfg(not(feature = "wasm"))]
@@ -800,10 +1049,33 @@ impl HostState {
 	}
 
 	// ===== Event Bus API =====
+	//
+	// The public methods below act on the event bus as this plugin without
+	// checking its grants, like `event_bus()`. Plugin-originated calls arrive
+	// through the WIT `events` interface, which first requires `Signals`.
 
 	/// Get a reference to the shared event bus.
 	pub fn event_bus(&self) -> &SharedEventBus {
 		&self.event_bus
+	}
+
+	/// Check if event bus access is allowed.
+	fn has_signals_capability(&self) -> bool {
+		use crate::capability::PluginCapability;
+		self.capabilities
+			.contains(&Capability::Core(PluginCapability::Signals))
+	}
+
+	/// Reject a plugin event host call unless `Signals` is granted.
+	///
+	/// Every WIT `events` call runs this before touching the event bus, so a
+	/// plugin without the grant cannot emit, subscribe, unsubscribe, or poll,
+	/// and cannot tell whether a subscription ID exists.
+	fn authorize_event_call(&self) -> Result<(), WitPluginError> {
+		if !self.has_signals_capability() {
+			return Err(WitPluginError::new(403, "Event access not permitted"));
+		}
+		Ok(())
 	}
 
 	/// Emit an event to all matching subscribers.
@@ -1057,6 +1329,11 @@ impl Clone for HostState {
 			builder = builder.db_connection(conn.clone());
 		}
 
+		// Share the query permit pool for the same reason as the HTTP one.
+		builder = builder
+			.db_limits(self.db_limits.clone())
+			.shared_db_permits(self.db_permits.clone());
+
 		let state = builder.build();
 
 		// Clone serialized services
@@ -1097,6 +1374,8 @@ pub struct HostStateBuilder {
 	db_connection: Option<Arc<DatabaseConnection>>,
 	#[cfg(not(feature = "wasm"))]
 	db_connection: Option<()>,
+	db_limits: DatabaseResourceLimits,
+	db_permits: Option<Arc<Semaphore>>,
 	event_bus: Option<SharedEventBus>,
 	model_registry: Option<SharedModelRegistry>,
 	ssr_proxy: Option<SharedSsrProxy>,
@@ -1116,6 +1395,8 @@ impl HostStateBuilder {
 			http_limits: HttpResourceLimits::default(),
 			http_permits: None,
 			db_connection: None,
+			db_limits: DatabaseResourceLimits::default(),
+			db_permits: None,
 			event_bus: None,
 			model_registry: None,
 			ssr_proxy: None,
@@ -1184,9 +1465,28 @@ impl HostStateBuilder {
 	}
 
 	/// Set a database connection.
+	///
+	/// Query host calls stream rows from it, so its backend must support row
+	/// streaming; see [`DatabaseResourceLimits`].
 	#[cfg(feature = "wasm")]
 	pub fn db_connection(mut self, connection: Arc<DatabaseConnection>) -> Self {
 		self.db_connection = Some(connection);
+		self
+	}
+
+	/// Set the resource limits applied to database query host calls.
+	///
+	/// Defaults to [`DatabaseResourceLimits::default`].
+	pub fn db_limits(mut self, limits: DatabaseResourceLimits) -> Self {
+		self.db_limits = limits;
+		self
+	}
+
+	/// Reuse an existing in-flight database query permit pool.
+	///
+	/// Used by `HostState::clone` so that clones share one concurrency budget.
+	fn shared_db_permits(mut self, permits: Arc<Semaphore>) -> Self {
+		self.db_permits = Some(permits);
 		self
 	}
 
@@ -1248,6 +1548,9 @@ impl HostStateBuilder {
 		let http_permits = self
 			.http_permits
 			.unwrap_or_else(|| new_http_permits(&self.http_limits));
+		let db_permits = self
+			.db_permits
+			.unwrap_or_else(|| new_db_permits(&self.db_limits));
 		HostState {
 			plugin_name: self.plugin_name,
 			trust_level: self.trust_level,
@@ -1259,6 +1562,8 @@ impl HostStateBuilder {
 			http_limits: self.http_limits,
 			http_permits,
 			db_connection: self.db_connection,
+			db_limits: self.db_limits,
+			db_permits,
 			event_bus: self.event_bus.unwrap_or_else(|| Arc::new(EventBus::new())),
 			model_registry: self
 				.model_registry
@@ -1487,6 +1792,9 @@ impl crate::wasm::runtime::reinhardt::dentdelion::events::Host for HostState {
 		name: String,
 		payload: Vec<u8>,
 	) -> wasmtime::Result<Result<(), GeneratedPluginError>> {
+		if let Err(e) = self.authorize_event_call() {
+			return Ok(Err(to_generated_error(e)));
+		}
 		match self.try_emit_event(&name, payload) {
 			Ok(_delivered) => Ok(Ok(())),
 			Err(e) => Ok(Err(to_generated_error(WitPluginError::new(
@@ -1500,6 +1808,9 @@ impl crate::wasm::runtime::reinhardt::dentdelion::events::Host for HostState {
 		&mut self,
 		pattern: String,
 	) -> wasmtime::Result<Result<u64, GeneratedPluginError>> {
+		if let Err(e) = self.authorize_event_call() {
+			return Ok(Err(to_generated_error(e)));
+		}
 		match self.subscribe_events(&pattern) {
 			Ok(subscription_id) => Ok(Ok(subscription_id)),
 			Err(e) => Ok(Err(to_generated_error(WitPluginError::new(
@@ -1510,6 +1821,9 @@ impl crate::wasm::runtime::reinhardt::dentdelion::events::Host for HostState {
 	}
 
 	async fn unsubscribe(&mut self, id: u64) -> wasmtime::Result<Result<(), GeneratedPluginError>> {
+		if let Err(e) = self.authorize_event_call() {
+			return Ok(Err(to_generated_error(e)));
+		}
 		let removed = self.unsubscribe_events(id);
 		if removed {
 			Ok(Ok(()))
@@ -1522,6 +1836,11 @@ impl crate::wasm::runtime::reinhardt::dentdelion::events::Host for HostState {
 	}
 
 	async fn poll_events(&mut self, id: u64, limit: u32) -> wasmtime::Result<Vec<GeneratedEvent>> {
+		// `poll-events` has no error channel in the WIT ABI, so a denied call
+		// returns an empty list and leaves the queue untouched.
+		if self.authorize_event_call().is_err() {
+			return Ok(Vec::new());
+		}
 		let events = self.poll_pending_events(id, limit as usize);
 		Ok(events.into_iter().map(to_generated_event).collect())
 	}
@@ -1843,6 +2162,23 @@ mod tests {
 		Arc::new(EventBus::new().with_byte_limits(limits))
 	}
 
+	/// Capability that authorizes the WIT `events` interface.
+	fn signals_grant() -> Capability {
+		Capability::Core(crate::capability::PluginCapability::Signals)
+	}
+
+	/// Host state for `name` on `event_bus` holding exactly `capabilities`.
+	fn event_plugin(
+		name: &str,
+		event_bus: &SharedEventBus,
+		capabilities: impl IntoIterator<Item = Capability>,
+	) -> HostState {
+		HostStateBuilder::new(name)
+			.event_bus(event_bus.clone())
+			.capabilities(capabilities)
+			.build()
+	}
+
 	#[cfg(feature = "wasm")]
 	#[tokio::test]
 	async fn wit_emit_rejects_payload_over_event_bus_limit() {
@@ -1853,9 +2189,7 @@ mod tests {
 		let consumer = HostStateBuilder::new("consumer")
 			.event_bus(event_bus.clone())
 			.build();
-		let mut producer = HostStateBuilder::new("producer")
-			.event_bus(event_bus.clone())
-			.build();
+		let mut producer = event_plugin("producer", &event_bus, [signals_grant()]);
 		let sub_ids: Vec<u64> = (0..3)
 			.map(|_| consumer.subscribe_events("*").unwrap())
 			.collect();
@@ -1888,9 +2222,7 @@ mod tests {
 		let consumer = HostStateBuilder::new("consumer")
 			.event_bus(event_bus.clone())
 			.build();
-		let mut producer = HostStateBuilder::new("producer")
-			.event_bus(event_bus.clone())
-			.build();
+		let mut producer = event_plugin("producer", &event_bus, [signals_grant()]);
 		let sub_id = consumer.subscribe_events("*").unwrap();
 		let name = "e".repeat(event_bus.byte_limits().max_name_bytes + 1);
 
@@ -1914,12 +2246,8 @@ mod tests {
 
 		// Arrange
 		let event_bus = event_bus_with_payload_limit(16);
-		let mut consumer = HostStateBuilder::new("consumer")
-			.event_bus(event_bus.clone())
-			.build();
-		let mut producer = HostStateBuilder::new("producer")
-			.event_bus(event_bus.clone())
-			.build();
+		let mut consumer = event_plugin("consumer", &event_bus, [signals_grant()]);
+		let mut producer = event_plugin("producer", &event_bus, [signals_grant()]);
 		let sub_ids: Vec<u64> = (0..3)
 			.map(|_| consumer.subscribe_events("user.*").unwrap())
 			.collect();
@@ -1941,6 +2269,152 @@ mod tests {
 			assert_eq!(events[0].source, "producer");
 		}
 		assert_eq!(event_bus.total_pending_bytes(), 0);
+	}
+
+	/// WIT `events` calls require the `Signals` grant (GHSA-gcxp-frpr-r8qm).
+	///
+	/// Each denial case uses a plugin that holds no grant, an unrelated grant,
+	/// or `SignalReceivers`, which is a separate capability and does not stand
+	/// in for `Signals`.
+	#[cfg(feature = "wasm")]
+	mod event_grants {
+		use super::*;
+		use crate::capability::PluginCapability;
+		use crate::wasm::runtime::reinhardt::dentdelion::events::Host;
+		use rstest::rstest;
+
+		#[rstest]
+		#[case::no_grant(None)]
+		#[case::network_access(Some(PluginCapability::NetworkAccess))]
+		#[case::signal_receivers(Some(PluginCapability::SignalReceivers))]
+		#[tokio::test]
+		async fn emit_without_signals_is_denied(#[case] grant: Option<PluginCapability>) {
+			// Arrange
+			let event_bus: SharedEventBus = Arc::new(EventBus::new());
+			let consumer = event_plugin("consumer", &event_bus, [signals_grant()]);
+			let sub_id = consumer.subscribe_events("*").unwrap();
+			let mut intruder = event_plugin("intruder", &event_bus, grant.map(Capability::Core));
+
+			// Act
+			let result = Host::emit(&mut intruder, "user.created".to_string(), vec![1, 2, 3])
+				.await
+				.expect("host adapter should return a plugin result");
+
+			// Assert
+			assert_eq!(
+				result
+					.expect_err("emit without Signals should be denied")
+					.code,
+				403
+			);
+			assert_eq!(event_bus.pending_count(sub_id), 0);
+			assert_eq!(event_bus.total_pending_bytes(), 0);
+		}
+
+		#[rstest]
+		#[case::no_grant(None)]
+		#[case::network_access(Some(PluginCapability::NetworkAccess))]
+		#[case::signal_receivers(Some(PluginCapability::SignalReceivers))]
+		#[tokio::test]
+		async fn subscribe_without_signals_is_denied(#[case] grant: Option<PluginCapability>) {
+			// Arrange
+			let event_bus: SharedEventBus = Arc::new(EventBus::new());
+			let mut intruder = event_plugin("intruder", &event_bus, grant.map(Capability::Core));
+
+			// Act
+			let result = Host::subscribe(&mut intruder, "*".to_string())
+				.await
+				.expect("host adapter should return a plugin result");
+
+			// Assert
+			assert_eq!(
+				result
+					.expect_err("subscribe without Signals should be denied")
+					.code,
+				403
+			);
+			assert_eq!(event_bus.subscription_count(), 0);
+		}
+
+		// The subscription is created through the host-side API and owned by
+		// the intruder, so only the missing grant can explain the denial.
+		#[rstest]
+		#[case::no_grant(None)]
+		#[case::network_access(Some(PluginCapability::NetworkAccess))]
+		#[case::signal_receivers(Some(PluginCapability::SignalReceivers))]
+		#[tokio::test]
+		async fn poll_without_signals_returns_nothing_and_keeps_queue(
+			#[case] grant: Option<PluginCapability>,
+		) {
+			// Arrange
+			let event_bus: SharedEventBus = Arc::new(EventBus::new());
+			let mut intruder = event_plugin("intruder", &event_bus, grant.map(Capability::Core));
+			let sub_id = intruder.subscribe_events("user.*").unwrap();
+			let mut producer = event_plugin("producer", &event_bus, [signals_grant()]);
+			Host::emit(&mut producer, "user.created".to_string(), vec![1, 2, 3])
+				.await
+				.expect("host adapter should return a plugin result")
+				.expect("granted producer should emit");
+
+			// Act
+			let events = Host::poll_events(&mut intruder, sub_id, 10)
+				.await
+				.expect("host adapter should return polled events");
+
+			// Assert
+			assert!(events.is_empty());
+			assert_eq!(event_bus.pending_count(sub_id), 1);
+		}
+
+		// As above, the intruder owns the subscription it tries to remove.
+		#[rstest]
+		#[case::no_grant(None)]
+		#[case::network_access(Some(PluginCapability::NetworkAccess))]
+		#[case::signal_receivers(Some(PluginCapability::SignalReceivers))]
+		#[tokio::test]
+		async fn unsubscribe_without_signals_is_denied(#[case] grant: Option<PluginCapability>) {
+			// Arrange
+			let event_bus: SharedEventBus = Arc::new(EventBus::new());
+			let mut intruder = event_plugin("intruder", &event_bus, grant.map(Capability::Core));
+			let sub_id = intruder.subscribe_events("*").unwrap();
+
+			// Act
+			let result = Host::unsubscribe(&mut intruder, sub_id)
+				.await
+				.expect("host adapter should return a plugin result");
+
+			// Assert
+			assert_eq!(
+				result
+					.expect_err("unsubscribe without Signals should be denied")
+					.code,
+				403
+			);
+			assert!(event_bus.has_subscription(sub_id));
+		}
+
+		#[rstest]
+		#[tokio::test]
+		async fn signals_grant_allows_subscribe_and_unsubscribe() {
+			// Arrange
+			let event_bus: SharedEventBus = Arc::new(EventBus::new());
+			let mut plugin = event_plugin("plugin", &event_bus, [signals_grant()]);
+
+			// Act
+			let sub_id = Host::subscribe(&mut plugin, "*".to_string())
+				.await
+				.expect("host adapter should return a plugin result")
+				.expect("Signals grant should allow subscribe");
+			let subscribed = event_bus.has_subscription(sub_id);
+			let result = Host::unsubscribe(&mut plugin, sub_id)
+				.await
+				.expect("host adapter should return a plugin result");
+
+			// Assert
+			assert!(subscribed);
+			assert!(result.is_ok());
+			assert!(!event_bus.has_subscription(sub_id));
+		}
 	}
 
 	#[test]
@@ -3105,6 +3579,468 @@ mod tests {
 			// Assert
 			assert_eq!(error.code, 429);
 			assert_eq!(error.message, "Too many concurrent HTTP requests");
+			assert_eq!(error.details.as_deref(), Some("limit is 1 per plugin"));
+		}
+	}
+
+	#[cfg(feature = "wasm")]
+	mod db_limits {
+		use super::*;
+		use crate::capability::PluginCapability;
+		use reinhardt_db::backends::types::{
+			DatabaseType, QueryResult, QueryValue, Row, RowStream, TransactionExecutor,
+		};
+		use reinhardt_db::backends::{DatabaseBackend, Result as BackendResult};
+		use rstest::rstest;
+		use tokio::sync::Notify;
+		use tokio::task::JoinHandle;
+
+		/// Recursive CTE whose result never ends: 1, 2, 3, ...
+		const UNBOUNDED_SQL: &str =
+			"WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM n) SELECT x FROM n";
+
+		/// Query yielding exactly `rows` rows with one integer column `x`.
+		fn counting_sql(rows: usize) -> String {
+			format!(
+				"WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM n) \
+				 SELECT x FROM n LIMIT {rows}"
+			)
+		}
+
+		/// The rows `counting_sql(rows)` returns, in result order.
+		fn counting_rows(rows: usize) -> Vec<HashMap<String, QueryValue>> {
+			(1..=rows as i64)
+				.map(|x| HashMap::from([("x".to_string(), QueryValue::Int(x))]))
+				.collect()
+		}
+
+		fn no_params() -> Vec<u8> {
+			rmp_serde::to_vec(&Vec::<QueryValue>::new()).unwrap()
+		}
+
+		fn limits(max_result_rows: usize, max_result_bytes: usize) -> DatabaseResourceLimits {
+			DatabaseResourceLimits {
+				max_result_rows,
+				max_result_bytes,
+				..DatabaseResourceLimits::default()
+			}
+		}
+
+		fn db_state(connection: DatabaseConnection, limits: DatabaseResourceLimits) -> HostState {
+			HostStateBuilder::new("db-plugin")
+				.capability(Capability::Core(PluginCapability::DatabaseAccess))
+				.db_connection(Arc::new(connection))
+				.db_limits(limits)
+				.build()
+		}
+
+		async fn sqlite_state(limits: DatabaseResourceLimits) -> HostState {
+			let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+				.await
+				.unwrap();
+			db_state(connection, limits)
+		}
+
+		/// Aborts the wrapped task on drop so a pending query never outlives
+		/// the test.
+		struct AbortOnDrop<T>(JoinHandle<T>);
+
+		impl<T> Drop for AbortOnDrop<T> {
+			fn drop(&mut self) {
+				self.0.abort();
+			}
+		}
+
+		/// Backend whose row stream signals `started` and then never yields.
+		struct PendingStreamBackend {
+			started: Arc<Notify>,
+		}
+
+		#[async_trait::async_trait]
+		impl DatabaseBackend for PendingStreamBackend {
+			fn database_type(&self) -> DatabaseType {
+				DatabaseType::Sqlite
+			}
+
+			fn placeholder(&self, _index: usize) -> String {
+				"?".to_string()
+			}
+
+			fn supports_returning(&self) -> bool {
+				false
+			}
+
+			fn supports_on_conflict(&self) -> bool {
+				false
+			}
+
+			fn supports_row_streaming(&self) -> bool {
+				true
+			}
+
+			async fn execute(
+				&self,
+				_sql: &str,
+				_params: Vec<QueryValue>,
+			) -> BackendResult<QueryResult> {
+				unreachable!("query host calls only stream rows")
+			}
+
+			async fn fetch_one(&self, _sql: &str, _params: Vec<QueryValue>) -> BackendResult<Row> {
+				unreachable!("query host calls only stream rows")
+			}
+
+			async fn fetch_all(
+				&self,
+				_sql: &str,
+				_params: Vec<QueryValue>,
+			) -> BackendResult<Vec<Row>> {
+				unreachable!("query host calls only stream rows")
+			}
+
+			fn fetch_stream<'a>(
+				&'a self,
+				_sql: String,
+				_params: Vec<QueryValue>,
+				_chunk_size: usize,
+			) -> BackendResult<RowStream<'a>> {
+				self.started.notify_one();
+				Ok(Box::pin(futures_util::stream::pending()))
+			}
+
+			async fn fetch_optional(
+				&self,
+				_sql: &str,
+				_params: Vec<QueryValue>,
+			) -> BackendResult<Option<Row>> {
+				unreachable!("query host calls only stream rows")
+			}
+
+			async fn begin(&self) -> BackendResult<Box<dyn TransactionExecutor>> {
+				unreachable!("query host calls only stream rows")
+			}
+
+			fn as_any(&self) -> &dyn Any {
+				self
+			}
+		}
+
+		/// Backend that keeps the default (unsupported) row streaming and
+		/// panics if the host falls back to materializing a result.
+		struct NonStreamingBackend;
+
+		#[async_trait::async_trait]
+		impl DatabaseBackend for NonStreamingBackend {
+			fn database_type(&self) -> DatabaseType {
+				DatabaseType::Sqlite
+			}
+
+			fn placeholder(&self, _index: usize) -> String {
+				"?".to_string()
+			}
+
+			fn supports_returning(&self) -> bool {
+				false
+			}
+
+			fn supports_on_conflict(&self) -> bool {
+				false
+			}
+
+			async fn execute(
+				&self,
+				_sql: &str,
+				_params: Vec<QueryValue>,
+			) -> BackendResult<QueryResult> {
+				unreachable!("query host calls must not run statements")
+			}
+
+			async fn fetch_one(&self, _sql: &str, _params: Vec<QueryValue>) -> BackendResult<Row> {
+				unreachable!("query host calls must not materialize rows")
+			}
+
+			async fn fetch_all(
+				&self,
+				_sql: &str,
+				_params: Vec<QueryValue>,
+			) -> BackendResult<Vec<Row>> {
+				unreachable!("query host calls must not materialize rows")
+			}
+
+			async fn fetch_optional(
+				&self,
+				_sql: &str,
+				_params: Vec<QueryValue>,
+			) -> BackendResult<Option<Row>> {
+				unreachable!("query host calls must not materialize rows")
+			}
+
+			async fn begin(&self) -> BackendResult<Box<dyn TransactionExecutor>> {
+				unreachable!("query host calls must not open transactions")
+			}
+
+			fn as_any(&self) -> &dyn Any {
+				self
+			}
+		}
+
+		#[rstest]
+		fn test_host_state_new_applies_default_db_limits() {
+			// Arrange
+			let state = HostState::new("test-plugin");
+
+			// Act
+			let limits = state.db_limits();
+
+			// Assert
+			assert_eq!(limits.max_result_rows, 10_000);
+			assert_eq!(limits.max_result_bytes, 10 * 1024 * 1024);
+			assert_eq!(limits.query_timeout, Duration::from_secs(30));
+			assert_eq!(limits.max_concurrent_queries, 4);
+		}
+
+		#[rstest]
+		fn test_clone_shares_db_limits_and_permits() {
+			// Arrange
+			let limits = limits(42, 4096);
+			let state = HostStateBuilder::new("test-plugin")
+				.db_limits(limits.clone())
+				.build();
+
+			// Act
+			let cloned = state.clone();
+
+			// Assert
+			assert_eq!(cloned.db_limits(), &limits);
+			assert!(Arc::ptr_eq(&state.db_permits, &cloned.db_permits));
+		}
+
+		#[rstest]
+		#[case::empty(0)]
+		#[case::fixarray(15)]
+		#[case::array16(16)]
+		#[case::array32(70_000)]
+		#[tokio::test]
+		async fn test_db_query_encodes_rows_like_materialized_result(#[case] rows: usize) {
+			// Arrange
+			let state = sqlite_state(limits(rows, 10 * 1024 * 1024)).await;
+
+			// Act
+			let result = state
+				.db_query(&counting_sql(rows), &no_params())
+				.await
+				.unwrap();
+
+			// Assert
+			assert_eq!(result, rmp_serde::to_vec(&counting_rows(rows)).unwrap());
+		}
+
+		#[rstest]
+		#[tokio::test]
+		async fn test_db_query_rejects_row_over_row_limit() {
+			// Arrange
+			let state = sqlite_state(limits(100, 10 * 1024 * 1024)).await;
+
+			// Act
+			let error = state
+				.db_query(&counting_sql(101), &no_params())
+				.await
+				.unwrap_err();
+
+			// Assert
+			assert_eq!(error.code, 413);
+			assert_eq!(
+				error.message,
+				"Database query result exceeds the host limit"
+			);
+			assert_eq!(error.details.as_deref(), Some("limit is 100 rows"));
+		}
+
+		#[rstest]
+		#[tokio::test]
+		async fn test_db_query_stops_unbounded_result_at_default_row_limit() {
+			// Arrange
+			let state = sqlite_state(DatabaseResourceLimits::default()).await;
+
+			// Act
+			let error = state
+				.db_query(UNBOUNDED_SQL, &no_params())
+				.await
+				.unwrap_err();
+
+			// Assert
+			assert_eq!(error.code, 413);
+			assert_eq!(error.details.as_deref(), Some("limit is 10000 rows"));
+		}
+
+		#[rstest]
+		#[case::at_limit(0, true)]
+		#[case::one_byte_over(1, false)]
+		#[tokio::test]
+		async fn test_db_query_enforces_encoded_byte_limit(
+			#[case] bytes_short: usize,
+			#[case] succeeds: bool,
+		) {
+			// Arrange - the limit counts encoded rows, excluding the array header
+			let expected = counting_rows(50);
+			let row_bytes: usize = expected
+				.iter()
+				.map(|row| rmp_serde::to_vec(row).unwrap().len())
+				.sum();
+			let max_result_bytes = row_bytes - bytes_short;
+			let state = sqlite_state(limits(50, max_result_bytes)).await;
+
+			// Act
+			let result = state.db_query(&counting_sql(50), &no_params()).await;
+
+			// Assert
+			if succeeds {
+				assert_eq!(result.unwrap(), rmp_serde::to_vec(&expected).unwrap());
+			} else {
+				let error = result.unwrap_err();
+				assert_eq!(error.code, 413);
+				assert_eq!(
+					error.details,
+					Some(format!("limit is {max_result_bytes} bytes"))
+				);
+			}
+		}
+
+		#[rstest]
+		#[tokio::test]
+		async fn test_db_query_rejects_single_row_over_byte_limit() {
+			// Arrange - one 4 KiB value against a 1 KiB budget
+			let state = sqlite_state(limits(10, 1024)).await;
+
+			// Act
+			let error = state
+				.db_query("SELECT zeroblob(4096) AS payload", &no_params())
+				.await
+				.unwrap_err();
+
+			// Assert
+			assert_eq!(error.code, 413);
+			assert_eq!(error.details.as_deref(), Some("limit is 1024 bytes"));
+		}
+
+		#[rstest]
+		fn test_limited_writer_stops_before_exceeding_limit() {
+			use std::io::Write;
+
+			// Arrange
+			let mut buf = Vec::new();
+			let mut writer = LimitedWriter {
+				buf: &mut buf,
+				limit: 8,
+				exceeded: false,
+			};
+
+			// Act
+			let within = writer.write_all(&[1; 6]);
+			let over = writer.write_all(&[2; 3]);
+
+			// Assert
+			assert!(within.is_ok());
+			assert!(over.is_err());
+			assert!(writer.exceeded);
+			assert_eq!(buf, vec![1; 6]);
+			assert!(
+				buf.capacity() <= 8,
+				"capacity {} exceeds the limit",
+				buf.capacity()
+			);
+		}
+
+		#[rstest]
+		#[tokio::test]
+		async fn test_db_query_releases_permit_and_connection_after_limit_error() {
+			// Arrange - one permit and a single-connection pool
+			let mut limits = limits(10, 10 * 1024 * 1024);
+			limits.max_concurrent_queries = 1;
+			let state = sqlite_state(limits).await;
+			let rejected = state.db_query(UNBOUNDED_SQL, &no_params()).await;
+
+			// Act
+			let result = state.db_query(&counting_sql(10), &no_params()).await;
+
+			// Assert
+			assert_eq!(rejected.unwrap_err().code, 413);
+			assert_eq!(
+				result.unwrap(),
+				rmp_serde::to_vec(&counting_rows(10)).unwrap()
+			);
+		}
+
+		#[rstest]
+		#[tokio::test]
+		async fn test_db_query_times_out_while_waiting_for_rows() {
+			// Arrange
+			let backend = PendingStreamBackend {
+				started: Arc::new(Notify::new()),
+			};
+			let limits = DatabaseResourceLimits {
+				query_timeout: Duration::from_millis(50),
+				..DatabaseResourceLimits::default()
+			};
+			let state = db_state(DatabaseConnection::new(Arc::new(backend)), limits);
+
+			// Act
+			let error = state.db_query("SELECT 1", &no_params()).await.unwrap_err();
+
+			// Assert
+			assert_eq!(error.code, 504);
+			assert_eq!(error.message, "Database query timed out");
+			assert_eq!(error.details.as_deref(), Some("deadline is 50ms"));
+		}
+
+		#[rstest]
+		#[tokio::test]
+		async fn test_db_query_fails_closed_without_row_streaming() {
+			// Arrange
+			let connection = DatabaseConnection::new(Arc::new(NonStreamingBackend));
+			let state = db_state(connection, DatabaseResourceLimits::default());
+
+			// Act
+			let error = state.db_query("SELECT 1", &no_params()).await.unwrap_err();
+
+			// Assert
+			assert_eq!(error.code, 500);
+			assert_eq!(error.message, "Database query failed");
+			assert!(
+				error
+					.details
+					.as_deref()
+					.is_some_and(|details| details.contains("Row streaming is not supported")),
+				"unexpected details: {:?}",
+				error.details
+			);
+		}
+
+		#[rstest]
+		#[tokio::test]
+		async fn test_db_concurrency_budget_is_shared_with_clones() {
+			// Arrange - a clone holds the only permit while its stream pends
+			let started = Arc::new(Notify::new());
+			let backend = PendingStreamBackend {
+				started: started.clone(),
+			};
+			let limits = DatabaseResourceLimits {
+				max_concurrent_queries: 1,
+				..DatabaseResourceLimits::default()
+			};
+			let state = db_state(DatabaseConnection::new(Arc::new(backend)), limits);
+			let cloned = state.clone();
+			let _in_flight = AbortOnDrop(tokio::spawn(async move {
+				cloned.db_query("SELECT 1", &no_params()).await
+			}));
+			started.notified().await;
+
+			// Act
+			let error = state.db_query("SELECT 1", &no_params()).await.unwrap_err();
+
+			// Assert
+			assert_eq!(error.code, 429);
+			assert_eq!(error.message, "Too many concurrent database queries");
 			assert_eq!(error.details.as_deref(), Some("limit is 1 per plugin"));
 		}
 	}

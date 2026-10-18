@@ -620,7 +620,8 @@ async fn test_session_cleanup() {
 	let store = Arc::new(SessionStore::new());
 	let config = SessionConfig::new("sessionid".to_string(), Duration::from_millis(50));
 	let middleware = Arc::new(SessionMiddleware::from_arc(config, store.clone()));
-	let handler = Arc::new(ConfigurableTestHandler::always_success());
+	// The middleware stores a session only once a handler saves it
+	let handler = Arc::new(SessionSavingHandler::new(&middleware));
 
 	// Create a session through middleware
 	let request = create_test_request("GET", "/page");

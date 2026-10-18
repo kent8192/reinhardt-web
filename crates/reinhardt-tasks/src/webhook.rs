@@ -24,6 +24,14 @@
 //! When an HTTP proxy is configured through the environment, the proxy resolves
 //! the webhook host itself, so it must enforce the same egress policy.
 //!
+//! # Failed responses
+//!
+//! A non-success response is reported with its status and an excerpt of at
+//! most 512 bytes of the decoded response body. The rest of the body is never
+//! read, so a webhook endpoint cannot make a failed delivery buffer, retain,
+//! or log a large body. Control characters and bidirectional formatting
+//! characters in the excerpt are escaped before it reaches logs.
+//!
 //! # Example
 //!
 //! ```rust
@@ -855,20 +863,76 @@ impl HttpWebhookSender {
 
 		// Check response status
 		if !response.status().is_success() {
+			let status = response.status();
 			return Err(AttemptError::Transient(WebhookError::RequestFailed(
-				format!(
-					"HTTP {}: {}",
-					response.status(),
-					response
-						.text()
-						.await
-						.unwrap_or_else(|_| "No response body".to_string())
-				),
+				format!("HTTP {}: {}", status, error_body_excerpt(response).await),
 			)));
 		}
 
 		Ok(())
 	}
+}
+
+/// Maximum number of decoded body bytes read from a failed webhook response.
+const ERROR_BODY_EXCERPT_LIMIT: usize = 512;
+
+/// Suffix appended to an error body excerpt when the body exceeds
+/// [`ERROR_BODY_EXCERPT_LIMIT`].
+const ERROR_BODY_TRUNCATED_MARKER: &str = "... [truncated]";
+
+/// Read a bounded excerpt of a failed response body for error reporting.
+///
+/// The webhook endpoint controls this body, so at most
+/// [`ERROR_BODY_EXCERPT_LIMIT`] bytes are kept. `Response::chunk` yields the
+/// body after content decoding, so the limit also bounds decompressed data.
+/// Reading stops at the limit and the rest of the body is discarded with the
+/// connection when the response is dropped. The excerpt ends up in logs, so it
+/// is decoded lossily and sanitized by [`sanitize_error_body_excerpt`].
+async fn error_body_excerpt(mut response: reqwest::Response) -> String {
+	let mut excerpt = Vec::with_capacity(ERROR_BODY_EXCERPT_LIMIT);
+	let mut truncated = false;
+	loop {
+		match response.chunk().await {
+			Ok(Some(chunk)) => {
+				let room = ERROR_BODY_EXCERPT_LIMIT - excerpt.len();
+				if chunk.len() > room {
+					excerpt.extend_from_slice(&chunk[..room]);
+					truncated = true;
+					break;
+				}
+				excerpt.extend_from_slice(&chunk);
+			}
+			Ok(None) => break,
+			// The status code alone still identifies the failure.
+			Err(_) if excerpt.is_empty() => return "No response body".to_string(),
+			Err(_) => break,
+		}
+	}
+
+	let mut sanitized = sanitize_error_body_excerpt(&String::from_utf8_lossy(&excerpt));
+	if truncated {
+		sanitized.push_str(ERROR_BODY_TRUNCATED_MARKER);
+	}
+	sanitized
+}
+
+/// Escape characters in a remote error body excerpt that could forge or hide
+/// log content: control characters, such as line breaks and terminal escape
+/// sequences, and Unicode bidirectional formatting characters.
+fn sanitize_error_body_excerpt(text: &str) -> String {
+	let mut sanitized = String::with_capacity(text.len());
+	for c in text.chars() {
+		let is_bidi_format = matches!(
+			c,
+			'\u{061C}' | '\u{200E}' | '\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}'
+		);
+		if c.is_control() || is_bidi_format {
+			sanitized.extend(c.escape_default());
+		} else {
+			sanitized.push(c);
+		}
+	}
+	sanitized
 }
 
 /// Build the HTTP client used for webhook delivery.
@@ -1820,6 +1884,146 @@ mod tests {
 			other => panic!("expected a redirect rejection, got {other:?}"),
 		}
 		redirect.assert_async().await;
+	}
+
+	// Failed response body tests. The endpoint controls the body of a failed
+	// response, so only a bounded, sanitized excerpt may reach the error.
+
+	fn request_failed_message(result: Result<(), AttemptError>) -> String {
+		match result {
+			Err(AttemptError::Transient(WebhookError::RequestFailed(message))) => message,
+			other => panic!("expected a transient RequestFailed error, got {other:?}"),
+		}
+	}
+
+	#[rstest]
+	#[case::empty_body(String::new(), String::new())]
+	#[case::short_body(
+		r#"{"error":"invalid signature"}"#.to_string(),
+		r#"{"error":"invalid signature"}"#.to_string()
+	)]
+	#[case::at_limit(
+		"a".repeat(ERROR_BODY_EXCERPT_LIMIT),
+		"a".repeat(ERROR_BODY_EXCERPT_LIMIT)
+	)]
+	#[case::one_byte_over_limit(
+		"a".repeat(ERROR_BODY_EXCERPT_LIMIT + 1),
+		format!("{}{ERROR_BODY_TRUNCATED_MARKER}", "a".repeat(ERROR_BODY_EXCERPT_LIMIT))
+	)]
+	#[case::large_body(
+		"a".repeat(1024 * 1024),
+		format!("{}{ERROR_BODY_TRUNCATED_MARKER}", "a".repeat(ERROR_BODY_EXCERPT_LIMIT))
+	)]
+	#[tokio::test]
+	async fn test_failed_response_error_keeps_bounded_body_excerpt(
+		#[case] body: String,
+		#[case] expected_excerpt: String,
+	) {
+		// Arrange
+		let mut server = mockito::Server::new_async().await;
+		let mock = server
+			.mock("POST", "/webhook")
+			.with_status(500)
+			.with_body(body)
+			.expect(1)
+			.create_async()
+			.await;
+		let sender = HttpWebhookSender::new(test_config(format!("{}/webhook", server.url()), 0));
+
+		// Act
+		let result = sender.send_request(&test_event()).await;
+
+		// Assert
+		assert_eq!(
+			request_failed_message(result),
+			format!("HTTP 500 Internal Server Error: {expected_excerpt}")
+		);
+		mock.assert_async().await;
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_failed_response_error_escapes_log_control_characters() {
+		// Arrange - line breaks could forge log entries, while terminal escapes
+		// and bidirectional overrides could hide or reorder logged text.
+		let mut server = mockito::Server::new_async().await;
+		let mock = server
+			.mock("POST", "/webhook")
+			.with_status(502)
+			.with_body("bad\r\nlevel=INFO forged\t\u{1b}[2Khidden\u{202e}txt.exe")
+			.expect(1)
+			.create_async()
+			.await;
+		let sender = HttpWebhookSender::new(test_config(format!("{}/webhook", server.url()), 0));
+
+		// Act
+		let result = sender.send_request(&test_event()).await;
+
+		// Assert
+		assert_eq!(
+			request_failed_message(result),
+			r"HTTP 502 Bad Gateway: bad\r\nlevel=INFO forged\t\u{1b}[2Khidden\u{202e}txt.exe"
+		);
+		mock.assert_async().await;
+	}
+
+	/// Accept one connection and answer it with a failed response that
+	/// announces a 1 GiB body but sends only `prefix_len` bytes of it, then wait
+	/// until the client closes the connection.
+	async fn serve_unfinished_error_body(listener: tokio::net::TcpListener, prefix_len: usize) {
+		use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+		let (mut stream, _) = listener.accept().await.unwrap();
+		let mut request = Vec::new();
+		let mut buf = [0u8; 4096];
+		while !request.windows(4).any(|window| window == b"\r\n\r\n") {
+			let read = stream.read(&mut buf).await.unwrap();
+			assert_ne!(read, 0, "connection closed before the request headers");
+			request.extend_from_slice(&buf[..read]);
+		}
+		let head = "HTTP/1.1 500 Internal Server Error\r\ncontent-length: 1073741824\r\n\r\n";
+		stream.write_all(head.as_bytes()).await.unwrap();
+		stream.write_all(&vec![b'x'; prefix_len]).await.unwrap();
+		stream.flush().await.unwrap();
+		// The rest of the body is never sent. Reading until EOF also drains any
+		// part of the request body that arrived after the headers.
+		while stream.read(&mut buf).await.is_ok_and(|read| read > 0) {}
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_failed_response_body_beyond_excerpt_is_not_read() {
+		// Arrange - a client that reads the whole failed body would wait for
+		// the missing bytes until its 60 second request timeout.
+		let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+		let url = format!("http://{}/webhook", listener.local_addr().unwrap());
+		let server = tokio::spawn(serve_unfinished_error_body(
+			listener,
+			ERROR_BODY_EXCERPT_LIMIT + 64,
+		));
+		let mut config = test_config(url, 0);
+		config.timeout = Duration::from_secs(60);
+		let sender = HttpWebhookSender::new(config);
+
+		// Act
+		let result =
+			tokio::time::timeout(Duration::from_secs(10), sender.send_request(&test_event()))
+				.await
+				.expect("the failed response body was read past the excerpt limit");
+
+		// Assert - the excerpt is bounded and the connection is closed instead
+		// of being drained to the announced length.
+		assert_eq!(
+			request_failed_message(result),
+			format!(
+				"HTTP 500 Internal Server Error: {}{ERROR_BODY_TRUNCATED_MARKER}",
+				"x".repeat(ERROR_BODY_EXCERPT_LIMIT)
+			)
+		);
+		tokio::time::timeout(Duration::from_secs(10), server)
+			.await
+			.expect("the client kept the connection open after the excerpt")
+			.unwrap();
 	}
 
 	#[rstest]

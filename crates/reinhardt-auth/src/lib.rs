@@ -291,6 +291,9 @@ pub enum AuthenticationError {
 	/// The JWT token has expired.
 	TokenExpired,
 	/// The request lacks valid authentication credentials.
+	///
+	/// Backends return this to reject a request terminally: composite backends
+	/// propagate it immediately instead of trying later backends.
 	NotAuthenticated,
 	/// A database error occurred during authentication.
 	DatabaseError(String),
