@@ -305,6 +305,17 @@ requires Salsa's older internal trait contract. These constraints are tracked in
 when the release baseline resolves a compatible shell dependency graph without
 additional constraints. Packages without evcxr 0.22 are unaffected.
 
+The `reinhardt-test` 0.4.0-alpha.20 baseline also forwards its `pgvector`
+feature to `reinhardt-admin?/pgvector`. The published feature enables
+`reinhardt-db/pgvector` through `reinhardt-testkit` but not the admin feature,
+so the baseline admin match on database field types is non-exhaustive when
+cargo-semver-checks enables `admin` and `pgvector` together. `reinhardt-admin`
+accepts that combination since
+[PR #6686](https://github.com/kent8192/reinhardt-web/pull/6686), but the
+published tag predates it. This workaround is tracked in
+[issue #6820](https://github.com/kent8192/reinhardt-web/issues/6820). Remove it
+when the release baseline is newer than 0.4.0-alpha.20.
+
 This selects the comparison source; it does not suppress API incompatibilities
 or breaking Conventional Commits. Patch releases must satisfy the stability
 policy, including any explicitly version-scoped security exception. To inspect
