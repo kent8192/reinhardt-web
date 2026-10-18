@@ -89,11 +89,11 @@ impl Http2Server {
 		println!("HTTP/2 server listening on http://{}", addr);
 
 		loop {
-			let (stream, _) = listener.accept().await?;
+			let (stream, remote_addr) = listener.accept().await?;
 			let handler = self.handler.clone();
 
 			tokio::task::spawn(async move {
-				if let Err(err) = Self::handle_connection(stream, handler).await {
+				if let Err(err) = Self::serve_connection(stream, remote_addr, handler).await {
 					eprintln!("Error handling HTTP/2 connection: {:?}", err);
 				}
 			});
@@ -146,14 +146,14 @@ impl Http2Server {
 			tokio::select! {
 				// Accept new connection
 				result = listener.accept() => {
-					let (stream, _) = result?;
+					let (stream, remote_addr) = result?;
 					let handler = self.handler.clone();
 					let mut conn_shutdown = coordinator.subscribe();
 
 					tokio::task::spawn(async move {
 						// Handle connection with shutdown support
 						tokio::select! {
-							result = Self::handle_connection(stream, handler) => {
+							result = Self::serve_connection(stream, remote_addr, handler) => {
 								if let Err(err) = result {
 									eprintln!("Error handling HTTP/2 connection: {:?}", err);
 								}
@@ -181,6 +181,9 @@ impl Http2Server {
 	/// Handle a single TCP connection by processing HTTP/2 requests
 	///
 	/// This is an internal method used by the server to process individual connections.
+	/// Every request on the connection carries the peer address of `stream` as its
+	/// `remote_addr`, as with [`HttpServer`](crate::server::HttpServer). The connection
+	/// is not served if its peer address cannot be read.
 	///
 	/// # Examples
 	///
@@ -213,9 +216,24 @@ impl Http2Server {
 		stream: TcpStream,
 		handler: Arc<dyn Handler>,
 	) -> Result<(), Box<dyn std::error::Error>> {
+		let remote_addr = stream.peer_addr()?;
+		Self::serve_connection(stream, remote_addr, handler).await
+	}
+
+	/// Serve HTTP/2 requests on `stream`, attributing each one to `remote_addr`.
+	///
+	/// The listen loops pass the address returned by `accept`, so per-peer
+	/// controls such as [`RateLimitHandler`](crate::server::RateLimitHandler) see
+	/// the same client identity as over HTTP/1.1.
+	async fn serve_connection(
+		stream: TcpStream,
+		remote_addr: SocketAddr,
+		handler: Arc<dyn Handler>,
+	) -> Result<(), Box<dyn std::error::Error>> {
 		let io = TokioIo::new(stream);
 		let service = RequestService {
 			handler,
+			remote_addr,
 			max_body_size: DEFAULT_MAX_BODY_SIZE,
 		};
 
@@ -233,6 +251,7 @@ const DEFAULT_MAX_BODY_SIZE: u64 = 10 * 1024 * 1024;
 /// Service implementation for hyper
 struct RequestService {
 	handler: Arc<dyn Handler>,
+	remote_addr: SocketAddr,
 	max_body_size: u64,
 }
 
@@ -243,6 +262,7 @@ impl Service<hyper::Request<Incoming>> for RequestService {
 
 	fn call(&self, req: hyper::Request<Incoming>) -> Self::Future {
 		let handler = self.handler.clone();
+		let remote_addr = self.remote_addr;
 		let max_body_size = self.max_body_size;
 
 		Box::pin(async move {
@@ -278,6 +298,7 @@ impl Service<hyper::Request<Incoming>> for RequestService {
 				.version(parts.version)
 				.headers(parts.headers)
 				.body(body_bytes)
+				.remote_addr(remote_addr)
 				.build()
 				.expect("Failed to build request");
 
@@ -382,6 +403,13 @@ pub async fn serve_http2_with_shutdown<H: Handler + 'static>(
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::server::{RateLimitSettings, create_rate_limit_handler_from_settings};
+	use http_body_util::Empty;
+	use hyper::StatusCode;
+	use hyper_util::rt::TokioExecutor;
+	use rstest::rstest;
+	use std::sync::Mutex;
+	use tokio::task::JoinHandle;
 
 	struct TestHandler;
 
@@ -396,5 +424,133 @@ mod tests {
 	async fn test_http2_server_creation() {
 		let _server = Http2Server::new(TestHandler);
 		// Just verify server can be created without panicking
+	}
+
+	/// Records the `remote_addr` of every request it handles.
+	struct PeerRecordingHandler(Arc<Mutex<Vec<Option<SocketAddr>>>>);
+
+	#[async_trait::async_trait]
+	impl Handler for PeerRecordingHandler {
+		async fn handle(&self, request: Request) -> reinhardt_core::exception::Result<Response> {
+			self.0.lock().unwrap().push(request.remote_addr);
+			Ok(Response::ok())
+		}
+	}
+
+	/// How the test server hands an accepted connection to `Http2Server`.
+	#[derive(Clone, Copy, Debug)]
+	enum Entry {
+		/// As the `listen` loops do: with the address returned by `accept`.
+		AcceptedAddress,
+		/// Through the public `handle_connection`, which reads the stream's peer.
+		HandleConnection,
+	}
+
+	/// Aborts the accept loop when dropped, including when an assertion fails.
+	struct ServerTask(JoinHandle<()>);
+
+	impl Drop for ServerTask {
+		fn drop(&mut self) {
+			self.0.abort();
+		}
+	}
+
+	/// Serves every connection accepted on an ephemeral loopback port.
+	async fn spawn_server(entry: Entry, handler: Arc<dyn Handler>) -> (SocketAddr, ServerTask) {
+		let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+		let address = listener.local_addr().unwrap();
+		let task = tokio::spawn(async move {
+			loop {
+				let (stream, accepted) = listener.accept().await.unwrap();
+				let handler = handler.clone();
+				tokio::spawn(async move {
+					let _ = match entry {
+						Entry::AcceptedAddress => {
+							Http2Server::serve_connection(stream, accepted, handler).await
+						}
+						Entry::HandleConnection => {
+							Http2Server::handle_connection(stream, handler).await
+						}
+					};
+				});
+			}
+		});
+		(address, ServerTask(task))
+	}
+
+	/// Sends `GET /` over a new HTTP/2 connection whose client-IP headers claim
+	/// `claimed_ip`, returning the client's local address and the response status.
+	async fn get_over_new_connection(
+		server: SocketAddr,
+		claimed_ip: &str,
+	) -> (SocketAddr, StatusCode) {
+		let stream = TcpStream::connect(server).await.unwrap();
+		let local_addr = stream.local_addr().unwrap();
+		let (mut sender, connection) =
+			hyper::client::conn::http2::handshake(TokioExecutor::new(), TokioIo::new(stream))
+				.await
+				.unwrap();
+		let connection = tokio::spawn(connection);
+		let request = hyper::Request::builder()
+			.uri(format!("http://{server}/"))
+			.header("x-forwarded-for", claimed_ip)
+			.header("x-real-ip", claimed_ip)
+			.body(Empty::<Bytes>::new())
+			.unwrap();
+		let status = sender.send_request(request).await.unwrap().status();
+		connection.abort();
+		(local_addr, status)
+	}
+
+	#[rstest]
+	#[case::accepted_address(Entry::AcceptedAddress)]
+	#[case::handle_connection(Entry::HandleConnection)]
+	#[tokio::test]
+	async fn request_remote_addr_is_the_connection_peer(#[case] entry: Entry) {
+		// Arrange
+		let seen = Arc::new(Mutex::new(Vec::new()));
+		let (server, _task) =
+			spawn_server(entry, Arc::new(PeerRecordingHandler(seen.clone()))).await;
+
+		// Act
+		let (first_client, first_status) = get_over_new_connection(server, "203.0.113.7").await;
+		let (second_client, second_status) = get_over_new_connection(server, "203.0.113.7").await;
+
+		// Assert
+		assert_eq!(first_status, StatusCode::OK);
+		assert_eq!(second_status, StatusCode::OK);
+		// Each direct client keeps its own socket identity, and the claimed
+		// client-IP headers do not replace it.
+		assert_ne!(first_client, second_client);
+		assert_eq!(
+			*seen.lock().unwrap(),
+			vec![Some(first_client), Some(second_client)]
+		);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn per_ip_rate_limit_keys_on_the_connection_peer() {
+		// Arrange
+		// The loopback peer is a trusted proxy, so each claimed client IP gets its
+		// own bucket. Without the peer address every request would fall back to
+		// one shared bucket and the second client would be rejected.
+		let settings = RateLimitSettings {
+			max_requests: 1,
+			trusted_proxies: vec!["127.0.0.1".to_string()],
+			..RateLimitSettings::default()
+		};
+		let limiter = create_rate_limit_handler_from_settings(Arc::new(TestHandler), &settings);
+		let (server, _task) = spawn_server(Entry::AcceptedAddress, Arc::new(limiter)).await;
+
+		// Act
+		let (_, first) = get_over_new_connection(server, "198.51.100.1").await;
+		let (_, other_client) = get_over_new_connection(server, "198.51.100.2").await;
+		let (_, repeated) = get_over_new_connection(server, "198.51.100.1").await;
+
+		// Assert
+		assert_eq!(first, StatusCode::OK);
+		assert_eq!(other_client, StatusCode::OK);
+		assert_eq!(repeated, StatusCode::TOO_MANY_REQUESTS);
 	}
 }
