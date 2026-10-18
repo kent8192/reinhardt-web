@@ -49,6 +49,20 @@ ignore = [
   # Ideal: YAML output goes through a safe-Rust library such as serde-saphyr,
   # `to_yaml` returns a Reinhardt-owned error, and no RUSTSEC-2024-0449 entry.
   { id = "RUSTSEC-2024-0449", reason = "unsafe-libyaml is unmaintained with no safe upgrade and is retained by the deprecated serde_yaml, a direct dependency exposed in public APIs; migration is tracked in issue #6773." },
+  # Temporary: zip 3.0.0 is only a build-dependency of utoipa-swagger-ui 9.0.2
+  # (reinhardt-rest `openapi-swagger-ui`). No released utoipa-swagger-ui accepts
+  # zip >=9, and the upstream bump (juhaku/utoipa#1645) targets the 10.x line,
+  # which needs utoipa 6; reinhardt-rest re-exports utoipa, so that move is
+  # breaking (issue #6815). The build script never calls the affected `extract`
+  # APIs or creates symlinks, and with the `vendored` feature it only unpacks
+  # the embedded Swagger UI archive, which has no symlinks or SUID/SGID/sticky
+  # bits.
+  # Remove these exceptions once zip 3.x leaves the full-feature graph.
+  # Ideal: reinhardt-rest uses a utoipa-swagger-ui release built against
+  # zip >=9, and no RUSTSEC-2026-0367/0368/0369 entries.
+  { id = "RUSTSEC-2026-0367", reason = "zip 3.0.0 runs only in the utoipa-swagger-ui build script, which unpacks the vendored Swagger UI archive containing no SUID/SGID/sticky bits; no released utoipa-swagger-ui accepts zip >=9 (issue #6815)." },
+  { id = "RUSTSEC-2026-0368", reason = "zip 3.0.0 runs only in the utoipa-swagger-ui build script, which never calls ZipArchive::extract or creates symlinks; no released utoipa-swagger-ui accepts zip >=9 (issue #6815)." },
+  { id = "RUSTSEC-2026-0369", reason = "zip 3.0.0 runs only in the utoipa-swagger-ui build script, which never calls the affected extract APIs or creates symlinks; no released utoipa-swagger-ui accepts zip >=9 (issue #6815)." },
 ]
 
 [licenses]
