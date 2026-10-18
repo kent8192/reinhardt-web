@@ -146,12 +146,15 @@ impl RestAuthentication for CompositeAuthentication {
 	///
 	/// - `Ok(Some(user))`: authentication succeeded, return immediately
 	/// - `Ok(None)`: this backend does not handle this authentication type, try next
-	/// - `Err(e)`: backend error (e.g., database failure), log and try next
+	/// - `Err(AuthenticationError::NotAuthenticated)`: the backend terminally
+	///   rejected the request (e.g. [`RemoteUserAuth`](crate::RemoteUserAuth)
+	///   forcing logout), return the error immediately without trying later backends
+	/// - `Err(e)`: any other backend error (e.g., database failure), log and try next
 	///
-	/// Errors are only propagated when ALL backends return `Err`, meaning no backend
-	/// could attempt authentication. If any backend returns `Ok(None)`, it indicates
-	/// that at least one backend processed the request normally, so errors from
-	/// other backends are considered irrelevant to this request type.
+	/// Other errors are only propagated when ALL backends return `Err`, meaning no
+	/// backend could attempt authentication. If any backend returns `Ok(None)`, it
+	/// indicates that at least one backend processed the request normally, so errors
+	/// from other backends are considered irrelevant to this request type.
 	async fn authenticate(
 		&self,
 		request: &Request,
@@ -163,6 +166,10 @@ impl RestAuthentication for CompositeAuthentication {
 			match backend.authenticate(request).await {
 				Ok(Some(user)) => return Ok(Some(user)),
 				Ok(None) => continue,
+				// A terminal rejection must not be overridden by a fallback credential
+				Err(AuthenticationError::NotAuthenticated) => {
+					return Err(AuthenticationError::NotAuthenticated);
+				}
 				Err(e) => {
 					tracing::warn!("Authentication backend error occurred");
 					tracing::debug!(error = %e, "Authentication backend error details");
@@ -1009,6 +1016,76 @@ mod tests {
 		// Assert - one backend returned Ok(None), so errors are not propagated
 		assert!(result.is_ok());
 		assert!(result.unwrap().is_none());
+	}
+
+	fn fallback_identity() -> Box<dyn AuthIdentity> {
+		Box::new(InternalUser {
+			id: uuid::Uuid::new_v5(&crate::USER_ID_NAMESPACE, b"fallback"),
+			username: "fallback".to_string(),
+			email: String::new(),
+			is_active: true,
+			is_admin: false,
+			is_staff: false,
+			is_superuser: false,
+		})
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_composite_auth_not_authenticated_stops_fallback() {
+		// Arrange - a terminal rejection precedes a backend that would accept
+		let composite = CompositeAuthentication::new()
+			.with_backend(MockAuthBackend::new(
+				Err(AuthenticationError::NotAuthenticated),
+				Ok(None),
+			))
+			.with_backend(MockAuthBackend::new(
+				Ok(Some(fallback_identity())),
+				Ok(None),
+			));
+		let request = Request::builder()
+			.method(Method::GET)
+			.uri("/")
+			.body(Bytes::new())
+			.build()
+			.unwrap();
+
+		// Act
+		let result = RestAuthentication::authenticate(&composite, &request).await;
+
+		// Assert
+		assert_eq!(result.err(), Some(AuthenticationError::NotAuthenticated));
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_composite_auth_infrastructure_error_falls_back() {
+		// Arrange - a backend failure is not a rejection of the request
+		let composite = CompositeAuthentication::new()
+			.with_backend(MockAuthBackend::new(
+				Err(AuthenticationError::DatabaseError("db down".to_string())),
+				Ok(None),
+			))
+			.with_backend(MockAuthBackend::new(
+				Ok(Some(fallback_identity())),
+				Ok(None),
+			));
+		let request = Request::builder()
+			.method(Method::GET)
+			.uri("/")
+			.body(Bytes::new())
+			.build()
+			.unwrap();
+
+		// Act
+		let user = RestAuthentication::authenticate(&composite, &request)
+			.await
+			.unwrap()
+			.expect("later backend should authenticate after an infrastructure error");
+
+		// Assert
+		let expected_id = uuid::Uuid::new_v5(&crate::USER_ID_NAMESPACE, b"fallback").to_string();
+		assert_eq!(user.id(), expected_id);
 	}
 
 	#[rstest]

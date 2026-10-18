@@ -265,6 +265,16 @@ authentication middleware that validates the current user record before using
 available for custom `AsyncSessionBackend` integrations, but it only restores
 flags stored in the session and must not be treated as an account validator.
 
+Sessions are stored lazily. A request without a stored session gets a fresh
+`SessionData` that is stored only once a handler saves it (for example through
+`SessionAuthExt::login`). Its ID is still sent as the session cookie so that
+values bound to it, such as CSRF tokens, stay valid; the ID is signed with a
+random key held by the store and expires after the session TTL, so the store
+does not need to remember it. The in-memory `SessionStore` holds at most
+`SessionStore::DEFAULT_MAX_SESSIONS` (100,000) sessions. Saving a new session
+into a full store drops expired sessions, then evicts those closest to expiry.
+Change the limit with `SessionStore::set_max_sessions`.
+
 - `USER_ID_SESSION_KEY` — the canonical session-store key (`"user_id"`)
   every handler should read from / write to instead of hardcoding a literal.
 - `SessionValue<T>` / `OptionalSessionValue<T>` — typed extractors that

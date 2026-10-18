@@ -19,6 +19,7 @@
 use async_trait::async_trait;
 use bytes::Bytes;
 use reinhardt_core::exception::Result;
+use reinhardt_di::{DiRegistrationList, Injectable, InjectionContext, SingletonScope};
 use reinhardt_http::{Handler, Middleware};
 use reinhardt_http::{Request, Response};
 use reinhardt_middleware::cache::{CacheConfig, CacheKeyStrategy, CacheMiddleware};
@@ -28,7 +29,7 @@ use reinhardt_middleware::circuit_breaker::{CircuitBreakerConfig, CircuitBreaker
 pub use reinhardt_middleware::rate_limit::RateLimitStrategy;
 #[cfg(feature = "rate-limit")]
 use reinhardt_middleware::rate_limit::{RateLimitConfig, RateLimitMiddleware};
-use reinhardt_middleware::session::{SessionConfig, SessionMiddleware};
+use reinhardt_middleware::session::{SessionConfig, SessionData, SessionMiddleware, SessionStore};
 use rstest::fixture;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -341,6 +342,48 @@ pub fn session_config_fast() -> SessionConfig {
 #[fixture]
 pub fn session_middleware(session_config_fast: SessionConfig) -> Arc<SessionMiddleware> {
 	Arc::new(SessionMiddleware::new(session_config_fast))
+}
+
+/// Handler that saves the request's session, then responds `200 OK`.
+///
+/// It resolves `SessionData` through its `Injectable` implementation and saves
+/// it to the middleware's store, as a handler with `#[inject] session:
+/// SessionData` that writes to its session does. `SessionMiddleware` stores a
+/// new session only once a handler saves it and sends `Set-Cookie` only for
+/// stored sessions.
+pub struct SessionSavingHandler {
+	scope: Arc<SingletonScope>,
+}
+
+impl SessionSavingHandler {
+	/// Wire the handler to the store `middleware` registers for DI.
+	pub fn new(middleware: &SessionMiddleware) -> Self {
+		let scope = SingletonScope::new();
+		let mut registrations = DiRegistrationList::new();
+		for (type_id, value) in middleware.di_registrations() {
+			registrations.register_arc_any(type_id, value);
+		}
+		registrations.apply_to(&scope);
+		Self {
+			scope: Arc::new(scope),
+		}
+	}
+}
+
+#[async_trait]
+impl Handler for SessionSavingHandler {
+	async fn handle(&self, request: Request) -> Result<Response> {
+		let ctx = InjectionContext::builder(Arc::clone(&self.scope)).build();
+		ctx.set_request(request);
+		let session = SessionData::inject(&ctx)
+			.await
+			.expect("SessionMiddleware must provide a session for every request");
+		let store = ctx
+			.get_singleton::<SessionStore>()
+			.expect("SessionMiddleware must register its store for DI");
+		store.save(session);
+		Ok(Response::ok())
+	}
 }
 
 // ============================================================================

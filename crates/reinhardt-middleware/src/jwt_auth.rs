@@ -4,11 +4,11 @@ use async_trait::async_trait;
 use std::sync::Arc;
 
 #[cfg(feature = "auth-jwt")]
+use crate::auth_extensions::install_auth_state;
+#[cfg(feature = "auth-jwt")]
 use reinhardt_auth::jwt::JwtAuth;
 #[cfg(feature = "auth-jwt")]
-use reinhardt_http::{
-	AuthState, Handler, IsActive, IsAdmin, IsAuthenticated, Middleware, Request, Response, Result,
-};
+use reinhardt_http::{AuthState, Handler, Middleware, Request, Response, Result};
 
 /// JWT authentication middleware for stateless token-based auth.
 ///
@@ -128,22 +128,13 @@ impl Middleware for JwtAuthMiddleware {
 		let auth_state = if let Some(token) = Self::extract_bearer_token(&request)
 			&& let Ok(claims) = self.jwt_auth.verify_token(token)
 		{
-			let user_id = claims.sub;
 			let is_admin = claims.is_staff || claims.is_superuser;
-			let is_active = true;
-
-			// Insert individual values for backward compatibility
-			request.extensions.insert(user_id.clone());
-			request.extensions.insert(IsAuthenticated(true));
-			request.extensions.insert(IsAdmin(is_admin));
-			request.extensions.insert(IsActive(is_active));
-
-			AuthState::authenticated(user_id, is_admin, is_active)
+			AuthState::authenticated(claims.sub, is_admin, true)
 		} else {
 			AuthState::anonymous()
 		};
 
-		request.extensions.insert(auth_state);
+		install_auth_state(&request.extensions, auth_state);
 		next.handle(request).await
 	}
 }
@@ -151,6 +142,9 @@ impl Middleware for JwtAuthMiddleware {
 #[cfg(all(test, feature = "auth-jwt"))]
 mod tests {
 	use super::*;
+	use crate::auth_extensions::test_support::{
+		AuthEntriesHandler, anonymous_entries, auth_entries, expected_entries, seed_prior_principal,
+	};
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, Version};
 	use reinhardt_auth::jwt::{Claims, JwtAuth};
@@ -433,5 +427,73 @@ mod tests {
 		assert_eq!(body["user_id"], "regular-user");
 		assert_eq!(body["is_admin"], false);
 		assert_eq!(body["is_active"], true);
+	}
+
+	#[rstest]
+	#[case::missing_header(None)]
+	#[case::invalid_token(Some("Bearer invalid.token.here"))]
+	#[case::non_bearer_scheme(Some("Basic dXNlcjpwYXNz"))]
+	#[tokio::test]
+	async fn test_auth_failure_clears_prior_legacy_principal(#[case] authorization: Option<&str>) {
+		// Arrange
+		let middleware = JwtAuthMiddleware::from_secret(b"test-secret-key-256bit!!");
+		let request = match authorization {
+			Some(value) => create_request_with_header("Authorization", value),
+			None => create_request_without_auth(),
+		};
+		seed_prior_principal(&request);
+
+		// Act
+		let response = middleware
+			.process(request, Arc::new(AuthEntriesHandler))
+			.await
+			.unwrap();
+
+		// Assert
+		assert_eq!(auth_entries(&response), anonymous_entries());
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_auth_failure_without_prior_principal_adds_no_user_id() {
+		// Arrange
+		let middleware = JwtAuthMiddleware::from_secret(b"test-secret-key-256bit!!");
+		let request = create_request_with_header("Authorization", "Bearer invalid.token.here");
+
+		// Act
+		let response = middleware
+			.process(request, Arc::new(AuthEntriesHandler))
+			.await
+			.unwrap();
+
+		// Assert
+		let mut expected = anonymous_entries();
+		expected["user_id"] = serde_json::Value::Null;
+		assert_eq!(auth_entries(&response), expected);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_valid_token_replaces_prior_legacy_principal() {
+		// Arrange
+		let secret = b"test-secret-key-256bit!!";
+		let token = JwtAuth::new(secret)
+			.generate_token("user-42".to_string(), "bob".to_string(), false, false)
+			.unwrap();
+		let middleware = JwtAuthMiddleware::from_secret(secret);
+		let request = create_request_with_header("Authorization", &format!("Bearer {}", token));
+		seed_prior_principal(&request);
+
+		// Act
+		let response = middleware
+			.process(request, Arc::new(AuthEntriesHandler))
+			.await
+			.unwrap();
+
+		// Assert
+		assert_eq!(
+			auth_entries(&response),
+			expected_entries("user-42", true, false, true)
+		);
 	}
 }

@@ -49418,8 +49418,8 @@
       "path": "crates/reinhardt-dentdelion/src/wasm/host.rs",
       "symbol": "HostState::db_query",
       "kind": "execution-wrapper",
-      "line": 496,
-      "fingerprint": "c3f3d2b3c8f3219d0c577fec5e102364c9beb546dc8a416a497c4d909ff5caa5",
+      "line": 953,
+      "fingerprint": "ce80eddc55d9d8a5f48e8b0affc53a86833104373d43a4d0c759fac0a8a9e913",
       "conditions": [
         "# [cfg (feature = \"wasm\")]"
       ],
