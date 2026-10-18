@@ -17,7 +17,9 @@ use super::store::SessionStore;
 /// Both methods perform the session-fixation prevention rotation that is a
 /// required step on authentication state transitions: each call regenerates
 /// the session id, removes the old store entry referenced by the previous
-/// id, and persists the updated [`SessionData`] under the new id.
+/// id, and persists the updated [`SessionData`] under the new id. A logout
+/// that leaves the session empty persists nothing (see
+/// [`SessionAuthExt::logout`]).
 ///
 /// The trait is provided as an extension so existing call sites can opt
 /// in by adding a single `use` and replacing their inline blocks; the
@@ -80,6 +82,12 @@ pub trait SessionAuthExt {
 	/// keys callers may have written), and persists the rotated session.
 	/// Callers who want to drop *all* session state should call
 	/// [`SessionData::clear`] before invoking this helper.
+	///
+	/// A session left without any keys is not persisted. It is rotated to an
+	/// unsaved id signed by `store`, which `SessionMiddleware` still sends as
+	/// the session cookie (so CSRF tokens bound to it stay valid), and is
+	/// stored only if a later handler saves data into it. Otherwise a client
+	/// could fill the store by logging out repeatedly without credentials.
 	fn logout(&mut self, store: &SessionStore);
 }
 
@@ -97,9 +105,86 @@ impl SessionAuthExt for SessionData {
 	}
 
 	fn logout(&mut self, store: &SessionStore) {
-		let old_id = self.regenerate_id();
 		self.delete(USER_ID_SESSION_KEY);
-		store.delete(&old_id);
-		store.save(self.clone());
+		if self.data.is_empty() {
+			// Nothing is left to persist. The new unsaved id expires with the
+			// session, so the store never holds an entry that outlives it.
+			let old_id = self.replace_id(store.new_pending_id(self.expires_at));
+			store.delete(&old_id);
+		} else {
+			let old_id = self.regenerate_id();
+			store.delete(&old_id);
+			store.save(self.clone());
+		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::session::id::ActiveSessionId;
+	use rstest::rstest;
+	use std::time::Duration;
+
+	fn session() -> SessionData {
+		SessionData::new(Duration::from_secs(3600))
+	}
+
+	#[rstest]
+	fn logout_of_an_otherwise_empty_session_stores_nothing() {
+		// Arrange
+		let store = SessionStore::new();
+		let mut session = session();
+		session.login(&store, 7_i64).unwrap();
+		let logged_in_id = session.id.clone();
+		let holder = ActiveSessionId::new(logged_in_id.clone());
+		session.id_holder = Some(holder.clone());
+
+		// Act
+		session.logout(&store);
+
+		// Assert
+		assert!(
+			store.is_empty(),
+			"an empty logged-out session must not be stored"
+		);
+		assert_ne!(session.id, logged_in_id);
+		assert!(store.is_pending_id(&session.id));
+		assert_eq!(holder.get(), session.id);
+		assert!(session.get::<i64>(USER_ID_SESSION_KEY).is_none());
+	}
+
+	#[rstest]
+	fn repeated_anonymous_logouts_do_not_grow_the_store() {
+		// Arrange
+		let store = SessionStore::new();
+
+		// Act
+		for _ in 0..100 {
+			session().logout(&store);
+		}
+
+		// Assert
+		assert!(store.is_empty());
+	}
+
+	#[rstest]
+	fn logout_keeping_other_keys_persists_the_rotated_session() {
+		// Arrange
+		let store = SessionStore::new();
+		let mut session = session();
+		session.login(&store, 7_i64).unwrap();
+		session.set("flash".to_string(), "bye").unwrap();
+
+		// Act
+		session.logout(&store);
+
+		// Assert
+		let stored = store
+			.get(&session.id)
+			.expect("a session with remaining keys must be stored");
+		assert_eq!(stored.get::<String>("flash").as_deref(), Some("bye"));
+		assert_eq!(store.len(), 1);
+		assert!(!store.is_pending_id(&session.id));
 	}
 }
