@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin@v0.4.0-alpha.20...reinhardt-admin@v0.4.0-alpha.21) - 2026-10-18
+
+### Added
+
+- feat!(db): make migration operation and state types non-exhaustive
+
+### Fixed
+
+- *(admin)* handle independently enabled pgvector field types
+- *(admin)* reject vector edits without the admin feature
+- *(admin)* key save hook relation values by their submitted names
+- *(admin)* key save hook foreign keys by their logical field name
+- *(admin)* redact field values from AdminChange Debug output
+- *(admin)* propagate non-validation save hook errors during import
+
+### Maintenance
+
+- *(sync)* merge main into develop/0.4.0
+
+### Security
+
+- *(admin)* clear legacy auth markers when admin cookie auth fails
+
 ## [0.4.0-alpha.20](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin@v0.4.0-alpha.19...reinhardt-admin@v0.4.0-alpha.20) - 2026-10-06
 
 ### Fixed

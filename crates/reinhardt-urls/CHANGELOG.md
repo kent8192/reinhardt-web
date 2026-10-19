@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.4.0-alpha.20...reinhardt-urls@v0.4.0-alpha.21) - 2026-10-18
+
+### Documentation
+
+- update version references to v0.3.21
+- update version references to v0.3.22
+- update version references to v0.3.23
+
+### Fixed
+
+- *(urls)* dispatch head and options to raw handlers and views
+- *(urls)* preserve explicit head and options route overrides
+
+### Maintenance
+
+- *(urls)* merge main while preserving head and options overrides
+- *(sync)* merge main into develop/0.4.0
+
 ## [0.4.0-alpha.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.4.0-alpha.17...reinhardt-urls@v0.4.0-alpha.18) - 2026-09-27
 
 ### Documentation

@@ -7,6 +7,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.4.0-alpha.20...reinhardt-db@v0.4.0-alpha.21) - 2026-10-18
+
+### Added
+
+- *(query)* add owned SQLx argument adaptation
+- *(query)* add checked numeric PostgreSQL epoch extraction
+- *(db)* execute generated queries with native owned arguments
+- *(db)* bind generated transaction queries and streams natively
+- *(db)* bind generic ORM execution with native arguments
+- *(db)* add constructors and builders for migration state and introspection types
+- feat!(db): make migration operation and state types non-exhaustive
+
+### Changed
+
+- *(db)* consume generated content type arguments
+- *(orm)* own generated async query arguments
+- *(orm)* execute querysets with native generated arguments
+- *(orm)* preserve native arguments through typed upserts
+- *(orm)* retain native arguments in relationship accessors
+- *(orm)* execute manager CRUD with native arguments
+- *(orm)* bind bulk update CASE values natively
+- *(orm)* bind native values for bulk model inserts
+- *(auth)* bind native session persistence statements
+- *(db)* bind native backend builder statements
+- *(db)* bind backend insert statements
+- *(db)* build typed MySQL insert ID operations
+- *(db)* build typed Session model reads
+- *(db)* generate session arguments from typed values
+
+### Documentation
+
+- *(orm)* reflow hybrid DML identifier quoting note
+- *(orm)* note case-sensitive and MySQL quoting effects of DML identifiers
+
+### Fixed
+
+- *(db)* bypass incompatible PostgreSQL generated statement caches
+- *(db)* build typed backend analysis statements
+- *(db)* build portable case-insensitive filters
+- *(db)* build typed inclusive range predicates
+- *(db)* build typed legacy arithmetic expressions
+- *(db)* bind legacy case conditions structurally
+- *(db)* keep builder array validation available with postgres only
+- *(db)* preserve array arguments for raw-only custom backends
+- *(db)* truncate generated temporal arguments to microseconds
+
+### Security
+
+- *(orm)* quote identifiers in hybrid DML and bulk update builders
+
+### Testing
+
+- *(db)* refresh generated execution regression contracts
+- *(db)* build introspection fixtures through constructors
+
 ### Breaking Changes
 
 - The migration enums `Operation`, `OperationStatement`, `Constraint`, `IndexType`, and `FieldType` are now `#[non_exhaustive]` (#6511). Existing variants remain constructible, so migration source files keep compiling, but downstream `match` expressions need a wildcard arm. When the caller interprets migrations, that arm should return an explicit unsupported-operation or unsupported-type error rather than silently skipping the value.

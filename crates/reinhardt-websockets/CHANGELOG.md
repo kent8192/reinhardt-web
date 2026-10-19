@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-websockets@v0.4.0-alpha.20...reinhardt-websockets@v0.4.0-alpha.21) - 2026-10-18
+
+### Fixed
+
+- *(conf,websockets)* redact secret fields in settings Debug output
+- *(macros,conf)* redact #[setting(secret)] fields in generated Debug
+- *(websockets)* redact password in RedisConfig Debug output
+
+### Security
+
+- *(websockets)* apply Redis credential and TLS fields to the connection
+
 ## [0.4.0-alpha.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-websockets@v0.4.0-alpha.14...reinhardt-websockets@v0.4.0-alpha.15) - 2026-09-10
 
 ### Documentation

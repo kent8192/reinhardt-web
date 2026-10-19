@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-server@v0.4.0-alpha.20...reinhardt-server@v0.4.0-alpha.21) - 2026-10-18
+
+### Added
+
+- *(server)* admit requests before body collection
+
+### Changed
+
+- *(server)* bundle HTTP/1.1 connection services into one value
+
+### Maintenance
+
+- *(sync)* merge main into develop/0.4.0
+
+### Security
+
+- *(server)* pass the accepted peer address to HTTP/2 requests
+
 ### Added
 
 - Optional HTTP/1.1 and HTTP/2 request admission before body collection, with per-request size and receive-time limits and an owned guard.

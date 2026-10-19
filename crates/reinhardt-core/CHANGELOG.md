@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.4.0-alpha.20...reinhardt-core@v0.4.0-alpha.21) - 2026-10-18
+
+### Fixed
+
+- *(macros,conf)* redact #[setting(secret)] fields in generated Debug
+- *(macros)* reject async #[routes] on wasm with a compile-time diagnostic
+
+### Maintenance
+
+- *(sync)* merge main into develop/0.4.0
+
+### Security
+
+- *(core)* bound protobuf parser nesting depth
+- *(core)* reject backslash-normalized redirect network paths
+- *(core)* reject quoted redirect targets unquoted by meta refresh
+
 ## [0.4.0-alpha.20](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.4.0-alpha.19...reinhardt-core@v0.4.0-alpha.20) - 2026-10-06
 
 ### Added

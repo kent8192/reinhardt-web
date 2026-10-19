@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-test@v0.4.0-alpha.20...reinhardt-test@v0.4.0-alpha.21) - 2026-10-18
+
+### Added
+
+- *(test)* add method-aware async stub router
+- *(testkit)* add ordered per-request headers and payloads
+
+### Documentation
+
+- *(test)* document async stub routes through test facades
+- *(test)* record SimpleHandler migration and removal timeline
+
+### Maintenance
+
+- *(test)* merge develop/0.4.0 into stub router branch
+- *(testkit)* merge develop client transport changes
+
 ### Added
 
 - Native `stub::StubRouter` re-export for method-aware async test routes.

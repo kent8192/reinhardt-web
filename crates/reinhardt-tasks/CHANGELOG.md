@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-tasks@v0.4.0-alpha.20...reinhardt-tasks@v0.4.0-alpha.21) - 2026-10-18
+
+### Maintenance
+
+- *(sync)* merge main into develop/0.4.0
+
+### Security
+
+- *(tasks)* block mapped and unspecified webhook addresses
+- *(tasks)* stop following webhook redirects
+- *(tasks)* enforce webhook address policy at connection time
+- *(tasks)* block shared and other non-global webhook addresses
+- *(tasks)* check IPv4 addresses embedded in NAT64 and 6to4 targets
+- *(tasks)* report webhook redirects without retrying
+- *(tasks)* match the webhook host in the resolver without case or root dot
+- *(tasks)* bound the body read from failed webhook responses
+
 ## [0.4.0-alpha.20](https://github.com/kent8192/reinhardt-web/compare/reinhardt-tasks@v0.4.0-alpha.19...reinhardt-tasks@v0.4.0-alpha.20) - 2026-10-06
 
 ### Changed

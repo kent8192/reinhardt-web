@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.4.0-alpha.20...reinhardt-auth@v0.4.0-alpha.21) - 2026-10-18
+
+### Added
+
+- feat!(auth): add RFC 8628 device authorization grant to oauth2_server
+
+### Fixed
+
+- *(auth)* conclude expired device polls and rate-limit user code lookups by address
+- *(auth)* enforce audience allowlist and allow unscoped families on refresh
+- *(auth)* deserialize before deleting in DatabaseSessionBackend::take
+- *(auth)* serialize InMemorySessionBackend writes with take
+
+### Maintenance
+
+- *(sync)* merge main into develop/0.4.0
+
+### Security
+
+- *(auth)* enforce the session TTL in CookieSessionBackend
+
 ## [0.4.0-alpha.20](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.4.0-alpha.19...reinhardt-auth@v0.4.0-alpha.20) - 2026-10-06
 
 ### Changed
