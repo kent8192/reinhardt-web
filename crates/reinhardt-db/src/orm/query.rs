@@ -7149,16 +7149,16 @@ mod tests {
 		};
 
 		// Assert: every runtime operand is an ordered bind and never part of the SQL text.
-		// PostgreSQL also groups custom AST operands in its renderer.
+		// Every backend groups custom AST operands of boolean operators in its renderer.
 		let expected_sql = match backend {
 			DatabaseBackend::Postgres => {
 				"SELECT CASE WHEN (((((\"username\" = $1)) OR ((\"id\" >= $2)))) AND NOT (((((\"email\" = $3)) AND ((\"id\" < $4)))))) THEN $5 ELSE 0 END"
 			}
 			DatabaseBackend::MySql => {
-				"SELECT CASE WHEN (((`username` = ?) OR (`id` >= ?)) AND NOT (((`email` = ?) AND (`id` < ?)))) THEN ? ELSE 0 END"
+				"SELECT CASE WHEN (((((`username` = ?)) OR ((`id` >= ?)))) AND NOT (((((`email` = ?)) AND ((`id` < ?)))))) THEN ? ELSE 0 END"
 			}
 			DatabaseBackend::Sqlite => {
-				"SELECT CASE WHEN (((\"username\" = ?) OR (\"id\" >= ?)) AND NOT (((\"email\" = ?) AND (\"id\" < ?)))) THEN ? ELSE 0 END"
+				"SELECT CASE WHEN (((((\"username\" = ?)) OR ((\"id\" >= ?)))) AND NOT (((((\"email\" = ?)) AND ((\"id\" < ?)))))) THEN ? ELSE 0 END"
 			}
 		};
 		assert_eq!(sql, expected_sql);
