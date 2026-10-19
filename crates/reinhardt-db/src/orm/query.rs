@@ -819,6 +819,16 @@ enum JoinCondition {
 	RawSql(String),
 }
 
+// `SimpleExpr` erases identifiers to `DynIden` (`Arc<dyn Iden>`), and trait
+// objects do not carry `UnwindSafe` / `RefUnwindSafe`, so storing one here
+// removed both auto traits from the public `QuerySet` that holds the joins.
+// `Columns` expressions are built only from `Alias` identifiers, operators,
+// and owned SQL strings, none of which has interior mutability, so a panic
+// cannot leave them half-updated. Asserting the markers on this private type
+// keeps `QuerySet`'s impls auto-derived with the same bounds on its model.
+impl std::panic::UnwindSafe for JoinCondition {}
+impl std::panic::RefUnwindSafe for JoinCondition {}
+
 impl JoinCondition {
 	/// Condition for the trusted SQL passed to the `*_join_on` methods.
 	///
@@ -9652,6 +9662,25 @@ mod tests {
 
 		// Assert
 		assert_eq!(render_select_statement(&statement, backend), expected);
+	}
+
+	#[rstest]
+	fn queryset_with_structured_join_is_unwind_safe() {
+		// Arrange
+		let queryset = QuerySet::<TestUser>::new().inner_join::<TestMembership>("id", "user_id");
+
+		// Act
+		// The borrowing closure compiles only while `QuerySet` is `RefUnwindSafe`,
+		// and the moving closure only while it is `UnwindSafe`.
+		let borrowed_sql = std::panic::catch_unwind(|| queryset.to_sql())
+			.expect("rendering a joined queryset should not panic");
+		let moved_sql = std::panic::catch_unwind(move || queryset.to_sql())
+			.expect("rendering a joined queryset should not panic");
+
+		// Assert
+		let expected = r#"SELECT * FROM "test_users" INNER JOIN "test_memberships" ON "test_users"."id" = "test_memberships"."user_id""#;
+		assert_eq!(borrowed_sql, expected);
+		assert_eq!(moved_sql, expected);
 	}
 
 	fn hostile_alias_comparison(
