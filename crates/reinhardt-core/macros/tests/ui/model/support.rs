@@ -1592,6 +1592,8 @@ pub mod db {
 			pub referenced_column: String,
 			pub on_delete: ForeignKeyAction,
 			pub on_update: ForeignKeyAction,
+			pub shared_columns: Vec<(String, String)>,
+			pub constraint_name: Option<String>,
 		}
 
 		#[derive(Debug, Clone, PartialEq)]

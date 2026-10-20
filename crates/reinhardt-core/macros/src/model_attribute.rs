@@ -221,17 +221,20 @@ pub(crate) fn model_attribute_impl(
 					let db_column_attr = db_column.map(|column| {
 						quote! { #[field(db_column = #column)] }
 					});
+					// The id field is the relation's stored value, so it is as
+					// visible as the relation field that declares it.
+					let vis = &field.vis;
 					let new_field: Field = if relation_is_nullable(&field.attrs)? {
 						syn::parse_quote! {
 							#[serde(default)]
 							#db_column_attr
-							#id_field_name: ::core::option::Option<<#target_ty as #reinhardt::model_info::InfoModel>::PrimaryKey>
+							#vis #id_field_name: ::core::option::Option<<#target_ty as #reinhardt::model_info::InfoModel>::PrimaryKey>
 						}
 					} else {
 						syn::parse_quote! {
 							#[serde(default)]
 							#db_column_attr
-							#id_field_name: <#target_ty as #reinhardt::model_info::InfoModel>::PrimaryKey
+							#vis #id_field_name: <#target_ty as #reinhardt::model_info::InfoModel>::PrimaryKey
 						}
 					};
 

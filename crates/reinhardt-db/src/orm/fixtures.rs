@@ -4716,6 +4716,8 @@ mod tests {
 					referenced_column: "id".to_string(),
 					on_delete: crate::migrations::ForeignKeyAction::Cascade,
 					on_update: crate::migrations::ForeignKeyAction::Cascade,
+					shared_columns: Vec::new(),
+					constraint_name: None,
 				}),
 		);
 		crate::migrations::model_registry::global_registry().register_model(author);
@@ -4767,6 +4769,8 @@ mod tests {
 					referenced_column: "slug".to_string(),
 					on_delete: crate::migrations::ForeignKeyAction::Cascade,
 					on_update: crate::migrations::ForeignKeyAction::Cascade,
+					shared_columns: Vec::new(),
+					constraint_name: None,
 				}),
 		);
 		crate::migrations::model_registry::global_registry().register_model(author);
@@ -4829,6 +4833,8 @@ mod tests {
 					referenced_column: "fixture_title".to_string(),
 					on_delete: crate::migrations::ForeignKeyAction::Cascade,
 					on_update: crate::migrations::ForeignKeyAction::Cascade,
+					shared_columns: Vec::new(),
+					constraint_name: None,
 				}),
 		);
 		crate::migrations::model_registry::global_registry().register_model(target);
@@ -5892,6 +5898,8 @@ mod tests {
 					referenced_column: "id".to_string(),
 					on_delete: crate::migrations::ForeignKeyAction::Cascade,
 					on_update: crate::migrations::ForeignKeyAction::Cascade,
+					shared_columns: Vec::new(),
+					constraint_name: None,
 				}),
 		);
 		crate::migrations::model_registry::global_registry().register_model(author);

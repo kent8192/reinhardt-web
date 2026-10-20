@@ -825,12 +825,25 @@ pub fn injectable(args: TokenStream, input: TokenStream) -> TokenStream {
 /// # Relationship ID Fields
 ///
 /// `#[rel(foreign_key)]` and `#[rel(one_to_one)]` generate a `{field}_id` field
-/// using the related model's primary-key type. With `null = true`, its type is
+/// using the related model's primary-key type, with the relation field's
+/// visibility. With `null = true`, its type is
 /// `Option<PrimaryKey>`; otherwise it is `PrimaryKey`. This applies independently
 /// of model-form generation. Nullable IDs accept `None` for SQL NULL and
 /// `Some(id)` for an existing relationship, including on models without `form`.
 /// Code that previously assigned a bare ID to a nullable relation must wrap it
 /// in `Some(...)`.
+///
+/// # Shared-Column Foreign Keys
+///
+/// `#[rel(foreign_key, shared_fields = ["tenant"])]` puts fields that both
+/// models carry under the same name in front of the `{field}_id` column, so the
+/// key becomes `(tenant, task_id) REFERENCES tasks (tenant, id)`. Each entry
+/// names a non-relationship field; its column on either side follows that
+/// model's `db_column`. The referenced model needs a unique constraint over the
+/// same columns. `on_delete` and `on_update` cannot be `SetNull` or
+/// `SetDefault`, because those actions would overwrite the shared columns.
+/// `db_constraint = "..."` names the constraint instead of the generated
+/// `fk_{table}_{column}` name.
 ///
 /// # Info Companion Type (Issues #4194, #5272)
 ///
