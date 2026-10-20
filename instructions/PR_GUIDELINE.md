@@ -71,7 +71,7 @@ gh pr create --title "feat(auth): add JWT token validation" \
 - [x] All existing tests pass
 - [x] Manual testing with expired tokens
 
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
+🤖 Generated with [<Agent Name>](<Agent URL>)
 EOF
 )"
 ```
@@ -262,7 +262,7 @@ The `release` label has special significance and triggers automated workflows:
    - [x] `cargo publish --dry-run -p reinhardt-core` succeeds
    - [ ] Ready for publication after merge
    
-   🤖 Generated with [Claude Code](https://claude.com/claude-code)
+   🤖 Generated with [<Agent Name>](<Agent URL>)
    EOF
    )"
    ```
@@ -448,11 +448,36 @@ in force, and local results must not be described as remote CI results.
 **Breaking-change warning check:**
 `Warn Invalid Breaking Change Target` is required alongside `CI Success` on
 `main`. A breaking title or `breaking-change` label fails this check unless the
-source is a versioned `develop/X.Y.Z` branch. It reads current PR metadata on
+source is a versioned `develop/X.Y.Z` branch or the PR meets the approved
+security exception in [PR Base Branch Policy BB-3](PR_BASE_BRANCH_POLICY.md#bb-3-should-how-to-choose-the-source-branch).
+It reads current PR metadata on
 title, label, base, and source changes, including label removal. The failed
 result is independent of warning-comment delivery or deduplication; an existing
 warning never makes an invalid target pass. Retarget the breaking change to the
-appropriate develop branch, or correct an inaccurate classification.
+appropriate develop branch, correct an inaccurate classification, or obtain
+explicit maintainer approval for the documented RC security exception. The
+exception requires a current versioned `develop/X.Y.Z` branch; missing branches
+or failed branch lookup cannot approve an exception. Outside RC, the stable
+[BC-3](STABILITY_POLICY.md#bc-3-must-breaking-change-approval-process) requirements
+remain in force. All three
+labels, `security`, `rc-breaking-approved`, and `breaking-change`, must remain
+present, alongside a breaking Conventional Commit title. The latest
+approval-label event must identify a user with current `maintain` or `admin`
+repository access, including custom roles with either base role. That same user
+must post an unedited PR conversation comment after the latest label event,
+starting with `Approved RC breaking security exception for head` followed by the
+current complete SHA in backticks and a period. Follow the exact format in
+[BB-3](PR_BASE_BRANCH_POLICY.md#bb-3-should-how-to-choose-the-source-branch).
+Every new head requires a fresh approval record; an old label cannot approve
+later commits. Reapplying the label requires a new record, and editing or
+deleting the only valid record causes a fresh failing check. The trusted main
+workflow reevaluates PR conversation comments on creation, editing, and deletion.
+Triage or write access alone, missing provenance, or failed approval verification
+cannot approve the exception. Before merging an approved security exception,
+and after an approver loses access or the RC phase ends, dispatch the trusted main workflow
+with a canonical decimal PR number as required by
+[BB-3 approval reevaluation](PR_BASE_BRANCH_POLICY.md#bb-3-should-how-to-choose-the-source-branch)
+and wait for its new head check; an old success is insufficient.
 
 The trusted `pull_request_target` workflow publishes this named check explicitly
 on the current `pr.head.sha` through the Checks API with `checks: write`. Both
@@ -745,7 +770,7 @@ Version Changes:
 - [x] `cargo publish --dry-run -p [crate-name]`
 - [ ] Ready for publish after PR merge
 
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
+🤖 Generated with [<Agent Name>](<Agent URL>)
 ```
 
 **See**: @instructions/RELEASE_PROCESS.md for detailed release procedures

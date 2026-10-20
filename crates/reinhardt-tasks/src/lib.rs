@@ -176,8 +176,8 @@ pub use backends::sqs::SqsResultBackend;
 pub use retry::{RetryState, RetryStrategy};
 pub use scheduler::{CronSchedule, Schedule, Scheduler};
 pub use task::{
-	DEFAULT_TASK_QUEUE_NAME, TASK_MAX_PRIORITY, TASK_MIN_PRIORITY, Task, TaskExecutor, TaskId,
-	TaskPriority, TaskStatus,
+	DEFAULT_TASK_QUEUE_NAME, ParseTaskStatusError, TASK_MAX_PRIORITY, TASK_MIN_PRIORITY, Task,
+	TaskExecutor, TaskId, TaskPriority, TaskStatus,
 };
 pub use webhook::{
 	HttpWebhookSender, TaskStatus as WebhookTaskStatus, WebhookError, WebhookEvent, WebhookSender,

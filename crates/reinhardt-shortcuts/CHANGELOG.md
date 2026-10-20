@@ -45,6 +45,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Maintenance
 
 - merge main into develop/0.4.0
+
+## [0.3.25](https://github.com/kent8192/reinhardt-web/compare/reinhardt-shortcuts@v0.3.24...reinhardt-shortcuts@v0.3.25) - 2026-10-20
+
+### Testing
+
+- *(shortcuts)* cover backslash-normalized redirect network paths
+
 ## [0.3.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-shortcuts@v0.3.6...reinhardt-shortcuts@v0.3.7) - 2026-08-12
 
 ### Fixed

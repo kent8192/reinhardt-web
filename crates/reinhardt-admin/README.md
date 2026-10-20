@@ -649,6 +649,8 @@ Successful mutations persist their per-object history metadata in the same
 transaction. History records contain changed field names, but not submitted
 field values.
 
+CSV and TSV exports prefix spreadsheet formula cells with an apostrophe.
+
 ### Routing
 
 Route registration uses two free functions from `core::router`:

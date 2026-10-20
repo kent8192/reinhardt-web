@@ -73,6 +73,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - *(db)* clarify the insert builder NULL parameter contract
 
+## [0.3.25](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.3.24...reinhardt-db@v0.3.25) - 2026-10-20
+
+### Fixed
+
+- *(db)* keep QuerySet UnwindSafe with structured join conditions
+
+### Other
+
+- resolve conflicts with upstream main
+- resolve conflicts with origin/main
+
+### Testing
+
+- *(db)* expect grouped CASE operands on MySQL and SQLite
+
+## [0.3.24](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.3.23...reinhardt-db@v0.3.24) - 2026-10-14
+
+### Fixed
+
+- *(db)* emit nullability changes in forward AlterColumn SQL
+- *(db)* keep NOT NULL when AlterColumn demotes a primary key
+- *(security)* [**breaking**] preserve configuration and typed values in hardening
+
+### Maintenance
+
+- *(merge)* integrate main into security remediation branch
+
+### Fixed
+
+- Accept current-directory components in relative upload directories while retaining parent traversal and filename restrictions.
+
+
 ## [0.3.22](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.3.21...reinhardt-db@v0.3.22) - 2026-10-06
 
 ### Fixed

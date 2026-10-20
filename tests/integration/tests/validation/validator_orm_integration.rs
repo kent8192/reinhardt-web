@@ -721,3 +721,120 @@ mod validator_composition_with_orm_tests {
 		assert_eq!(result.unwrap_err().len(), 1);
 	}
 }
+
+#[rstest]
+#[tokio::test]
+#[serial(validator_orm_db)]
+async fn batch_validator_preserves_postgres_column_types(
+	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<sqlx::PgPool>, u16, String),
+	_validator_db_guard: TeardownGuard<ValidatorDbGuard>,
+) {
+	use reinhardt_rest::serializers::performance::BatchValidator;
+
+	// Arrange: values whose text representations normalize in their column type.
+	let (_container, pool, _port, url) = postgres_container.await;
+	sqlx::query(r#"CREATE DOMAIN "batch JSONB domain" AS JSONB CHECK (VALUE IS NOT NULL)"#)
+		.execute(pool.as_ref())
+		.await
+		.unwrap();
+	sqlx::query(r#"CREATE TABLE batch_typed_values (number INTEGER, identifier UUID, created TIMESTAMP, label TEXT, document JSONB, wrapped "batch JSONB domain")"#)
+        .execute(pool.as_ref()).await.unwrap();
+	sqlx::query("INSERT INTO batch_typed_values (number, identifier, created, label, wrapped) VALUES (42, '550e8400-e29b-41d4-a716-446655440000', '2026-10-12 00:00:00', 'existing', '{\"seed\":true}'::jsonb)")
+        .execute(pool.as_ref()).await.unwrap();
+	let json_values = [
+		serde_json::json!({"a": 1}),
+		serde_json::json!([1, "x"]),
+		serde_json::json!(true),
+		serde_json::json!(42),
+		serde_json::json!("quoted value"),
+		serde_json::Value::Null,
+	];
+	for value in &json_values {
+		sqlx::query(
+			"INSERT INTO batch_typed_values (label, document, wrapped) VALUES ('json-value', $1, $1)",
+		)
+		.bind(sqlx::types::Json(value))
+		.execute(pool.as_ref())
+		.await
+		.unwrap();
+	}
+
+	reinitialize_database(&url).await.unwrap();
+	let mut validator = BatchValidator::new();
+	let checks = [
+		("number", "042"),
+		("identifier", "550E8400-E29B-41D4-A716-446655440000"),
+		("created", "2026-10-12T00:00:00"),
+	];
+	for (field, value) in checks {
+		validator.add_unique_check("batch_typed_values", field, value);
+	}
+	validator.add_unique_check("batch_typed_values", "number", "43");
+	validator.add_unique_check("batch_typed_values", "label", "x' OR 1=1 --");
+	validator.add_unique_together_check(
+		"batch_typed_values",
+		vec!["number".into(), "identifier".into(), "created".into()],
+		vec![
+			"042".into(),
+			"550E8400-E29B-41D4-A716-446655440000".into(),
+			"2026-10-12T00:00:00".into(),
+		],
+	);
+
+	for value in &json_values {
+		let input = value.to_string();
+		validator.add_unique_check("batch_typed_values", "document", &input);
+		validator.add_unique_check("batch_typed_values", "wrapped", &input);
+		validator.add_unique_together_check(
+			"batch_typed_values",
+			vec!["document".into(), "label".into()],
+			vec![input, "json-value".into()],
+		);
+	}
+	let missing_json = serde_json::json!({"a": 2}).to_string();
+	let encoded_object_string = serde_json::json!("{\"a\":1}").to_string();
+	validator.add_unique_check("batch_typed_values", "document", &missing_json);
+	validator.add_unique_check("batch_typed_values", "document", &encoded_object_string);
+
+	// Act.
+	let failed = validator.execute().await.unwrap();
+
+	// Assert: duplicates use native equality, while nonmatches and SQL-like data remain safe.
+	assert_eq!(
+		failed.len(),
+		4 + 3 * json_values.len(),
+		"unexpected database error or normalization failure: {failed:?}"
+	);
+	for (field, value) in checks {
+		assert_eq!(
+			failed
+				.get(&format!("batch_typed_values:{field}:{value}"))
+				.map(String::as_str),
+			Some(format!("{field} already exists").as_str())
+		);
+	}
+	assert!(
+		failed
+			.values()
+			.all(|message| !message.starts_with("Database error:"))
+	);
+	assert!(!failed.contains_key("batch_typed_values:number:43"));
+	assert!(!failed.contains_key("batch_typed_values:label:x' OR 1=1 --"));
+	for value in &json_values {
+		for field in ["document", "wrapped"] {
+			assert_eq!(
+				failed
+					.get(&format!("batch_typed_values:{field}:{value}"))
+					.map(String::as_str),
+				Some(format!("{field} already exists").as_str())
+			);
+		}
+		assert!(failed.contains_key(&format!(
+			"batch_typed_values:document+label:{value}+json-value"
+		)));
+	}
+	assert!(!failed.contains_key(&format!("batch_typed_values:document:{missing_json}")));
+	assert!(!failed.contains_key(&format!(
+		"batch_typed_values:document:{encoded_object_string}"
+	)));
+}

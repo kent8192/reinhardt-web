@@ -146,6 +146,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - merge main into develop/0.4.0
 
+## [0.3.25](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin@v0.3.24...reinhardt-admin@v0.3.25) - 2026-10-20
+
+### Security
+
+- *(admin)* clear legacy auth markers when admin cookie auth fails
+
+## [0.3.24](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin@v0.3.23...reinhardt-admin@v0.3.24) - 2026-10-14
+
+### Fixed
+
+- *(admin)* [**breaking**] enforce tenant scope and neutralize exports
+- *(security)* [**breaking**] preserve configuration and typed values in hardening
+- *(admin)* preserve typed scalar creation and object scopes
+- *(admin)* propagate database errors from scoped detail fetches
+
+### Testing
+
+- *(admin)* verify typed CSV and TSV creation scopes
+
+### Fixed
+
+- Accept all typed scalar equality scopes for creation and JSON/CSV/TSV imports, normalize matching temporal and decimal values, and inject missing scope fields while rejecting mismatches and non-finite floats.
+- Preserve native database types for scoped creation, listing, counts, retrieval, updates and deletes, including fractional seconds and exact decimal CSV/TSV input.
+- Preserve negative JSON numbers as numeric CSV/TSV cells while escaping formula-like strings and headers.
+
+
 ## [0.3.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin@v0.3.20...reinhardt-admin@v0.3.21) - 2026-10-05
 
 ### Documentation

@@ -98,6 +98,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - merge main into develop/0.4.0
 
+## [0.3.25](https://github.com/kent8192/reinhardt-web/compare/reinhardt-server@v0.3.24...reinhardt-server@v0.3.25) - 2026-10-20
+
+### Security
+
+- *(server)* keep the accepted peer address on HTTP/2 requests
+
+
 ## [0.3.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-server@v0.3.20...reinhardt-server@v0.3.21) - 2026-10-05
 
 ### Fixed
