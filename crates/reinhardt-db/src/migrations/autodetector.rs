@@ -127,6 +127,13 @@ pub struct ForeignKeyInfo {
 	pub on_delete: ForeignKeyAction,
 	/// ON UPDATE action (Cascade, SetNull, Restrict, NoAction, SetDefault)
 	pub on_update: ForeignKeyAction,
+	/// Columns that lead the key, as `(local, referenced)` pairs, before the
+	/// field's own column and [`Self::referenced_column`]. Empty for a
+	/// single-column key.
+	pub shared_columns: Vec<(String, String)>,
+	/// Constraint name to use instead of the generated
+	/// [`foreign_key_constraint_name`].
+	pub constraint_name: Option<String>,
 }
 
 /// Field state for migration detection
@@ -1024,14 +1031,21 @@ impl ModelState {
 		if let Some(field) = self.fields.get(field_name)
 			&& let Some(ref fk_info) = field.foreign_key
 		{
+			let (mut fields, mut referenced_columns): (Vec<_>, Vec<_>) =
+				fk_info.shared_columns.iter().cloned().unzip();
+			fields.push(field_name.to_string());
+			referenced_columns.push(fk_info.referenced_column.clone());
 			let constraint = ConstraintDefinition {
-				name: foreign_key_constraint_name(&self.table_name, field_name),
+				name: fk_info
+					.constraint_name
+					.clone()
+					.unwrap_or_else(|| foreign_key_constraint_name(&self.table_name, field_name)),
 				constraint_type: "foreign_key".to_string(),
-				fields: vec![field_name.to_string()],
+				fields,
 				expression: None,
 				foreign_key_info: Some(ForeignKeyConstraintInfo {
 					referenced_table: fk_info.referenced_table.clone(),
-					referenced_columns: vec![fk_info.referenced_column.clone()],
+					referenced_columns,
 					on_delete: fk_info.on_delete,
 					on_update: fk_info.on_update,
 				}),
@@ -1847,6 +1861,8 @@ impl ProjectState {
 			referenced_column: "id".to_string(),
 			on_delete: ForeignKeyAction::Cascade,
 			on_update: ForeignKeyAction::Cascade,
+			shared_columns: Vec::new(),
+			constraint_name: None,
 		});
 		model_state.add_field(from_field);
 
@@ -1860,6 +1876,8 @@ impl ProjectState {
 			referenced_column: "id".to_string(),
 			on_delete: ForeignKeyAction::Cascade,
 			on_update: ForeignKeyAction::Cascade,
+			shared_columns: Vec::new(),
+			constraint_name: None,
 		});
 		model_state.add_field(to_field);
 
@@ -13605,6 +13623,8 @@ mod tests {
 			referenced_column: "id".to_string(),
 			on_delete: ForeignKeyAction::Cascade,
 			on_update: ForeignKeyAction::Cascade,
+			shared_columns: Vec::new(),
+			constraint_name: None,
 		});
 		field
 	}
@@ -19008,6 +19028,8 @@ mod tests {
 				referenced_column: "id".to_string(),
 				on_delete: ForeignKeyAction::Cascade,
 				on_update: ForeignKeyAction::Cascade,
+				shared_columns: Vec::new(),
+				constraint_name: None,
 			},
 		)
 	}
@@ -19308,7 +19330,49 @@ mod state_builder_tests {
 			referenced_column: "id".to_string(),
 			on_delete: ForeignKeyAction::Cascade,
 			on_update: ForeignKeyAction::NoAction,
+			shared_columns: Vec::new(),
+			constraint_name: None,
 		}
+	}
+
+	#[rstest]
+	fn foreign_key_constraint_leads_with_shared_columns_under_its_explicit_name() {
+		// Arrange
+		let mut model = ModelState::new("workspaces", "Artifact");
+		model.table_name = "artifacts".to_string();
+		model.add_field(FieldState::with_foreign_key(
+			"task_id",
+			FieldType::Uuid,
+			false,
+			ForeignKeyInfo {
+				referenced_table: "tasks".to_string(),
+				referenced_column: "id".to_string(),
+				on_delete: ForeignKeyAction::Cascade,
+				on_update: ForeignKeyAction::Restrict,
+				shared_columns: vec![("tenant".to_string(), "tenant".to_string())],
+				constraint_name: Some("artifacts_task_id_fkey".to_string()),
+			},
+		));
+
+		// Act
+		model.add_foreign_key_constraint_from_field("task_id");
+
+		// Assert
+		assert_eq!(
+			model.constraints,
+			vec![ConstraintDefinition {
+				name: "artifacts_task_id_fkey".to_string(),
+				constraint_type: "foreign_key".to_string(),
+				fields: vec!["tenant".to_string(), "task_id".to_string()],
+				expression: None,
+				foreign_key_info: Some(ForeignKeyConstraintInfo {
+					referenced_table: "tasks".to_string(),
+					referenced_columns: vec!["tenant".to_string(), "id".to_string()],
+					on_delete: ForeignKeyAction::Cascade,
+					on_update: ForeignKeyAction::Restrict,
+				}),
+			}]
+		);
 	}
 
 	#[rstest]

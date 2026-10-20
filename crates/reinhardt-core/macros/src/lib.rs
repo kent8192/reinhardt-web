@@ -832,6 +832,18 @@ pub fn injectable(args: TokenStream, input: TokenStream) -> TokenStream {
 /// Code that previously assigned a bare ID to a nullable relation must wrap it
 /// in `Some(...)`.
 ///
+/// # Shared-Column Foreign Keys
+///
+/// `#[rel(foreign_key, shared_fields = ["tenant"])]` puts fields that both
+/// models carry under the same name in front of the `{field}_id` column, so the
+/// key becomes `(tenant, task_id) REFERENCES tasks (tenant, id)`. Each entry
+/// names a non-relationship field; its column on either side follows that
+/// model's `db_column`. The referenced model needs a unique constraint over the
+/// same columns. `on_delete` and `on_update` cannot be `SetNull` or
+/// `SetDefault`, because those actions would overwrite the shared columns.
+/// `db_constraint = "..."` names the constraint instead of the generated
+/// `fk_{table}_{column}` name.
+///
 /// # Info Companion Type (Issues #4194, #5272)
 ///
 /// By default, generates a `{Model}Info` companion struct with `pub` fields,

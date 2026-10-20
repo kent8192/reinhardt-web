@@ -21,6 +21,8 @@ fn foreign_key() -> ForeignKeyInfo {
 		referenced_column: "id".to_owned(),
 		on_delete: ForeignKeyAction::Cascade,
 		on_update: ForeignKeyAction::NoAction,
+		shared_columns: Vec::new(),
+		constraint_name: None,
 	}
 }
 

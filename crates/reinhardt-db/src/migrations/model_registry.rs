@@ -1361,6 +1361,8 @@ mod tests {
 			referenced_column: "id".to_string(),
 			on_delete: crate::migrations::autodetector::ForeignKeyAction::Cascade,
 			on_update: crate::migrations::autodetector::ForeignKeyAction::Cascade,
+			shared_columns: Vec::new(),
+			constraint_name: None,
 		};
 		let field = FieldMetadata::new(FieldType::Uuid)
 			.with_param("fk_target_app", "blog")
@@ -1408,6 +1410,8 @@ mod tests {
 			referenced_column: "id".to_string(),
 			on_delete: crate::migrations::autodetector::ForeignKeyAction::Cascade,
 			on_update: crate::migrations::autodetector::ForeignKeyAction::Cascade,
+			shared_columns: Vec::new(),
+			constraint_name: None,
 		};
 		let field = FieldMetadata::new(FieldType::Uuid)
 			.with_param("fk_target_app", "auth")
@@ -1582,6 +1586,8 @@ mod tests {
 				referenced_column: "id".to_string(),
 				on_delete: crate::migrations::ForeignKeyAction::Cascade,
 				on_update: crate::migrations::ForeignKeyAction::NoAction,
+				shared_columns: Vec::new(),
+				constraint_name: None,
 			}),
 		);
 

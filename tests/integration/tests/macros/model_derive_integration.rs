@@ -460,12 +460,16 @@ fn modern_relation_fields_retain_physical_foreign_key_metadata() {
 				referenced_column: "target_external_key".to_string(),
 				on_delete: ForeignKeyAction::SetNull,
 				on_update: ForeignKeyAction::Restrict,
+				shared_columns: Vec::new(),
+				constraint_name: None,
 			},
 			ForeignKeyInfo {
 				referenced_table: "accessor_targets".to_string(),
 				referenced_column: "target_pk".to_string(),
 				on_delete: ForeignKeyAction::SetDefault,
 				on_update: ForeignKeyAction::Cascade,
+				shared_columns: Vec::new(),
+				constraint_name: None,
 			},
 		]
 	);
