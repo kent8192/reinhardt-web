@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.25](https://github.com/kent8192/reinhardt-web/compare/reinhardt-utils@v0.3.24...reinhardt-utils@v0.3.25) - 2026-10-20
+
+### Security
+
+- *(utils)* confine static directory index files to the static root
+
 ## [0.3.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-utils@v0.3.20...reinhardt-utils@v0.3.21) - 2026-10-05
 
 ### Documentation

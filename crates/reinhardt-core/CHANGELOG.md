@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.25](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.3.24...reinhardt-core@v0.3.25) - 2026-10-20
+
+### Security
+
+- *(core)* decode redirect bypass checks as UTF-8
+- *(core)* reject quoted redirect targets unquoted by meta refresh
+
 ## [0.3.24](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.3.23...reinhardt-core@v0.3.24) - 2026-10-14
 
 ### Security

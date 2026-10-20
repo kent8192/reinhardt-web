@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.25](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.3.24...reinhardt-web@v0.3.25) - 2026-10-20
+
+### Documentation
+
+- *(rest)* scope the SimpleSearchBackend output guarantee to its condition
+
+### Fixed
+
+- *(rest)* keep SimpleSearchBackend output scannable by chained filters
+- *(ci)* allow zip 3.0.0 advisories from the utoipa-swagger-ui build script
+- *(db)* keep QuerySet UnwindSafe with structured join conditions
+
+### Other
+
+- resolve conflicts with origin/main
+
+### Testing
+
+- *(db)* expect grouped CASE operands on MySQL and SQLite
+
 ## [0.3.24](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.3.23...reinhardt-web@v0.3.24) - 2026-10-14
 
 ### Documentation
