@@ -8604,14 +8604,18 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 		.iter()
 		.chain(unique_constraint_names.iter())
 		.collect::<Vec<_>>();
+	// A `db_constraint` stays a literal so lookups compare it without allocating.
 	let foreign_key_constraint_name = |fk_info: &ForeignKeyFieldInfo| {
 		let column = &fk_info.id_column_name;
 		fk_info.rel_attr.db_constraint.as_ref().map_or_else(
 			|| quote! { #orm_crate::naming::foreign_key_constraint_name(Self::table_name(), #column) },
-			|name| quote! { #name.to_string() },
+			|name| quote! { #name },
 		)
 	};
-	let generated_foreign_key_names = fk_field_infos.iter().map(foreign_key_constraint_name);
+	let generated_foreign_key_names = fk_field_infos.iter().map(|fk_info| {
+		let name = foreign_key_constraint_name(fk_info);
+		quote! { ::std::string::String::from(#name) }
+	});
 	let foreign_key_constraint_lookups = fk_field_infos.iter().map(|fk_info| {
 		let name = foreign_key_constraint_name(fk_info);
 		let shared_fields = &fk_info.rel_attr.shared_fields;
