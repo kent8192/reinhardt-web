@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.25](https://github.com/kent8192/reinhardt-web/compare/reinhardt-middleware@v0.3.24...reinhardt-middleware@v0.3.25) - 2026-10-20
+
+### Security
+
+- *(middleware)* take the rate-limit client IP from the right of X-Forwarded-For
+- *(middleware)* fail closed when X-Forwarded-For cannot be resolved
+
 ## [0.3.24](https://github.com/kent8192/reinhardt-web/compare/reinhardt-middleware@v0.3.23...reinhardt-middleware@v0.3.24) - 2026-10-14
 
 ### Fixed
