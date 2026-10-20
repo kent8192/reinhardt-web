@@ -825,7 +825,8 @@ pub fn injectable(args: TokenStream, input: TokenStream) -> TokenStream {
 /// # Relationship ID Fields
 ///
 /// `#[rel(foreign_key)]` and `#[rel(one_to_one)]` generate a `{field}_id` field
-/// using the related model's primary-key type. With `null = true`, its type is
+/// using the related model's primary-key type, with the relation field's
+/// visibility. With `null = true`, its type is
 /// `Option<PrimaryKey>`; otherwise it is `PrimaryKey`. This applies independently
 /// of model-form generation. Nullable IDs accept `None` for SQL NULL and
 /// `Some(id)` for an existing relationship, including on models without `form`.
