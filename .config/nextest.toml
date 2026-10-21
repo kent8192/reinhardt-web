@@ -116,6 +116,14 @@ filter = 'package(=reinhardt-facade-tests) & binary(=admin_pgvector_features) & 
 threads-required = 2
 slow-timeout = { period = "1200s", terminate-after = 2 }
 
+# The middleware facade matrix checks eight independent feature configurations
+# with nested Cargo builds. Reserve both slots and allow the cold native builds
+# to finish on CI runners with a single Cargo build job.
+[[profile.default.overrides]]
+filter = 'package(=reinhardt-facade-tests) & binary(=middleware_features) & test(=middleware_components_expose_facade_apis)'
+threads-required = 2
+slow-timeout = { period = "1200s", terminate-after = 2 }
+
 # This CLI regression builds a standalone consumer linking auth/session models.
 # Reserve both slots and allow its nested Cargo build to finish on a cold cache.
 [[profile.default.overrides]]
