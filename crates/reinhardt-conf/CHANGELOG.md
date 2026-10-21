@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- Use the current AWS SDK HTTPS transport for Secrets Manager, including custom HTTP endpoints, and remove the legacy TLS dependency chain.
+
 ## [0.4.0-alpha.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.4.0-alpha.20...reinhardt-conf@v0.4.0-alpha.21) - 2026-10-18
 
 ### Fixed

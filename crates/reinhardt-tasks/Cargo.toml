@@ -39,7 +39,10 @@ reinhardt-query-sqlx = { workspace = true, optional = true, features = ["sqlite"
 aws-config = { version = "1.1.7", features = [
   "behavior-version-latest",
 ], optional = true }
-aws-sdk-sqs = { version = "1.76.0", optional = true }
+aws-sdk-sqs = { version = "1.76.0", default-features = false, features = [
+  "default-https-client",
+  "rt-tokio",
+], optional = true }
 time = { workspace = true, optional = true }
 
 # RabbitMQ backend (optional)
