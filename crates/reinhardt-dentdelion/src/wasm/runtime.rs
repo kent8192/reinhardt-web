@@ -29,12 +29,142 @@ use crate::error::{PluginError, PluginResult};
 
 use std::path::Path;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use wasmtime::component::{Component, HasSelf, Linker};
-use wasmtime::{Config, Engine, Store};
+use wasmtime::{CallHook, Config, Engine, ResourceLimiter, Store, StoreLimits, StoreLimitsBuilder};
 use wasmtime_wasi::p2;
 
 use super::host::HostState;
+
+const EPOCH_INTERVAL: Duration = Duration::from_millis(10);
+// Use bounded relative offsets: Wasmtime adds them to the current engine epoch.
+// A periodic callback retains the absolute deadline, including an unbounded one.
+const MAX_EPOCH_CHECK_TICKS: u64 = 6_000;
+// Cardinality policy, not an estimate of Wasmtime's exact metadata allocation.
+// Divide the configured budget between three resource classes in 64 KiB slots.
+const RESOURCE_COUNT_SLOT_BYTES: usize = 64 * 1024;
+const MAX_RESOURCES_PER_KIND: usize = 128;
+
+tokio::task_local! {
+	/// The lifecycle deadline remains fixed across guest calls and host imports.
+	static EXECUTION_DEADLINE: Option<std::time::Instant>;
+}
+
+fn invocation_deadline(timeout: Duration) -> Option<std::time::Instant> {
+	EXECUTION_DEADLINE
+		.try_with(|deadline| *deadline)
+		.unwrap_or_else(|_| std::time::Instant::now().checked_add(timeout))
+}
+
+fn remaining_epoch_ticks(deadline: Option<std::time::Instant>) -> u64 {
+	deadline.map_or(MAX_EPOCH_CHECK_TICKS, |deadline| {
+		let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+		let ticks = remaining.as_nanos().div_ceil(EPOCH_INTERVAL.as_nanos());
+		u64::try_from(ticks)
+			.unwrap_or(MAX_EPOCH_CHECK_TICKS)
+			.min(MAX_EPOCH_CHECK_TICKS)
+	})
+}
+
+/// Aggregate linear-memory and table accounting for the lifetime of one store.
+/// Wasmtime invokes the limiter before each allocation/growth; table elements
+/// occupy one pointer each in the pinned Wasmtime version.
+pub(super) struct StoreMemoryLimits {
+	limits: StoreLimits,
+	budget: usize,
+	allocated: usize,
+	last_growth: usize,
+	last_table_growth: usize,
+}
+
+impl StoreMemoryLimits {
+	fn new(budget: usize) -> Self {
+		let count_limit = (budget / (3 * RESOURCE_COUNT_SLOT_BYTES)).min(MAX_RESOURCES_PER_KIND);
+		Self {
+			limits: StoreLimitsBuilder::new()
+				.memory_size(budget)
+				.table_elements(budget / std::mem::size_of::<usize>())
+				.instances(count_limit)
+				.memories(count_limit)
+				.tables(count_limit)
+				.trap_on_grow_failure(true)
+				.build(),
+			budget,
+			allocated: 0,
+			last_growth: 0,
+			last_table_growth: 0,
+		}
+	}
+}
+
+impl ResourceLimiter for StoreMemoryLimits {
+	fn memory_growing(
+		&mut self,
+		current: usize,
+		desired: usize,
+		maximum: Option<usize>,
+	) -> wasmtime::Result<bool> {
+		self.last_growth = 0;
+		if !self.limits.memory_growing(current, desired, maximum)? {
+			return Ok(false);
+		}
+		let growth = desired.saturating_sub(current);
+		if growth > self.budget.saturating_sub(self.allocated) {
+			return Err(wasmtime::Error::msg(
+				"WASM store memory and table budget exceeded",
+			));
+		}
+		self.allocated += growth;
+		self.last_growth = growth;
+		Ok(true)
+	}
+
+	fn memory_grow_failed(&mut self, error: wasmtime::Error) -> wasmtime::Result<()> {
+		// A permitted allocation can still fail in the OS; release its reservation.
+		self.allocated -= self.last_growth;
+		self.last_growth = 0;
+		self.limits.memory_grow_failed(error)
+	}
+
+	fn table_growing(
+		&mut self,
+		current: usize,
+		desired: usize,
+		maximum: Option<usize>,
+	) -> wasmtime::Result<bool> {
+		self.last_table_growth = 0;
+		if !self.limits.table_growing(current, desired, maximum)? {
+			return Ok(false);
+		}
+		let growth = desired
+			.saturating_sub(current)
+			.checked_mul(std::mem::size_of::<usize>())
+			.ok_or_else(|| wasmtime::Error::msg("WASM table allocation size overflow"))?;
+		if growth > self.budget.saturating_sub(self.allocated) {
+			return Err(wasmtime::Error::msg(
+				"WASM store memory and table budget exceeded",
+			));
+		}
+		self.allocated += growth;
+		self.last_table_growth = growth;
+		Ok(true)
+	}
+	fn table_grow_failed(&mut self, error: wasmtime::Error) -> wasmtime::Result<()> {
+		self.allocated -= self.last_table_growth;
+		self.last_table_growth = 0;
+		self.limits.table_grow_failed(error)
+	}
+	fn instances(&self) -> usize {
+		self.limits.instances()
+	}
+	fn tables(&self) -> usize {
+		self.limits.tables()
+	}
+	fn memories(&self) -> usize {
+		self.limits.memories()
+	}
+}
 
 /// Default memory limit in megabytes.
 pub(super) const DEFAULT_MEMORY_LIMIT_MB: u32 = 128;
@@ -45,9 +175,13 @@ pub(super) const DEFAULT_TIMEOUT_SECS: u32 = 30;
 /// Configuration for the WASM runtime.
 #[derive(Debug, Clone)]
 pub struct WasmRuntimeConfig {
-	/// Memory limit in megabytes.
+	/// Aggregate linear-memory and table allocation limit in megabytes for one store.
+	/// Each resource kind (core instances, memories, tables) also has a count limit
+	/// of `min(128, bytes / (3 * 64 KiB))`, including empty resources. This bounds
+	/// metadata-only resource creation; it is not a process RSS limit.
 	pub memory_limit_mb: u32,
-	/// Execution timeout.
+	/// Elapsed lifecycle deadline, shared across guest calls and host imports.
+	/// Guest CPU interruption is checked at epoch boundaries.
 	pub timeout: Duration,
 	/// Enable async support.
 	pub async_support: bool,
@@ -134,6 +268,9 @@ pub struct WasmRuntime {
 	config: WasmRuntimeConfig,
 	/// Component linker (thread-safe, shareable).
 	linker: Arc<Linker<HostState>>,
+	/// Stops the epoch ticker when the runtime is dropped.
+	stop_epoch_ticker: Arc<AtomicBool>,
+	epoch_ticker: Option<std::thread::JoinHandle<()>>,
 }
 
 impl WasmRuntime {
@@ -161,6 +298,9 @@ impl WasmRuntime {
 
 		// Enable Component Model
 		wasmtime_config.wasm_component_model(true);
+		// ResourceLimiter cannot account shared memories; guest threads are unsupported.
+		wasmtime_config.wasm_threads(false);
+		wasmtime_config.epoch_interruption(true);
 
 		// Create the engine
 		let engine = Engine::new(&wasmtime_config)
@@ -191,10 +331,22 @@ impl WasmRuntime {
 			},
 		)?;
 
+		let stop_epoch_ticker = Arc::new(AtomicBool::new(false));
+		let ticker_engine = engine.clone();
+		let ticker_stop = Arc::clone(&stop_epoch_ticker);
+		let epoch_ticker = std::thread::spawn(move || {
+			while !ticker_stop.load(Ordering::Relaxed) {
+				std::thread::sleep(EPOCH_INTERVAL);
+				ticker_engine.increment_epoch();
+			}
+		});
+
 		Ok(Self {
 			engine,
 			config,
 			linker: Arc::new(linker),
+			stop_epoch_ticker,
+			epoch_ticker: Some(epoch_ticker),
 		})
 	}
 
@@ -281,8 +433,44 @@ impl WasmRuntime {
 	/// # Arguments
 	///
 	/// * `host_state` - The host state for this store
-	pub fn create_store(&self, host_state: HostState) -> Store<HostState> {
+	pub fn create_store(&self, mut host_state: HostState) -> Store<HostState> {
+		host_state.execution_deadline = invocation_deadline(self.config.timeout);
+		host_state.store_limits = Some(StoreMemoryLimits::new(
+			(self.config.memory_limit_mb as usize).saturating_mul(1024 * 1024),
+		));
 		let mut store = Store::new(&self.engine, host_state);
+		store.limiter(|state| {
+			state
+				.store_limits
+				.as_mut()
+				.expect("store limits configured")
+		});
+		store.set_epoch_deadline(remaining_epoch_ticks(store.data().execution_deadline));
+		store.epoch_deadline_callback(|context| {
+			let ticks = remaining_epoch_ticks(context.data().execution_deadline);
+			if ticks == 0 {
+				Err(wasmtime::Trap::Interrupt.into())
+			} else {
+				Ok(wasmtime::UpdateDeadline::Continue(ticks))
+			}
+		});
+		let timeout = self.config.timeout;
+		// Guest entries within a lifecycle share its remaining wall-clock budget.
+		// Standalone calls receive a fresh budget; returning from imports never resets it.
+		store.call_hook(move |mut context, transition| {
+			if matches!(transition, CallHook::CallingWasm) {
+				let deadline = invocation_deadline(timeout);
+				let ticks = remaining_epoch_ticks(deadline);
+				if ticks == 0 {
+					return Err(wasmtime::Error::msg(
+						"WASM execution deadline expired before guest entry",
+					));
+				}
+				context.set_epoch_deadline(ticks);
+				context.data_mut().execution_deadline = deadline;
+			}
+			Ok(())
+		});
 
 		// Configure fuel if enabled
 		if self.config.fuel_metering {
@@ -290,6 +478,28 @@ impl WasmRuntime {
 		}
 
 		store
+	}
+
+	/// Bound a lifecycle invocation, including its asynchronous host imports.
+	pub(super) async fn with_execution_timeout<T>(
+		&self,
+		invocation: impl std::future::Future<Output = PluginResult<T>>,
+	) -> PluginResult<T> {
+		let deadline = std::time::Instant::now().checked_add(self.config.timeout);
+		let invocation = EXECUTION_DEADLINE.scope(deadline, invocation);
+		let result = match deadline {
+			Some(deadline) => {
+				tokio::time::timeout_at(tokio::time::Instant::from_std(deadline), invocation).await
+			}
+			// Preserve Tokio's far-future behavior for durations that cannot fit in Instant.
+			None => tokio::time::timeout(self.config.timeout, invocation).await,
+		};
+		result.map_err(|_| {
+			PluginError::WasmExecutionError(format!(
+				"WASM execution timed out after {:?}",
+				self.config.timeout
+			))
+		})?
 	}
 
 	/// Add fuel to a store.
@@ -318,6 +528,15 @@ impl WasmRuntime {
 	}
 }
 
+impl Drop for WasmRuntime {
+	fn drop(&mut self) {
+		self.stop_epoch_ticker.store(true, Ordering::Relaxed);
+		if let Some(ticker) = self.epoch_ticker.take() {
+			let _ = ticker.join();
+		}
+	}
+}
+
 impl std::fmt::Debug for WasmRuntime {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		f.debug_struct("WasmRuntime")
@@ -328,6 +547,185 @@ impl std::fmt::Debug for WasmRuntime {
 
 #[cfg(test)]
 mod tests {
+	#[rstest::rstest]
+	#[case("instance", "")]
+	#[case("memory", "(memory 0)")]
+	#[case("table", "(table 0 funcref)")]
+	#[tokio::test]
+	async fn empty_component_resources_obey_store_count_limits(
+		#[case] kind: &str,
+		#[case] resource: &str,
+	) {
+		// Arrange: one MiB permits five of each resource kind, including empty ones.
+		let runtime =
+			WasmRuntime::new(WasmRuntimeConfigBuilder::new().memory_limit_mb(1).build()).unwrap();
+		let linker = Linker::<HostState>::new(runtime.engine());
+		for (count, allowed) in [(5, true), (6, false)] {
+			let wat = if kind == "instance" {
+				let instances = (0..count)
+					.map(|_| "(core instance (instantiate $m))")
+					.collect::<String>();
+				format!("(component (core module $m) {instances})")
+			} else {
+				format!(
+					"(component (core module $m {}) (core instance (instantiate $m)))",
+					resource.repeat(count)
+				)
+			};
+			let component = Component::new(runtime.engine(), wat).unwrap();
+			let mut store = runtime.create_store(HostState::new("empty-resource-counts"));
+
+			// Act: instantiate a real component whose payload allocations are zero.
+			let result = linker.instantiate_async(&mut store, &component).await;
+
+			// Assert: strict cardinality limits reject metadata-only allocation attacks.
+			if allowed {
+				assert!(result.is_ok(), "{kind}: {result:?}");
+			} else {
+				let error = result.unwrap_err().to_string();
+				assert!(error.contains(&format!("{kind} count too high")), "{error}");
+			}
+		}
+	}
+
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn empty_instance_count_is_shared_by_repeated_component_instantiation() {
+		// Arrange: each component instantiation creates one empty core instance.
+		let runtime =
+			WasmRuntime::new(WasmRuntimeConfigBuilder::new().memory_limit_mb(1).build()).unwrap();
+		let component = Component::new(
+			runtime.engine(),
+			"(component (core module $m) (core instance (instantiate $m)))",
+		)
+		.unwrap();
+		let linker = Linker::<HostState>::new(runtime.engine());
+		let mut store = runtime.create_store(HostState::new("repeated-empty-component"));
+		for _ in 0..5 {
+			linker
+				.instantiate_async(&mut store, &component)
+				.await
+				.unwrap();
+		}
+
+		// Act / Assert: a sixth component cannot reset the store's instance quota.
+		let error = linker
+			.instantiate_async(&mut store, &component)
+			.await
+			.unwrap_err();
+		assert!(error.to_string().contains("instance count too high"));
+	}
+
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn later_guest_calls_keep_the_remaining_lifecycle_epoch_budget() {
+		// Arrange: fuel-disabled guest code can yield only through epoch interruption.
+		let runtime = WasmRuntime::new(
+			WasmRuntimeConfigBuilder::new()
+				.timeout(Duration::from_millis(300))
+				.fuel_metering(false)
+				.build(),
+		)
+		.unwrap();
+		let module = wasmtime::Module::new(
+			runtime.engine(),
+			r#"(module
+			(func (export "ready"))
+			(func (export "spin") (loop $again br $again))
+		)"#,
+		)
+		.unwrap();
+		let started = std::time::Instant::now();
+
+		// Act: a second guest entry follows an earlier call and consumes most of the budget.
+		let result = runtime
+			.with_execution_timeout(async {
+				let mut store = runtime.create_store(HostState::new("remaining-epoch-budget"));
+				let instance = wasmtime::Instance::new_async(&mut store, &module, &[])
+					.await
+					.unwrap();
+				instance
+					.get_typed_func::<(), ()>(&mut store, "ready")
+					.unwrap()
+					.call_async(&mut store, ())
+					.await
+					.unwrap();
+				tokio::time::sleep(Duration::from_millis(250)).await;
+				instance
+					.get_typed_func::<(), ()>(&mut store, "spin")
+					.unwrap()
+					.call_async(&mut store, ())
+					.await
+					.map_err(|error| PluginError::WasmExecutionError(error.to_string()))
+			})
+			.await;
+
+		// Assert: the CPU trap must not grant another full 300 ms to the second call.
+		assert!(matches!(result, Err(PluginError::WasmExecutionError(_))));
+		assert!(
+			started.elapsed() < Duration::from_millis(450),
+			"a later guest call reset the epoch budget: {:?}",
+			started.elapsed()
+		);
+	}
+
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn unrepresentable_deadlines_preserve_ready_invocations() {
+		// Arrange: Tokio accepts an effectively unbounded configured timeout.
+		let runtime = WasmRuntime::new(
+			WasmRuntimeConfigBuilder::new()
+				.timeout(Duration::MAX)
+				.build(),
+		)
+		.unwrap();
+
+		// Advance the engine explicitly: the relative deadline must also remain
+		// safe after the ticker starts, rather than depending on thread scheduling.
+		runtime.engine.increment_epoch();
+
+		let mut linker = wasmtime::Linker::new(&runtime.engine);
+		let engine = runtime.engine.clone();
+		linker
+			.func_wrap("test", "advance_epochs", move || {
+				for _ in 0..1_000_000 {
+					engine.increment_epoch();
+				}
+			})
+			.unwrap();
+		let module = wasmtime::Module::new(
+			&runtime.engine,
+			r#"(module
+				(import "test" "advance_epochs" (func $advance))
+				(func (export "ready") (result i32) (local $remaining i32)
+					call $advance
+					i32.const 1000 local.set $remaining
+					(loop $work
+						local.get $remaining i32.const 1 i32.sub
+						local.tee $remaining br_if $work)
+					i32.const 7))"#,
+		)
+		.unwrap();
+
+		// Act: store construction and guest re-entry remain valid after epoch progress.
+		let result = runtime
+			.with_execution_timeout(async {
+				let mut store = runtime.create_store(HostState::new("far-future"));
+				let instance = linker.instantiate_async(&mut store, &module).await.unwrap();
+				let result = instance
+					.get_typed_func::<(), i32>(&mut store, "ready")
+					.unwrap()
+					.call_async(&mut store, ())
+					.await
+					.unwrap();
+				Ok((store.data().execution_deadline.is_none(), result))
+			})
+			.await
+			.unwrap();
+
+		// Assert: no artificial short host deadline was introduced.
+		assert_eq!(result, (true, 7));
+	}
 	use super::*;
 
 	#[test]
@@ -373,5 +771,374 @@ mod tests {
 		let result = runtime.load_component_from_bytes(&invalid_bytes);
 
 		assert!(matches!(result, Err(PluginError::InvalidWasmBinary)));
+	}
+
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn store_memory_budget_counts_all_memories_and_instances() {
+		// Arrange: a one-MiB store budget, with two distinct linear memories.
+		let runtime = WasmRuntime::new(
+			WasmRuntimeConfigBuilder::new()
+				.memory_limit_mb(1)
+				.fuel_metering(false)
+				.build(),
+		)
+		.unwrap();
+		let module = wasmtime::Module::new(
+			runtime.engine(),
+			r#"(module
+			(memory $a 1) (memory $b 1)
+			(func (export "grow_a") (result i32) i32.const 7 memory.grow $a)
+			(func (export "grow_b") (result i32) i32.const 7 memory.grow $b)
+			(func (export "grow_again") (result i32) i32.const 1 memory.grow $a)
+		)"#,
+		)
+		.unwrap();
+		let mut store = runtime.create_store(HostState::new("aggregate-memories"));
+		let instance = wasmtime::Instance::new_async(&mut store, &module, &[])
+			.await
+			.unwrap();
+		let grow_a = instance
+			.get_typed_func::<(), i32>(&mut store, "grow_a")
+			.unwrap();
+		let grow_b = instance
+			.get_typed_func::<(), i32>(&mut store, "grow_b")
+			.unwrap();
+		let grow_again = instance
+			.get_typed_func::<(), i32>(&mut store, "grow_again")
+			.unwrap();
+
+		// Act: each memory reaches half a MiB, exhausting the shared budget.
+		assert_eq!(grow_a.call_async(&mut store, ()).await.unwrap(), 1);
+		assert_eq!(grow_b.call_async(&mut store, ()).await.unwrap(), 1);
+
+		// Assert: a per-memory-valid growth still traps when the aggregate is full.
+		assert!(grow_again.call_async(&mut store, ()).await.is_err());
+		let another = wasmtime::Module::new(runtime.engine(), "(module (memory 1))").unwrap();
+		assert!(
+			wasmtime::Instance::new_async(&mut store, &another, &[])
+				.await
+				.is_err()
+		);
+	}
+
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn store_memory_budget_rejects_oversized_initial_multi_memory_allocation() {
+		// Arrange: individually valid one-MiB memories exceed the total budget together.
+		let runtime =
+			WasmRuntime::new(WasmRuntimeConfigBuilder::new().memory_limit_mb(1).build()).unwrap();
+		let module =
+			wasmtime::Module::new(runtime.engine(), "(module (memory 16) (memory 16))").unwrap();
+		let mut store = runtime.create_store(HostState::new("initial-memories"));
+
+		// Act / Assert: initialization is metered as well as later memory.grow.
+		assert!(
+			wasmtime::Instance::new_async(&mut store, &module, &[])
+				.await
+				.is_err()
+		);
+	}
+
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn table_growth_counts_all_tables_and_instances_in_store_budget() {
+		// Arrange: two empty tables sharing a one-MiB store budget.
+		let runtime = WasmRuntime::new(
+			WasmRuntimeConfigBuilder::new()
+				.memory_limit_mb(1)
+				.fuel_metering(false)
+				.build(),
+		)
+		.unwrap();
+		let half = (1024 * 1024 / std::mem::size_of::<usize>()) / 2;
+		let module = wasmtime::Module::new(
+			runtime.engine(),
+			format!(
+				r#"(module
+			(table $a 0 funcref) (table $b 0 funcref)
+			(func (export "grow_a") (result i32) ref.null func i32.const {half} table.grow $a)
+			(func (export "grow_b") (result i32) ref.null func i32.const {half} table.grow $b)
+			(func (export "grow_again") (result i32) ref.null func i32.const 1 table.grow $a)
+		)"#
+			),
+		)
+		.unwrap();
+		let mut store = runtime.create_store(HostState::new("aggregate-tables"));
+		let instance = wasmtime::Instance::new_async(&mut store, &module, &[])
+			.await
+			.unwrap();
+		let a = instance
+			.get_typed_func::<(), i32>(&mut store, "grow_a")
+			.unwrap();
+		let b = instance
+			.get_typed_func::<(), i32>(&mut store, "grow_b")
+			.unwrap();
+		let again = instance
+			.get_typed_func::<(), i32>(&mut store, "grow_again")
+			.unwrap();
+
+		// Act: each table consumes half of the store's allocation budget.
+		assert_eq!(a.call_async(&mut store, ()).await.unwrap(), 0);
+		assert_eq!(b.call_async(&mut store, ()).await.unwrap(), 0);
+
+		// Assert: even one extra element or a table in another instance is denied.
+		assert!(again.call_async(&mut store, ()).await.is_err());
+		let another =
+			wasmtime::Module::new(runtime.engine(), "(module (table 1 funcref))").unwrap();
+		assert!(
+			wasmtime::Instance::new_async(&mut store, &another, &[])
+				.await
+				.is_err()
+		);
+	}
+
+	#[rstest::rstest]
+	#[case(true)]
+	#[case(false)]
+	#[tokio::test]
+	async fn tables_cannot_exceed_memory_budget_at_initialization_or_in_one_growth(
+		#[case] initial_allocation: bool,
+	) {
+		// Arrange: request more than one MiB in a single table allocation.
+		let runtime = WasmRuntime::new(
+			WasmRuntimeConfigBuilder::new()
+				.memory_limit_mb(1)
+				.fuel_metering(false)
+				.build(),
+		)
+		.unwrap();
+		let elements = 1024 * 1024 / std::mem::size_of::<usize>() + 1;
+		let wat = if initial_allocation {
+			format!("(module (table {elements} funcref))")
+		} else {
+			format!(
+				"(module (table $t 0 externref) (func (export \"grow\") (result i32) ref.null extern i32.const {elements} table.grow $t))"
+			)
+		};
+		let module = wasmtime::Module::new(runtime.engine(), wat).unwrap();
+		let mut store = runtime.create_store(HostState::new("large-table"));
+
+		// Act / Assert: both initial allocation and the single guest instruction fail.
+		let instance = wasmtime::Instance::new_async(&mut store, &module, &[]).await;
+		if initial_allocation {
+			assert!(instance.is_err());
+		} else {
+			let grow = instance
+				.unwrap()
+				.get_typed_func::<(), i32>(&mut store, "grow")
+				.unwrap();
+			assert!(grow.call_async(&mut store, ()).await.is_err());
+		}
+	}
+
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn tables_and_linear_memory_share_the_same_allocation_budget() {
+		// Arrange: half a MiB each of linear memory and table elements.
+		let runtime = WasmRuntime::new(
+			WasmRuntimeConfigBuilder::new()
+				.memory_limit_mb(1)
+				.fuel_metering(false)
+				.build(),
+		)
+		.unwrap();
+		let elements = 512 * 1024 / std::mem::size_of::<usize>();
+		let module = wasmtime::Module::new(
+			runtime.engine(),
+			format!(
+				r#"(module
+			(memory 8) (table $t {elements} funcref)
+			(func (export "grow") (result i32) ref.null func i32.const 1 table.grow $t)
+		)"#
+			),
+		)
+		.unwrap();
+		let mut store = runtime.create_store(HostState::new("mixed-allocations"));
+		let instance = wasmtime::Instance::new_async(&mut store, &module, &[])
+			.await
+			.unwrap();
+		let grow = instance
+			.get_typed_func::<(), i32>(&mut store, "grow")
+			.unwrap();
+
+		// Act / Assert: table growth cannot spend memory already used by linear memory.
+		assert!(grow.call_async(&mut store, ()).await.is_err());
+	}
+
+	#[rstest::rstest]
+	fn failed_table_allocation_releases_only_its_budget_reservation() {
+		// Arrange: a memory reservation followed by a permitted table allocation.
+		let mut limiter = StoreMemoryLimits::new(65536);
+		assert!(limiter.memory_growing(0, 32768, None).unwrap());
+		let elements = 32768 / std::mem::size_of::<usize>();
+		assert!(limiter.table_growing(0, elements, None).unwrap());
+
+		// Act: simulate an OS failure after the table growth was permitted.
+		assert!(
+			limiter
+				.table_grow_failed(wasmtime::Error::msg("allocation failed"))
+				.is_err()
+		);
+
+		// Assert: the memory reservation survives and the table reservation is released.
+		assert_eq!(limiter.allocated, 32768);
+		assert!(limiter.table_growing(0, elements, None).unwrap());
+		assert!(limiter.memory_growing(32768, 32769, None).is_err());
+	}
+
+	#[rstest::rstest]
+	fn failed_memory_allocation_releases_its_budget_reservation() {
+		// Arrange: simulate an OS allocation failure after the limiter permits growth.
+		let mut limiter = StoreMemoryLimits::new(65536);
+		assert!(limiter.memory_growing(0, 65536, None).unwrap());
+
+		// Act: the Wasmtime failure callback rolls back the unfulfilled reservation.
+		assert!(
+			limiter
+				.memory_grow_failed(wasmtime::Error::msg("allocation failed"))
+				.is_err()
+		);
+
+		// Assert: a later real allocation can still use the full budget.
+		assert!(limiter.memory_growing(0, 65536, None).unwrap());
+	}
+
+	#[rstest::rstest]
+	fn shared_memories_cannot_bypass_store_accounting() {
+		// Arrange: shared memories are outside Wasmtime's ResourceLimiter callbacks.
+		let runtime = WasmRuntime::new(WasmRuntimeConfig::default()).unwrap();
+
+		// Act / Assert: guest validation rejects them before any allocation.
+		assert!(wasmtime::Module::new(runtime.engine(), "(module (memory 1 2 shared))").is_err());
+	}
+
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn store_memory_limit_allows_small_growth_and_traps_excess() {
+		let config = WasmRuntimeConfigBuilder::new()
+			.memory_limit_mb(1)
+			.fuel_metering(false)
+			.build();
+		let runtime = WasmRuntime::new(config).unwrap();
+		let module = wasmtime::Module::new(
+			runtime.engine(),
+			r#"(module
+				(memory (export "memory") 1)
+				(func (export "grow_one") (result i32) i32.const 1 memory.grow)
+				(func (export "grow_past_limit") (result i32) i32.const 15 memory.grow)
+			)"#,
+		)
+		.unwrap();
+		let mut store = runtime.create_store(HostState::new("memory-test"));
+		let instance = wasmtime::Instance::new_async(&mut store, &module, &[])
+			.await
+			.unwrap();
+
+		let grow_one = instance
+			.get_typed_func::<(), i32>(&mut store, "grow_one")
+			.unwrap();
+		assert_eq!(grow_one.call_async(&mut store, ()).await.unwrap(), 1);
+		let grow_past_limit = instance
+			.get_typed_func::<(), i32>(&mut store, "grow_past_limit")
+			.unwrap();
+		assert!(grow_past_limit.call_async(&mut store, ()).await.is_err());
+	}
+
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn execution_deadline_cancels_a_delayed_host_import() {
+		// Arrange: the guest awaits a host future much longer than its runtime budget.
+		let runtime = WasmRuntime::new(
+			WasmRuntimeConfigBuilder::new()
+				.timeout(Duration::from_millis(30))
+				.fuel_metering(false)
+				.build(),
+		)
+		.unwrap();
+		let module = wasmtime::Module::new(
+			runtime.engine(),
+			r#"(module
+			(import "test" "delay" (func $delay))
+			(func (export "run") call $delay)
+		)"#,
+		)
+		.unwrap();
+		let cancelled = Arc::new(AtomicBool::new(false));
+		struct ImportGuard(Arc<AtomicBool>);
+		impl Drop for ImportGuard {
+			fn drop(&mut self) {
+				self.0.store(true, Ordering::Release);
+			}
+		}
+		let mut linker = wasmtime::Linker::<HostState>::new(runtime.engine());
+		let flag = Arc::clone(&cancelled);
+		linker
+			.func_wrap_async("test", "delay", move |_caller, (): ()| {
+				let flag = Arc::clone(&flag);
+				Box::new(async move {
+					let _guard = ImportGuard(flag);
+					tokio::time::sleep(Duration::from_secs(1)).await;
+					Ok(())
+				})
+			})
+			.unwrap();
+		let mut store = runtime.create_store(HostState::new("delayed-import"));
+		let instance = linker.instantiate_async(&mut store, &module).await.unwrap();
+		let function = instance
+			.get_typed_func::<(), ()>(&mut store, "run")
+			.unwrap();
+		let started = std::time::Instant::now();
+
+		// Act: use the same whole-invocation bound as the plugin lifecycle methods.
+		let result = runtime
+			.with_execution_timeout(async {
+				function
+					.call_async(&mut store, ())
+					.await
+					.map_err(|error| PluginError::WasmExecutionError(error.to_string()))
+			})
+			.await;
+
+		// Assert: expiration drops the suspended import rather than waiting for it.
+		assert!(
+			matches!(result, Err(PluginError::WasmExecutionError(message)) if message.contains("timed out"))
+		);
+		assert!(started.elapsed() < Duration::from_millis(500));
+		assert!(cancelled.load(Ordering::Acquire));
+	}
+
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn store_epoch_deadline_interrupts_busy_loop() {
+		let config = WasmRuntimeConfigBuilder::new()
+			.timeout(Duration::from_millis(30))
+			.fuel_metering(false)
+			.build();
+		let runtime = WasmRuntime::new(config).unwrap();
+		let module = wasmtime::Module::new(
+			runtime.engine(),
+			r#"(module
+				(func (export "noop"))
+				(func (export "spin") (loop (br 0)))
+			)"#,
+		)
+		.unwrap();
+		let mut store = runtime.create_store(HostState::new("timeout-test"));
+		let instance = wasmtime::Instance::new_async(&mut store, &module, &[])
+			.await
+			.unwrap();
+		let noop = instance
+			.get_typed_func::<(), ()>(&mut store, "noop")
+			.unwrap();
+		assert!(noop.call_async(&mut store, ()).await.is_ok());
+		tokio::time::sleep(Duration::from_millis(60)).await;
+		// A reused store gets a fresh execution budget after idle time.
+		assert!(noop.call_async(&mut store, ()).await.is_ok());
+		let spin = instance
+			.get_typed_func::<(), ()>(&mut store, "spin")
+			.unwrap();
+
+		assert!(spin.call_async(&mut store, ()).await.is_err());
 	}
 }

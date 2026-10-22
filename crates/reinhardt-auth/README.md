@@ -574,6 +574,20 @@ assert!(permission.has_permission(&context).await);
 - **SessionId**: Type-safe session identifier wrapper
 - **Cookie Integration**: Secure session cookie handling
 
+`SessionAuthentication` enforces CSRF on unsafe methods when it authenticates
+a valid session. Anonymous and expired sessions return no authenticated user,
+allowing other authentication backends to proceed. Authenticated clients
+must send the session-bound token in `X-CSRFToken`; `CsrfMiddleware` can issue
+that token on a safe request when it runs before authentication middleware and
+reads the same `sessionid` cookie. If the session cookie name is customized,
+use `CsrfMiddleware::with_session_cookie_name` with the same name as
+`SessionAuthConfig::cookie_name`. For a custom token header, pass the same
+`CsrfConfig` to `CsrfMiddlewareConfig::csrf_config` and
+`SessionAuthentication::with_csrf_config`. The token remains bound to that
+session key; changing the cookie or header name does not disable validation. Disable
+`SessionAuthConfig::enforce_csrf` only when another CSRF check protects the
+request.
+
 ```rust
 use reinhardt::auth::{SessionAuthentication, AuthenticationBackend};
 use reinhardt::auth::sessions::backends::InMemorySessionBackend;
@@ -1099,7 +1113,14 @@ high-entropy browser or session value and to carry opaque application context
 through the provider redirect. Only a SHA-256 digest of the binding is stored;
 the binding itself remains in the application-controlled cookie or session.
 State is consumed before the provider exchange, so a replay, provider swap,
-expired state, or binding mismatch cannot be retried with the same state.
+expired state, or missing or mismatched binding cannot be retried with the
+same state.
+
+OAuth and OIDC server requests resolve and pin the validated endpoint address
+for each request. They reject non-public addresses except explicit loopback
+development endpoints, and do not follow HTTP redirects or use environment
+proxies. OAuth2-only token and GitHub UserInfo requests must match their
+configured endpoint URLs.
 
 ```rust,ignore
 use reinhardt::auth::{ContextualCallbackResult, SocialAuthBackend};

@@ -100,6 +100,9 @@ pub enum SsrError {
 impl From<TsError> for SsrError {
 	fn from(err: TsError) -> Self {
 		match err {
+			TsError::RuntimeLimitExceeded { message } => SsrError::EvalFailed(format!(
+				"JavaScript interpreter resource limit exceeded: {message}"
+			)),
 			TsError::InitFailed(_msg) => SsrError::NotAvailable,
 			TsError::EvalFailed(msg) => SsrError::EvalFailed(msg),
 			TsError::PropsSerialization(msg) => SsrError::PropsSerialization(msg),
@@ -390,42 +393,104 @@ impl SsrProxy {
 		props: &[u8],
 		options: RenderOptions,
 	) -> Result<RenderResult, SsrError> {
+		self.render_react_until(component_path, props, options, None)
+			.await
+	}
+
+	pub(super) async fn render_react_until(
+		&self,
+		component_path: &str,
+		props: &[u8],
+		options: RenderOptions,
+		deadline: Option<std::time::Instant>,
+	) -> Result<RenderResult, SsrError> {
 		if !self.available {
 			return Err(SsrError::NotAvailable);
 		}
 
-		// Check if plugin_base_dir is set
-		let base_dir = self.plugin_base_dir.as_ref().ok_or_else(|| {
-			SsrError::ComponentNotFound(
-				"Plugin base directory not set. Use with_plugin_base_dir()".to_string(),
-			)
-		})?;
-
-		// Validate component path (security check)
-		let validated_path = validate_component_path(base_dir, component_path)?;
-
-		// Load component code from file
-		let component_code = tokio::fs::read_to_string(&validated_path)
-			.await
-			.map_err(|e| {
-				SsrError::ComponentNotFound(format!(
-					"Failed to read component file {}: {}",
-					component_path, e
-				))
+		#[cfg(feature = "ts")]
+		if let Some(runtime) = self.ts_runtime.clone() {
+			check_render_deadline(deadline)?;
+			let max = runtime.limits().max_source_size;
+			// Bound the borrowed input before copying it into the blocking task.
+			check_render_source_size(component_path.len(), max)?;
+			check_render_source_size(props.len(), max)?;
+			let base_dir = self.plugin_base_dir.clone().ok_or_else(|| {
+				SsrError::ComponentNotFound(
+					"Plugin base directory not set. Use with_plugin_base_dir()".into(),
+				)
 			})?;
-
-		// Deserialize props from MessagePack
-		let props_value: serde_json::Value = rmp_serde::from_slice(props).map_err(|e| {
-			SsrError::PropsSerialization(format!("Failed to deserialize props: {}", e))
-		})?;
-
-		// Serialize to JSON for render_component
-		let props_json = serde_json::to_string(&props_value).map_err(|e| {
-			SsrError::PropsSerialization(format!("Failed to serialize props to JSON: {}", e))
-		})?;
-
-		// Call render_component with the loaded code
-		self.render_component(&component_code, &props_json, options)
+			let component_path = component_path.to_owned();
+			let props = props.to_vec();
+			// Path/file work, validation, JS waits and hydration all yield the executor.
+			let render = tokio::task::spawn_blocking(move || {
+				check_render_deadline(deadline)?;
+				let path = validate_component_path(&base_dir, &component_path)?;
+				let file = std::fs::File::open(&path).map_err(|error| {
+					SsrError::ComponentNotFound(format!("Failed to open component file: {error}"))
+				})?;
+				let size = file
+					.metadata()
+					.map_err(|error| {
+						SsrError::ComponentNotFound(format!(
+							"Failed to inspect component file: {error}"
+						))
+					})?
+					.len();
+				check_render_source_size(usize::try_from(size).unwrap_or(usize::MAX), max)?;
+				let component_code = read_component_source(file, max, deadline)?;
+				let props_value: serde_json::Value =
+					rmp_serde::from_slice(&props).map_err(|error| {
+						SsrError::PropsSerialization(format!(
+							"Failed to deserialize props: {error}"
+						))
+					})?;
+				let props_json = serde_json::to_string(&props_value).map_err(|error| {
+					SsrError::PropsSerialization(format!(
+						"Failed to serialize props to JSON: {error}"
+					))
+				})?;
+				check_render_source_size(
+					component_code.len().saturating_add(props_json.len()),
+					max,
+				)?;
+				check_render_deadline(deadline)?;
+				validate_component_code(&component_code)?;
+				let html =
+					runtime.render_component_until(&component_code, &props_json, deadline)?;
+				check_render_deadline(deadline)?;
+				let hydration_script = if options.include_hydration {
+					Some(Self::hydration_script_until(
+						&component_code,
+						&props_json,
+						deadline,
+					)?)
+				} else {
+					None
+				};
+				let (css, meta) = Self::extract_assets(&html, &options);
+				check_render_deadline(deadline)?;
+				Ok::<_, SsrError>(RenderResult {
+					html,
+					css,
+					meta,
+					hydration_script,
+				})
+			});
+			let joined = if let Some(deadline) = deadline {
+				tokio::time::timeout_at(tokio::time::Instant::from_std(deadline), render)
+					.await
+					.map_err(|_| render_deadline_error())?
+			} else {
+				render.await
+			};
+			let result = joined.map_err(|error| SsrError::RenderFailed(error.to_string()))??;
+			check_render_deadline(deadline)?;
+			return Ok(result);
+		}
+		#[cfg(not(feature = "ts"))]
+		let _ = (component_path, props, options, deadline);
+		Err(SsrError::NotAvailable)
 	}
 
 	/// Execute arbitrary JavaScript/TypeScript code and return the result.
@@ -453,6 +518,26 @@ impl SsrProxy {
 		#[cfg(not(feature = "ts"))]
 		let _ = code;
 
+		Err(SsrError::NotAvailable)
+	}
+
+	pub(super) async fn eval_js_until(
+		&self,
+		code: String,
+		deadline: Option<std::time::Instant>,
+	) -> Result<String, SsrError> {
+		if !self.available {
+			return Err(SsrError::NotAvailable);
+		}
+		#[cfg(feature = "ts")]
+		if let Some(runtime) = self.ts_runtime.clone() {
+			return tokio::task::spawn_blocking(move || runtime.eval_until(&code, deadline))
+				.await
+				.map_err(|error| SsrError::EvalFailed(error.to_string()))?
+				.map_err(SsrError::from);
+		}
+		#[cfg(not(feature = "ts"))]
+		let _ = (code, deadline);
 		Err(SsrError::NotAvailable)
 	}
 
@@ -513,9 +598,20 @@ impl SsrProxy {
 	/// via `</script>` tag injection. See [`escape_for_script`] for details.
 	#[cfg(any(feature = "ts", test))]
 	fn generate_hydration_script(&self, component_code: &str, props_json: &str) -> String {
-		let safe_code = escape_for_script(component_code);
-		let safe_props = escape_for_script(props_json);
-		format!(
+		Self::hydration_script_until(component_code, props_json, None)
+			.expect("hydration without a deadline cannot time out")
+	}
+
+	#[cfg(any(feature = "ts", test))]
+	fn hydration_script_until(
+		component_code: &str,
+		props_json: &str,
+		deadline: Option<std::time::Instant>,
+	) -> Result<String, SsrError> {
+		check_render_deadline(deadline)?;
+		let safe_code = escape_for_script_until(component_code, deadline)?;
+		let safe_props = escape_for_script_until(props_json, deadline)?;
+		let script = format!(
 			r#"<script type="module">
 import {{ h, render }} from 'https://esm.sh/preact@10';
 
@@ -527,7 +623,9 @@ if (root) {{
     render(h(Component, props), root);
 }}
 </script>"#
-		)
+		);
+		check_render_deadline(deadline)?;
+		Ok(script)
 	}
 }
 
@@ -569,6 +667,14 @@ if (root) {{
 /// assert_eq!(escape_for_script(normal), normal);
 /// ```
 pub fn escape_for_script(s: &str) -> String {
+	escape_for_script_until(s, None).expect("escaping without a deadline cannot time out")
+}
+
+fn escape_for_script_until(
+	s: &str,
+	deadline: Option<std::time::Instant>,
+) -> Result<String, SsrError> {
+	check_render_deadline(deadline)?;
 	// Comprehensive escaping for safe embedding inside <script> tags.
 	//
 	// Defense layers:
@@ -592,8 +698,13 @@ pub fn escape_for_script(s: &str) -> String {
 	let bytes = s.as_bytes();
 	let len = bytes.len();
 	let mut i = 0;
+	let mut next_deadline_check = 0;
 
 	while i < len {
+		if i >= next_deadline_check {
+			check_render_deadline(deadline)?;
+			next_deadline_check = i.saturating_add(4096);
+		}
 		// Check for </ followed by optional whitespace, then "script" (case-insensitive),
 		// then optional whitespace, then >.
 		// Browsers parse `</ script>` and `</ script >` as closing tags per HTML spec.
@@ -645,7 +756,55 @@ pub fn escape_for_script(s: &str) -> String {
 		i += ch.len_utf8();
 	}
 
-	result
+	check_render_deadline(deadline)?;
+	Ok(result)
+}
+
+fn render_deadline_error() -> SsrError {
+	SsrError::RenderFailed("execution timed out during SSR preparation".into())
+}
+
+fn check_render_deadline(deadline: Option<std::time::Instant>) -> Result<(), SsrError> {
+	if deadline.is_some_and(|deadline| std::time::Instant::now() >= deadline) {
+		return Err(render_deadline_error());
+	}
+	Ok(())
+}
+
+#[cfg(feature = "ts")]
+fn check_render_source_size(size: usize, max: usize) -> Result<(), SsrError> {
+	if size > max {
+		return Err(TsError::SourceTooLarge { size, max }.into());
+	}
+	Ok(())
+}
+
+#[cfg(feature = "ts")]
+fn read_component_source(
+	mut reader: impl std::io::Read,
+	max: usize,
+	deadline: Option<std::time::Instant>,
+) -> Result<String, SsrError> {
+	// Read at most max+1 bytes even if the file grows after its metadata check.
+	let mut bytes = Vec::new();
+	let mut chunk = [0; 4096];
+	loop {
+		check_render_deadline(deadline)?;
+		let remaining = max.saturating_sub(bytes.len()).saturating_add(1);
+		let capacity = remaining.min(chunk.len());
+		let read = reader.read(&mut chunk[..capacity]).map_err(|error| {
+			SsrError::ComponentNotFound(format!("Failed to read component file: {error}"))
+		})?;
+		if read == 0 {
+			break;
+		}
+		check_render_source_size(bytes.len().saturating_add(read), max)?;
+		bytes.extend_from_slice(&chunk[..read]);
+	}
+	check_render_deadline(deadline)?;
+	String::from_utf8(bytes).map_err(|error| {
+		SsrError::ComponentNotFound(format!("Component source is not UTF-8: {error}"))
+	})
 }
 
 /// Shared SSR proxy instance type.
@@ -723,6 +882,7 @@ fn validate_component_code(code: &str) -> Result<(), SsrError> {
 /// # Returns
 ///
 /// Canonical absolute path to the component file, or an error if validation fails.
+#[cfg(any(feature = "ts", test))]
 fn validate_component_path(
 	base_dir: &std::path::Path,
 	component_path: &str,
@@ -1223,6 +1383,219 @@ mod tests {
 		use super::*;
 		use crate::wasm::ts_runtime::TsRuntime;
 		use std::sync::Arc;
+
+		#[rstest::rstest]
+		#[tokio::test(flavor = "current_thread")]
+		async fn oversized_component_path_is_rejected_before_admission_copy() {
+			use crate::wasm::ts_runtime::TsResourceLimits;
+			// Arrange: a borrowed path exceeds the cap, with no base directory configured.
+			let path = format!("{}.js", "a".repeat(1024));
+			let runtime = Arc::new(
+				TsRuntime::with_limits(TsResourceLimits {
+					max_source_size: 64,
+					..TsResourceLimits::default()
+				})
+				.unwrap(),
+			);
+			let proxy = SsrProxy::with_ts_runtime(runtime);
+			// Act: admission must reject the path before cloning or filesystem setup.
+			let result = proxy
+				.render_react(
+					&path,
+					&rmp_serde::to_vec(&serde_json::json!({})).unwrap(),
+					RenderOptions {
+						include_hydration: true,
+						..RenderOptions::default()
+					},
+				)
+				.await;
+			// Assert: the size error precedes the missing-base-directory error.
+			assert!(matches!(result, Err(SsrError::RenderFailed(message))
+				if message == "source size (1027 bytes) exceeds limit (64 bytes)"));
+		}
+
+		#[rstest::rstest]
+		fn component_reader_stops_at_the_limit_if_input_outgrows_metadata() {
+			// Arrange: more bytes arrive than the previously checked file size allowed.
+			let mut input = std::io::Cursor::new(vec![b'x'; 128]);
+			// Act: the bounded reader probes only one byte beyond the configured cap.
+			let result = read_component_source(&mut input, 64, None);
+			// Assert: neither the remaining input nor an unbounded String is materialized.
+			assert_eq!(input.position(), 65);
+			assert!(matches!(result, Err(SsrError::RenderFailed(message))
+				if message == "source size (65 bytes) exceeds limit (64 bytes)"));
+		}
+
+		#[rstest::rstest]
+		fn hydration_escaping_observes_expiry_while_processing_source() {
+			// Arrange: escaping a large accepted input cannot renew its remaining deadline.
+			let code = "<!--".repeat(4 * 1024 * 1024);
+			let started = std::time::Instant::now();
+			let deadline = started + std::time::Duration::from_millis(1);
+			// Act: the private renderer checks expiry during escaping and after formatting.
+			let result = SsrProxy::hydration_script_until(&code, "{}", Some(deadline));
+			// Assert: no successful hydration result survives the absolute deadline.
+			assert!(matches!(result, Err(SsrError::RenderFailed(message))
+				if message.contains("timed out")));
+			assert!(started.elapsed() < std::time::Duration::from_millis(250));
+		}
+
+		#[rstest::rstest]
+		fn expired_render_in_blocking_queue_never_starts_preparation_or_javascript() {
+			use std::sync::mpsc;
+			use std::time::{Duration, Instant};
+			struct ReleaseOnDrop(Option<mpsc::Sender<()>>);
+			impl Drop for ReleaseOnDrop {
+				fn drop(&mut self) {
+					if let Some(sender) = self.0.take() {
+						let _ = sender.send(());
+					}
+				}
+			}
+			// Arrange: own an isolated one-thread blocking pool and a panic-safe queue gate.
+			let executor = tokio::runtime::Builder::new_current_thread()
+				.enable_all()
+				.max_blocking_threads(1)
+				.build()
+				.unwrap();
+			let runtime = Arc::new(TsRuntime::new().unwrap());
+			let assets = tempfile::tempdir().unwrap();
+			std::fs::write(
+				assets.path().join("Component.js"),
+				"globalThis.preparationRan = true; function Component() { return h('div'); }",
+			)
+			.unwrap();
+			let proxy = SsrProxy::with_ts_runtime(Arc::clone(&runtime))
+				.with_plugin_base_dir(assets.path().to_path_buf());
+			let (started_tx, started_rx) = mpsc::channel();
+			let (release_tx, release_rx) = mpsc::channel();
+			let gate = ReleaseOnDrop(Some(release_tx));
+			let blocker = executor.spawn_blocking(move || {
+				started_tx.send(()).unwrap();
+				release_rx.recv().unwrap();
+			});
+			started_rx.recv_timeout(Duration::from_secs(1)).unwrap();
+			let started = Instant::now();
+
+			// Act: the render deadline expires before its blocking task is admitted.
+			let result = executor.block_on(proxy.render_react_until(
+				"Component.js",
+				&rmp_serde::to_vec(&serde_json::json!({})).unwrap(),
+				RenderOptions {
+					include_hydration: true,
+					..RenderOptions::default()
+				},
+				Some(started + Duration::from_millis(20)),
+			));
+
+			// Assert: the executor times out responsively; release the gate before joining it.
+			assert!(
+				matches!(result, Err(SsrError::RenderFailed(message)) if message.contains("timed out"))
+			);
+			assert!(started.elapsed() < Duration::from_millis(250));
+			drop(gate);
+			executor.block_on(blocker).unwrap();
+			let result = executor.block_on(async {
+				tokio::task::spawn_blocking(move || {
+					runtime.eval("typeof globalThis.preparationRan")
+				})
+				.await
+				.unwrap()
+				.unwrap()
+			});
+			assert_eq!(result, "undefined");
+		}
+
+		#[rstest::rstest]
+		#[case(true)]
+		#[case(false)]
+		#[tokio::test(flavor = "current_thread")]
+		async fn file_render_enforces_combined_source_limit_and_preserves_hydration(
+			#[case] fits: bool,
+		) {
+			use crate::wasm::ts_runtime::TsResourceLimits;
+			// Arrange: the component fits alone; JSON props determine the final boundary.
+			let code = "function Component() { return h('div', null, 'Hello'); }";
+			let assets = tempfile::tempdir().unwrap();
+			std::fs::write(assets.path().join("Component.js"), code).unwrap();
+			let max = code.len() + if fits { 2 } else { 1 };
+			let runtime = Arc::new(
+				TsRuntime::with_limits(TsResourceLimits {
+					max_source_size: max,
+					..TsResourceLimits::default()
+				})
+				.unwrap(),
+			);
+			let proxy = SsrProxy::with_ts_runtime(runtime)
+				.with_plugin_base_dir(assets.path().to_path_buf());
+			// Act: use the real async file renderer with hydration enabled.
+			let result = proxy
+				.render_react(
+					"Component.js",
+					&rmp_serde::to_vec(&serde_json::json!({})).unwrap(),
+					RenderOptions {
+						include_hydration: true,
+						..RenderOptions::default()
+					},
+				)
+				.await;
+			// Assert: valid output retains hydration and oversize combined input is denied.
+			if fits {
+				let result = result.unwrap();
+				assert_eq!(result.html, "<div>Hello</div>");
+				assert!(result.hydration_script.unwrap().contains(code));
+			} else {
+				assert!(matches!(result, Err(SsrError::RenderFailed(message))
+					if message.contains("source size") && message.contains("exceeds limit")));
+			}
+		}
+
+		#[rstest::rstest]
+		#[case(true)]
+		#[case(false)]
+		#[tokio::test(flavor = "current_thread")]
+		async fn oversized_component_is_rejected_before_content_processing(
+			#[case] invalid_utf8: bool,
+		) {
+			use crate::wasm::ts_runtime::TsResourceLimits;
+			// Arrange: a sparse oversized file starts with invalid UTF-8 or JavaScript.
+			let assets = tempfile::tempdir().unwrap();
+			let path = assets.path().join("Large.js");
+			let mut file = std::fs::File::create(&path).unwrap();
+			use std::io::Write;
+			file.write_all(if invalid_utf8 {
+				&[0xff]
+			} else {
+				b"eval('bad');"
+			})
+			.unwrap();
+			file.set_len(8 * 1024 * 1024).unwrap();
+			let runtime = Arc::new(
+				TsRuntime::with_limits(TsResourceLimits {
+					max_source_size: 64 * 1024,
+					..TsResourceLimits::default()
+				})
+				.unwrap(),
+			);
+			let proxy = SsrProxy::with_ts_runtime(runtime)
+				.with_plugin_base_dir(assets.path().to_path_buf());
+
+			// Act: request hydration through the production asynchronous render path.
+			let result = proxy
+				.render_react(
+					"Large.js",
+					&rmp_serde::to_vec(&serde_json::json!({})).unwrap(),
+					RenderOptions {
+						include_hydration: true,
+						..RenderOptions::default()
+					},
+				)
+				.await;
+
+			// Assert: reject file size before decoding, scanning or hydration duplication.
+			assert!(matches!(result, Err(SsrError::RenderFailed(message))
+				if message == "source size (8388608 bytes) exceeds limit (65536 bytes)"));
+		}
 
 		#[test]
 		fn test_ssr_proxy_with_ts_runtime() {

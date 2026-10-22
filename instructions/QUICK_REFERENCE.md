@@ -28,7 +28,7 @@ does not duplicate their checklists.
 | RC approvals, breaking changes, independent bug verification | [Stability Policy](STABILITY_POLICY.md) |
 | Versioning, release-plz, publish ordering, partial releases | [Release Process](RELEASE_PROCESS.md) |
 | Durable knowledge retrieval and capture | [Obsidian Wiki](OBSIDIAN_WIKI.md) |
-| Consumer upgrades | [0.2 migration](MIGRATION_0.2.md), [0.3 migration](MIGRATION_0.3.md), [0.3.17 migration](MIGRATION_0.3.17.md) |
+| Consumer upgrades | [0.2 migration](MIGRATION_0.2.md), [0.3 migration](MIGRATION_0.3.md), [0.3.17 migration](MIGRATION_0.3.17.md), [0.3.24 migration](MIGRATION_0.3.24.md) |
 
 Repository resources: `README.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`,
 `.github/labels.yml`, `.github/PULL_REQUEST_TEMPLATE.md`,

@@ -194,6 +194,21 @@ let router = StubRouter::new()
 
 - migrate dependency policy checks to cargo-deny
 
+## [0.3.24](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit@v0.3.23...reinhardt-testkit@v0.3.24) - 2026-10-14
+
+### Added
+
+- *(testkit)* add scoped session account adapter
+
+### Fixed
+
+- *(testkit)* document and verify live session account wiring
+
+### Fixed
+
+- Document and verify current-account backend wiring for session privilege overrides.
+
+
 ## [0.3.23](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit@v0.3.22...reinhardt-testkit@v0.3.23) - 2026-10-08
 
 ### Documentation

@@ -61,6 +61,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - merge main into develop/0.4.0
 
+## [0.3.25](https://github.com/kent8192/reinhardt-web/compare/reinhardt-websockets@v0.3.24...reinhardt-websockets@v0.3.25) - 2026-10-20
+
+### Security
+
+- *(websockets)* apply Redis credential and TLS fields to the connection
+
+
 ## [0.3.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-websockets@v0.3.15...reinhardt-websockets@v0.3.16) - 2026-09-08
 
 ### Maintenance

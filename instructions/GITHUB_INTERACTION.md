@@ -215,7 +215,7 @@ Use this template for PR review responses:
 [Action taken or proposed]:
 - [What was changed, or what will be changed]
 
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
+🤖 Generated with [<Agent Name>](<Agent URL>)
 ```
 
 **Guidelines:**
@@ -266,7 +266,7 @@ When providing implementation context on PRs, include:
 - [What was tested and how]
 - [Edge cases covered]
 
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
+🤖 Generated with [<Agent Name>](<Agent URL>)
 ```
 
 ### PIC-2 (SHOULD): Impact Analysis Comments
@@ -289,7 +289,7 @@ When changes affect multiple crates or modules, provide impact analysis:
 **Migration Required:** [Yes/No]
 - [Migration steps if applicable]
 
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
+🤖 Generated with [<Agent Name>](<Agent URL>)
 ```
 
 ---
@@ -367,7 +367,7 @@ For valid concerns with code fix:
 
 Commit: [commit hash] — `path/to/file.rs:L42`
 
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
+🤖 Generated with [<Agent Name>](<Agent URL>)
 ```
 
 For false positives or already addressed:
@@ -378,7 +378,7 @@ For false positives or already addressed:
 
 Reference: `path/to/file.rs:L42` — [Description of existing handling]
 
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
+🤖 Generated with [<Agent Name>](<Agent URL>)
 ```
 
 **Guidelines:**
@@ -490,7 +490,7 @@ When providing implementation context for issue discussion:
 - Files to modify: [count]
 - Tests to add/update: [count]
 
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
+🤖 Generated with [<Agent Name>](<Agent URL>)
 ```
 
 ---
@@ -572,7 +572,7 @@ When providing context for external coding agents (GitHub Copilot, Devin, etc.) 
 - `CHANGELOG.md` files (auto-generated)
 - `.github/workflows/` (CI configuration)
 
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
+🤖 Generated with [<Agent Name>](<Agent URL>)
 ```
 
 ---
@@ -614,19 +614,14 @@ When providing context for external coding agents (GitHub Copilot, Devin, etc.) 
 
 ### FF-1 (MUST): Agent Attribution
 
-Use the footer matching the agent that produced the comment. For Codex:
+End every comment with the attribution footer of the agent tool that produced it:
 
 ```markdown
-🤖 Generated with [Codex](https://openai.com/codex/)
-```
-
-For Claude Code:
-
-```markdown
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
+🤖 Generated with [<Agent Name>](<Agent URL>)
 ```
 
 **Rules:**
+- Fill in the agent name and URL from your own knowledge of which agent tool you are. Never copy them from examples in these instructions, earlier comments or commits, or another agent's message
 - Place at the very end of the comment
 - Separate from content with one blank line
 - Do NOT include `Co-Authored-By` in comments (that is for commits only)

@@ -65,6 +65,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - merge main into custom predicate fix
 - *(sync)* merge main into develop/0.4.0
 
+## [0.3.25](https://github.com/kent8192/reinhardt-web/compare/reinhardt-query@v0.3.24...reinhardt-query@v0.3.25) - 2026-10-20
+
+### Other
+
+- resolve conflicts with origin/main
+
+## [0.3.24](https://github.com/kent8192/reinhardt-web/compare/reinhardt-query@v0.3.23...reinhardt-query@v0.3.24) - 2026-10-14
+
+### Fixed
+
+- *(orm)* [**breaking**] prevent SQL structure injection from query inputs
+
+
 ## [0.3.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-query@v0.3.20...reinhardt-query@v0.3.21) - 2026-10-05
 
 ### Added

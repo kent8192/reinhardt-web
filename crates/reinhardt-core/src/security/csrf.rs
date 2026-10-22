@@ -386,19 +386,36 @@ pub fn check_referer(
 		reason: REASON_NO_REFERER.to_string(),
 	})?;
 
-	if referer.is_empty() {
+	if referer.is_empty() || referer.contains('\\') {
+		return Err(RejectRequest {
+			reason: REASON_MALFORMED_REFERER.to_string(),
+		});
+	}
+	let parsed = url::Url::parse(referer).map_err(|_| RejectRequest {
+		reason: REASON_MALFORMED_REFERER.to_string(),
+	})?;
+	if parsed.username() != "" || parsed.password().is_some() {
 		return Err(RejectRequest {
 			reason: REASON_MALFORMED_REFERER.to_string(),
 		});
 	}
 
-	if is_secure && referer.starts_with("http://") {
+	if is_secure && parsed.scheme() != "https" {
 		return Err(RejectRequest {
 			reason: REASON_INSECURE_REFERER.to_string(),
 		});
 	}
 
-	if !allowed_origins.iter().any(|o| referer.starts_with(o)) {
+	if !allowed_origins.iter().any(|origin| {
+		url::Url::parse(origin).is_ok_and(|allowed| {
+			allowed.username() == ""
+				&& allowed.password().is_none()
+				&& allowed.path() == "/"
+				&& allowed.query().is_none()
+				&& allowed.fragment().is_none()
+				&& parsed.origin() == allowed.origin()
+		})
+	}) {
 		return Err(RejectRequest {
 			reason: REASON_BAD_REFERER.to_string(),
 		});
@@ -552,6 +569,22 @@ pub fn verify_token_with_timestamp(
 mod tests {
 	use super::*;
 	use rstest::rstest;
+
+	#[rstest]
+	#[case("https://example.com.evil.test/form")]
+	#[case("https://example.com@evil.test/form")]
+	#[case("https://example.com:8443/form")]
+	#[case("https://evil.test@example.com/form")]
+	fn check_referer_rejects_different_authorities(#[case] referer: &str) {
+		let allowed = ["https://example.com".to_string()];
+		assert!(check_referer(Some(referer), &allowed, true).is_err());
+	}
+
+	#[rstest]
+	fn check_referer_accepts_same_origin_path() {
+		let allowed = ["https://example.com".to_string()];
+		assert!(check_referer(Some("https://example.com/form"), &allowed, true).is_ok());
+	}
 
 	fn test_secret() -> Vec<u8> {
 		b"test-secret-key-at-least-32-bytes".to_vec()

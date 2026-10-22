@@ -392,9 +392,30 @@ for path in discovered {
 ### Limitations
 
 - **Models capability is NOT supported** for WASM plugins (requires compile-time integration)
-- Memory limit: 128MB default (configurable via `WasmRuntimeConfig`)
-- Execution timeout: 30 seconds default (configurable)
+- Aggregate linear-memory limit: 128MB per store by default (configurable via
+  `WasmRuntimeConfig`). Initial allocations and growth across memories/instances
+  share the budget; unsupported shared memories are rejected.
+- Execution timeout: 30 seconds by default (configurable). A wall-clock bound
+  covers each complete lifecycle invocation, including asynchronous host imports;
+  Wasmtime epoch interruption also stops guest CPU execution.
 - Fuel-based CPU metering: 100M instructions default (configurable)
+- Plugin HTTP requests resolve DNS asynchronously, reject internal/reserved
+  addresses, pin every validated DNS result, and never follow redirects or
+  environment proxies. IPv6 special assignments exclude non-global ranges and
+  ORCHID/DET overlay identifiers while preserving routable anycast, AMT and AS112
+  locators (RFC 7343 and RFC 9374 distinguish identifiers from IPv6 locators).
+- JavaScript evaluation and result conversion share one elapsed-time timeout,
+  with a separate
+  `TsResourceLimits::loop_iteration_limit` (default: 1,000,000 iterations per
+  loop). Native builtins can synchronously reenter JavaScript, so the interpreter
+  guard remains necessary even with cooperative deadline checks. Interpreter
+  limits report `TsError::RuntimeLimitExceeded`, rather than `ExecutionTimeout`.
+- Custom plugin HTTP clients use `HostStateBuilder::http_client_factory` so CA
+  roots, client certificates, and default headers survive construction. The host
+  applies validated DNS pinning and no redirects/proxies after the factory, and
+  every call stays bounded by `HttpResourceLimits` (30-second `request_timeout`
+  by default). Opaque clients passed to `http_client` return a migration error
+  because their settings cannot be safely extracted.
 - Config values must be MessagePack-serializable
 
 ## CLI Integration
