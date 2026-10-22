@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.22](https://github.com/kent8192/reinhardt-web/compare/reinhardt-middleware@v0.4.0-alpha.21...reinhardt-middleware@v0.4.0-alpha.22) - 2026-10-22
+
+### Documentation
+
+- update version references to v0.4.0
+- update version references to v0.3.25
+
+### Fixed
+
+- *(auth)* [**breaking**] revalidate cookie sessions and enforce CSRF
+- *(http)* [**breaking**] validate redirect authorities and referer origins
+- *(security)* [**breaking**] preserve configuration and typed values in hardening
+- *(middleware)* issue CSRF token for the rotated session ID
+
+### Maintenance
+
+- *(release)* target 0.3.24 instead of 0.4.0
+- *(sync)* merge main into develop/0.4.0
+
+### Security
+
+- *(middleware)* take the rate-limit client IP from the right of X-Forwarded-For
+- *(middleware)* fail closed when X-Forwarded-For cannot be resolved
+
 ## [0.4.0-alpha.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-middleware@v0.4.0-alpha.20...reinhardt-middleware@v0.4.0-alpha.21) - 2026-10-18
 
 ### Maintenance

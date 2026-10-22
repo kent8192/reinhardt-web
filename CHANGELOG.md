@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.22](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.4.0-alpha.21...reinhardt-web@v0.4.0-alpha.22) - 2026-10-22
+
+### Documentation
+
+- add release announcement(s)
+
+### Fixed
+
+- *(ci)* allow aws-smithy-schema 0.2 alongside aws-smithy-runtime 1.16.1
+- *(deps)* remove legacy aws sdk tls transports
+
+### Maintenance
+
+- *(deps)* refresh full-feature dependency policy
+
 ## [0.4.0-alpha.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.4.0-alpha.20...reinhardt-web@v0.4.0-alpha.21) - 2026-10-18
 
 ### Added

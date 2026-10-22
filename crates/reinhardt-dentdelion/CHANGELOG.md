@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.22](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dentdelion@v0.4.0-alpha.21...reinhardt-dentdelion@v0.4.0-alpha.22) - 2026-10-22
+
+### Documentation
+
+- update version references to v0.4.0
+- update version references to v0.3.25
+
+### Fixed
+
+- *(plugins)* [**breaking**] bound execution and pin outbound HTTP
+- *(security)* [**breaking**] preserve configuration and typed values in hardening
+- *(dentdelion)* include result conversion in javascript deadlines
+- *(dentdelion)* bound asynchronous wasm lifecycle calls
+- *(dentdelion)* enforce an aggregate wasm memory budget
+- *(security)* reject non-global ipv6 and overlay identifiers
+- *(dentdelion)* resolve plugin dns without blocking the executor
+- *(dentdelion)* enforce memory and SSR invocation budgets
+- *(dentdelion)* preserve remaining lifecycle epoch budget
+- *(security)* permit globally reachable IPv4 anycast exceptions
+- *(dentdelion)* cap empty WASM resource counts
+- *(dentdelion)* bound SSR source preparation and hydration
+- *(dentdelion)* bound SSR path admission copies
+- *(dentdelion)* gate SSR helpers by the TypeScript feature
+- *(dentdelion)* preserve unbounded deadlines after epoch progress
+- *(security)* reject the non-global IPv4 relay anycast address
+- *(dentdelion)* accept NAT64 addresses that embed public IPv4
+- *(dentdelion)* port owner-scoped event bus calls to shared bus state
+- *(dentdelion)* require the Signals grant for WIT event host calls
+
+### Maintenance
+
+- *(release)* target 0.3.24 instead of 0.4.0
+- *(sync)* merge main into develop/0.4.0
+
 ## [0.4.0-alpha.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dentdelion@v0.4.0-alpha.20...reinhardt-dentdelion@v0.4.0-alpha.21) - 2026-10-18
 
 ### Fixed
