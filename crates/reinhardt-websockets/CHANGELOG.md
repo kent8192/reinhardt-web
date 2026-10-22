@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.22](https://github.com/kent8192/reinhardt-web/compare/reinhardt-websockets@v0.4.0-alpha.21...reinhardt-websockets@v0.4.0-alpha.22) - 2026-10-22
+
+### Documentation
+
+- update version references to v0.4.0
+- update version references to v0.3.25
+
+### Maintenance
+
+- *(release)* target 0.3.24 instead of 0.4.0
+- *(sync)* merge main into develop/0.4.0
+
+### Security
+
+- *(websockets)* apply Redis credential and TLS fields to the connection
+
 ## [0.4.0-alpha.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-websockets@v0.4.0-alpha.20...reinhardt-websockets@v0.4.0-alpha.21) - 2026-10-18
 
 ### Fixed

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.22](https://github.com/kent8192/reinhardt-web/compare/reinhardt-tasks@v0.4.0-alpha.21...reinhardt-tasks@v0.4.0-alpha.22) - 2026-10-22
+
+### Fixed
+
+- *(deps)* remove legacy aws sdk tls transports
+
 ### Security
 
 - Use the current AWS SDK HTTPS transport for SQS without the legacy TLS dependency chain.

@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.22](https://github.com/kent8192/reinhardt-web/compare/reinhardt-rest@v0.4.0-alpha.21...reinhardt-rest@v0.4.0-alpha.22) - 2026-10-22
+
+### Documentation
+
+- update version references to v0.4.0
+- *(rest)* scope the SimpleSearchBackend output guarantee to its condition
+- update version references to v0.3.25
+
+### Fixed
+
+- *(orm)* [**breaking**] prevent SQL structure injection from query inputs
+- *(security)* [**breaking**] preserve configuration and typed values in hardening
+- *(rest)* preserve jsonb values in batch uniqueness checks
+- *(rest)* keep SimpleSearchBackend output scannable by chained filters
+
+### Maintenance
+
+- *(release)* target 0.3.24 instead of 0.4.0
+- *(sync)* merge main into develop/0.4.0
+
 ## [0.4.0-alpha.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-rest@v0.4.0-alpha.20...reinhardt-rest@v0.4.0-alpha.21) - 2026-10-18
 
 ### Documentation

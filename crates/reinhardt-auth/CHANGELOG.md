@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.22](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.4.0-alpha.21...reinhardt-auth@v0.4.0-alpha.22) - 2026-10-22
+
+### Documentation
+
+- update version references to v0.4.0
+- update version references to v0.3.25
+
+### Fixed
+
+- *(auth)* [**breaking**] pin OAuth and OIDC endpoints per request
+- *(auth)* [**breaking**] revalidate cookie sessions and enforce CSRF
+- *(security)* [**breaking**] preserve configuration and typed values in hardening
+- *(auth)* validate csrf only for authenticated sessions
+- *(security)* reject non-global ipv6 and overlay identifiers
+- *(auth)* bound oauth dns resolution within the request deadline
+- *(security)* permit globally reachable IPv4 anycast exceptions
+- *(security)* reject the non-global IPv4 relay anycast address
+- *(auth)* accept NAT64 addresses that embed public IPv4
+
+### Maintenance
+
+- *(merge)* integrate main into security remediation branch
+- *(release)* target 0.3.24 instead of 0.4.0
+- *(sync)* merge main into develop/0.4.0
+
+### Security
+
+- *(auth)* enforce the session TTL in CookieSessionBackend
+
+### Testing
+
+- *(auth)* align OAuth mocks with configured token endpoints
+
 ## [0.4.0-alpha.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.4.0-alpha.20...reinhardt-auth@v0.4.0-alpha.21) - 2026-10-18
 
 ### Added
