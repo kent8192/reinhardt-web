@@ -260,3 +260,17 @@ async fn client_refuses_plaintext_endpoint(pki: Pki) {
 		"mTLS client must never fall back to plaintext"
 	);
 }
+
+#[rstest]
+fn debug_does_not_disclose_client_private_key() {
+	// Arrange
+	let key = b"sensitive-private-key-material";
+	let config = GrpcClientTlsConfig::new(b"ca", b"cert", key, "auth.internal");
+
+	// Act
+	let diagnostic = format!("{config:?}");
+
+	// Assert: Tonic stores the key as bytes, so check both likely representations.
+	assert!(!diagnostic.contains(std::str::from_utf8(key).unwrap()));
+	assert!(!diagnostic.contains(&format!("{key:?}")));
+}

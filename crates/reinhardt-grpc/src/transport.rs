@@ -77,9 +77,18 @@ impl GrpcServerTlsConfig {
 ///
 /// The configured DNS name is checked against the server certificate even when
 /// connecting to an IP address. The client certificate is sent only during TLS.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct GrpcClientTlsConfig {
 	tls: ClientTlsConfig,
+}
+
+impl std::fmt::Debug for GrpcClientTlsConfig {
+	fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		// Tonic's client configuration Debug includes the PEM private key bytes.
+		formatter
+			.debug_struct("GrpcClientTlsConfig")
+			.finish_non_exhaustive()
+	}
 }
 
 impl GrpcClientTlsConfig {
