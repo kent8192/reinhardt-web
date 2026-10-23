@@ -6253,22 +6253,24 @@
       "symbol": "OidcHandler::token_request",
       "kind": "sql-literal",
       "line": 195,
-      "fingerprint": "ff5442462a88aece0d0349f8bf68b5aaaa59ee9d812329e2a9ef02e08eba2020",
+      "fingerprint": "e97f47048db543a9b5058bb8d4e39db8d0884bcd4e3124d4722891d16afd7bd0",
       "conditions": [],
       "test_only": false,
       "category": "vendor-administration",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "vendor-administration",
-      "representation": "review-required",
+      "ownership": "non-sql",
+      "status": "excluded",
+      "operation": "not-executed",
+      "representation": "not-executed",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-auth/oidc-op"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "The grant_type string is an HTTP form parameter key used for OpenID Provider grant dispatch; it is not a SQL statement or a persistence argument.",
       "backends": [
-        "review-required"
+        "not-applicable"
       ],
-      "evidence": []
+      "evidence": [
+        "Manual review of OidcHandler::token_request and form_params: params.get(\"grant_type\") selects authorization_code or refresh_token protocol handling. The key is not passed to any query builder or database executor."
+      ]
     },
     {
       "id": "crates/reinhardt-auth/src/oidc_op/http.rs::no_store::sql-literal#1",
@@ -7711,23 +7713,25 @@
       "path": "crates/reinhardt-auth/src/oidc_op/protocol.rs",
       "symbol": "OidcProvider::discovery",
       "kind": "macro-sql-literal",
-      "line": 411,
-      "fingerprint": "417932085d413bc5aedf2450d607bd7045a893674297c1b681fc93b0721715fd",
+      "line": 414,
+      "fingerprint": "90b0c0698079014b9dcefb949d4cbd48c072e6272f078c29396521437c00024c",
       "conditions": [],
       "test_only": false,
       "category": "vendor-administration",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "vendor-administration",
-      "representation": "review-required",
+      "ownership": "non-sql",
+      "status": "excluded",
+      "operation": "not-executed",
+      "representation": "not-executed",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-auth/oidc-op"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "The grant_types_supported key is OpenID discovery JSON metadata; the literal is not executed as SQL or passed as a database argument.",
       "backends": [
-        "review-required"
+        "not-applicable"
       ],
-      "evidence": []
+      "evidence": [
+        "Manual review of OidcProvider::discovery: the serde_json::json! value advertises authorization_code and optionally refresh_token grants. Its grant_types_supported key is returned in discovery metadata, without a query builder or database executor."
+      ]
     },
     {
       "id": "crates/reinhardt-auth/src/oidc_op/protocol.rs::parse_prompts::macro-sql-literal#1",
