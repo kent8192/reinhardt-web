@@ -32,6 +32,15 @@ use tonic::{Request, Status};
 use x509_parser::extensions::GeneralName;
 use x509_parser::prelude::{FromDer, X509Certificate};
 
+// Feature unification can enable both Rustls providers through unrelated HTTP
+// clients. Preserve the application's selection, otherwise choose our TLS
+// feature's AWS-LC provider explicitly. A concurrent installer may win safely.
+fn ensure_crypto_provider() {
+	if rustls::crypto::CryptoProvider::get_default().is_none() {
+		let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+	}
+}
+
 /// Errors configuring or connecting an authenticated gRPC client.
 #[derive(Debug, thiserror::Error)]
 pub enum GrpcTlsError {
@@ -69,6 +78,7 @@ impl GrpcServerTlsConfig {
 
 	/// Applies mandatory mTLS to a Tonic server builder.
 	pub fn configure(&self, server: Server) -> Result<Server, tonic::transport::Error> {
+		ensure_crypto_provider();
 		server.tls_config(self.tls.clone())
 	}
 }
@@ -118,6 +128,7 @@ impl GrpcClientTlsConfig {
 		if endpoint.uri().scheme_str() != Some("https") {
 			return Err(GrpcTlsError::HttpsRequired);
 		}
+		ensure_crypto_provider();
 		Ok(endpoint.tls_config(self.tls.clone())?)
 	}
 

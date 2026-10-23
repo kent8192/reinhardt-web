@@ -44,6 +44,12 @@ Enable `grpc-tls` on the facade (or `tls` on this crate). Import protocol types
 through `reinhardt::grpc::tonic`; a separate Tonic dependency is unnecessary for
 transport configuration.
 
+TLS configuration preserves an application-installed Rustls crypto provider.
+If none is installed, it selects AWS-LC before configuring either server or
+client TLS. This also supports dependency graphs enabling both Rustls AWS-LC
+and Ring features. Applications requiring a different provider must install it
+before their first gRPC TLS configuration.
+
 ```rust,no_run
 use reinhardt::grpc::{GrpcClientTlsConfig, GrpcServerTlsConfig, PeerIdentity, PeerIdentityInterceptor, tonic};
 

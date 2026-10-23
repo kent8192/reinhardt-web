@@ -20,6 +20,7 @@ uuid = { workspace = true }
 tracing = { workspace = true }
 serde = { workspace = true }
 x509-parser = { version = "0.18", optional = true, default-features = false }
+rustls = { version = "0.23", optional = true, default-features = false, features = ["aws_lc_rs", "std"] }
 
 # Settings fragment support
 reinhardt-conf = { workspace = true, features = ["settings"] }
@@ -33,12 +34,13 @@ reinhardt-grpc-macros = { workspace = true, optional = true }
 default = []
 full = ["di", "tls"]
 di = ["reinhardt-di", "reinhardt-grpc-macros"]
-tls = ["tonic/tls-aws-lc", "dep:x509-parser"]
+tls = ["tonic/tls-aws-lc", "dep:x509-parser", "dep:rustls"]
 
 [build-dependencies]
 tonic-prost-build = { workspace = true }
 
 [dev-dependencies]
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
 rcgen = "0.14.8"
 tokio-stream = { version = "0.1", features = ["net"] }
 insta = { workspace = true }
