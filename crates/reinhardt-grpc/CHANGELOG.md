@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Optional `tls` transport with mandatory mutual TLS, HTTPS-only client channels, URI SAN peer identities, and per-service authorization interceptors. Facade users enable `grpc-tls`.
+
 ## [0.4.0-alpha.22](https://github.com/kent8192/reinhardt-web/compare/reinhardt-grpc@v0.4.0-alpha.21...reinhardt-grpc@v0.4.0-alpha.22) - 2026-10-22
 
 ### Documentation

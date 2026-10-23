@@ -38,6 +38,49 @@ use reinhardt::grpc::proto::common::{Empty, Timestamp, PageInfo};
 - Error handling utilities
 - **Dependency injection support (optional, with `di` feature)**
 
+### Mutual TLS and service authorization
+
+Enable `grpc-tls` on the facade (or `tls` on this crate). Import protocol types
+through `reinhardt::grpc::tonic`; a separate Tonic dependency is unnecessary for
+transport configuration.
+
+```rust,no_run
+use reinhardt::grpc::{GrpcClientTlsConfig, GrpcServerTlsConfig, PeerIdentity, PeerIdentityInterceptor, tonic};
+
+# async fn example() -> Result<(), Box<dyn std::error::Error>> {
+let ca = std::fs::read("ca.pem")?;
+let server_tls = GrpcServerTlsConfig::new(
+    std::fs::read("server.pem")?, std::fs::read("server-key.pem")?, &ca,
+);
+let mut server = server_tls.configure(tonic::transport::Server::builder())?;
+let policy = PeerIdentityInterceptor::new(|peer: &PeerIdentity| {
+    if peer.uri_sans() == ["spiffe://example.test/service/marketplace"] {
+        Ok(())
+    } else {
+        Err(tonic::Status::permission_denied("service is not authorized"))
+    }
+});
+// Pass `policy` to your generated service's `with_interceptor` constructor,
+// then add that service to `server` and serve its dedicated internal listener.
+let channel = GrpcClientTlsConfig::new(
+    ca, std::fs::read("client.pem")?, std::fs::read("client-key.pem")?, "auth.internal",
+).endpoint("https://127.0.0.1:50051")?
+ .connect_timeout(std::time::Duration::from_secs(5))
+ .connect().await?;
+# Ok(())
+# }
+```
+
+The server requires certificates chaining to its configured client CA bundle.
+The client verifies its explicit server CA and expected DNS name and refuses
+plaintext endpoints. Authorization reads URI SANs from the verified client leaf
+certificate, never request headers or common names. Attach a separate policy to
+each generated service; handlers receive the authorized `PeerIdentity` in request
+extensions. Custom async and per-method authorization belongs in handlers or
+application middleware. Issuance, rotation, and trust-domain policy remain with
+the application. The existing `runserver` listener does not automatically use
+these settings: use the explicit configured transport for an mTLS listener.
+
 ### 1. Common Protobuf Types
 
 Generic types provided by the framework:
