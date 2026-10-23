@@ -1115,13 +1115,12 @@ impl OAuthServer {
 		}
 		let raw = random_secret();
 		let issued_at = now();
-		// Refresh tokens belong to the plain Authorization Code grant only; the OIDC
-		// token endpoint never issues them.
+		// Both Code profiles may opt into the same rotating token-family contract.
 		let refresh_policy = self
 			.config
 			.refresh_tokens
 			.as_ref()
-			.filter(|_| !expect_oidc && client.refresh_token);
+			.filter(|_| client.refresh_token);
 		let family_id = refresh_policy.map(|_| random_secret());
 		let token = StoredToken {
 			digest: digest(&raw),
@@ -1199,6 +1198,38 @@ impl OAuthServer {
 			record.user_id,
 		))
 	}
+	#[cfg(feature = "oidc-op")]
+	pub(crate) async fn inspect_oidc_refresh(
+		&self,
+		refresh_token: &str,
+		client_id: &str,
+		client_secret: &str,
+		userinfo: &str,
+	) -> Result<String, OAuthError> {
+		if self.config.refresh_tokens.is_none() {
+			return Err(OAuthError::UnsupportedGrantType);
+		}
+		let client = self
+			.authenticate_client(client_id, Some(client_secret))
+			.await?;
+		if !client.oidc_enabled || !client.refresh_token || !client.authorization_code {
+			return Err(OAuthError::UnauthorizedClient);
+		}
+		match self
+			.store
+			.inspect_refresh_token(&digest(refresh_token), client_id, now())
+			.await
+			.map_err(|_| OAuthError::ServerError)?
+		{
+			RefreshInspection::Active(_, family)
+				if family.audience == userinfo && family.scopes == ["openid"] =>
+			{
+				Ok(family.user_id)
+			}
+			_ => Err(OAuthError::InvalidGrant),
+		}
+	}
+
 	/// Exchange a refresh token for a new access token and a replacement refresh token.
 	///
 	/// Requires `OAuthServerConfig::refresh_tokens` and `ClientRegistration::refresh_token`.

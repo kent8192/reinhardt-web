@@ -85,17 +85,28 @@ fn add_key(ring: &RsaPemKeyRing, kid: &str) -> PublicRsaJwk {
 }
 
 async fn issuer() -> TestIssuer {
+	issuer_with_refresh(false).await
+}
+
+async fn issuer_with_refresh(refresh: bool) -> TestIssuer {
 	let oauth_store = Arc::new(MemoryOAuthStore::new());
 	let oauth = Arc::new(
 		OAuthServer::for_development(
-			OAuthServerConfig::new(
-				ISSUER,
-				"https://auth.example/oauth/authorize",
-				"https://auth.example/oauth/token",
-				"https://auth.example/oauth/revoke",
-				"https://auth.example/oauth/introspect",
-			)
-			.unwrap(),
+			{
+				let mut config = OAuthServerConfig::new(
+					ISSUER,
+					"https://auth.example/oauth/authorize",
+					"https://auth.example/oauth/token",
+					"https://auth.example/oauth/revoke",
+					"https://auth.example/oauth/introspect",
+				)
+				.unwrap();
+				if refresh {
+					config.refresh_tokens =
+						Some(crate::oauth2_server::RefreshTokenPolicy::default());
+				}
+				config
+			},
 			oauth_store.clone(),
 			Arc::new(SimpleUserRepository),
 			Arc::new(AllowAll),
@@ -106,7 +117,9 @@ async fn issuer() -> TestIssuer {
 		.register_resource("oidc-userinfo", USERINFO)
 		.await
 		.unwrap();
-	let secret = oauth.register_client(rp_client()).await.unwrap().unwrap();
+	let mut client = rp_client();
+	client.refresh_token = refresh;
+	let secret = oauth.register_client(client).await.unwrap().unwrap();
 	let active = Arc::new(AtomicBool::new(true));
 	let signer = Arc::new(RsaPemKeyRing::new());
 	add_key(&signer, "key-a");
@@ -1421,4 +1434,68 @@ fn rp_client() -> ClientRegistration {
 	client.audiences = vec![USERINFO.into()];
 	client.default_audience = Some(USERINFO.into());
 	client
+}
+
+#[rstest]
+#[tokio::test]
+async fn opt_in_oidc_code_issues_refresh_credential() {
+	let test = issuer_with_refresh(true).await;
+	let code = authorize(&test).await;
+	let response = test
+		.provider
+		.exchange_code(&code, "rp-a", &test.secret, REDIRECT, VERIFIER)
+		.await
+		.unwrap();
+	let wire = serde_json::to_value(response).unwrap();
+	let refresh = wire["refresh_token"]
+		.as_str()
+		.filter(|value| !value.is_empty())
+		.expect("OIDC code flow must preserve its opt-in refresh credential");
+	let original_subject = test
+		.provider
+		.userinfo(wire["access_token"].as_str().unwrap())
+		.await
+		.unwrap()
+		.unwrap();
+	let refreshed = test
+		.provider
+		.refresh(refresh, "rp-a", &test.secret)
+		.await
+		.unwrap();
+	assert_eq!(
+		test.provider
+			.userinfo(&refreshed.access_token)
+			.await
+			.unwrap()
+			.unwrap(),
+		original_subject
+	);
+	assert_ne!(refreshed.refresh_token.as_deref(), Some(refresh));
+	test.active.store(false, Ordering::SeqCst);
+	assert_eq!(
+		test.provider
+			.refresh(
+				refreshed.refresh_token.as_deref().unwrap(),
+				"rp-a",
+				&test.secret
+			)
+			.await
+			.unwrap_err(),
+		OidcError::InvalidGrant
+	);
+	test.active.store(true, Ordering::SeqCst);
+	assert_eq!(
+		test.provider
+			.refresh(refresh, "rp-a", &test.secret)
+			.await
+			.unwrap_err(),
+		OidcError::InvalidGrant
+	);
+	assert!(
+		test.provider
+			.userinfo(&refreshed.access_token)
+			.await
+			.unwrap()
+			.is_none()
+	);
 }
