@@ -369,6 +369,7 @@ pub(crate) async fn uncached_postgres_query<'q>(
 	// SQLx 0.8 reuses SQL-only cache entries before checking parameter types or
 	// persistence. Clear existing entries above and keep generated queries unnamed.
 	// Remove this bypass after a validated driver keys or invalidates by argument type.
+	// The replacement is sqlx::query_with(sql, arguments) with its default persistence.
 	Ok(sqlx::query_with(sql, arguments).persistent(false))
 }
 
@@ -867,5 +868,271 @@ mod compatibility_tests {
 		assert!(message.contains(&format!("{kind} argument 1 for postgres/custom")));
 		assert!(!message.contains("private SQL"));
 		assert!(!message.contains("12345"));
+	}
+}
+
+#[cfg(all(test, feature = "postgres"))]
+mod postgres_cache_tests {
+	use super::uncached_postgres_query;
+	use futures::StreamExt;
+	use reinhardt_query::{
+		ColumnDef, Expr, ExprTrait, Iden, IntoIden, Order, PostgresQueryBuilder, Query,
+		QueryBuilder, QueryStatementBuilder, SimpleExpr,
+	};
+	use reinhardt_testkit::fixtures::{ContainerAsync, GenericImage, postgres_container};
+	use rstest::{fixture, rstest};
+	use sqlx::{Arguments, Connection, Row};
+	use std::sync::Arc;
+
+	#[derive(Debug, Iden)]
+	enum CachedRows {
+		Table,
+		Value,
+	}
+
+	#[derive(Debug, Iden)]
+	enum CacheProbe {
+		Input,
+		CachedWidth,
+		NativeType,
+		UnreadRows,
+	}
+
+	struct PostgresFixture {
+		// Drop the dedicated connection and shared pool before their database container.
+		connection: sqlx::PgConnection,
+		_pool: Arc<sqlx::PgPool>,
+		_container: ContainerAsync<GenericImage>,
+	}
+
+	#[fixture]
+	async fn postgres_fixture(
+		#[future] postgres_container: (
+			ContainerAsync<GenericImage>,
+			Arc<sqlx::PgPool>,
+			u16,
+			String,
+		),
+	) -> PostgresFixture {
+		let (container, pool, _port, url) = postgres_container.await;
+		PostgresFixture {
+			connection: sqlx::PgConnection::connect(&url).await.unwrap(),
+			_pool: pool,
+			_container: container,
+		}
+	}
+
+	#[rstest]
+	#[case::int4_to_int8(true, 1_i64 << 40, "bigint")]
+	#[case::int8_to_int4(false, 8, "integer")]
+	#[tokio::test]
+	async fn uncached_query_preserves_native_signature(
+		#[future] postgres_fixture: PostgresFixture,
+		#[case] wide: bool,
+		#[case] expected: i64,
+		#[case] native_type: &str,
+	) {
+		// Arrange: the same SQL already has the opposite integer signature cached.
+		let mut fixture = postgres_fixture.await;
+		let connection = &mut fixture.connection;
+		// A subquery lets both projections inspect the same single native parameter.
+		let input = Query::select().expr_as(7_i32, CachedRows::Value).to_owned();
+		let (sql, _) = Query::select()
+			.expr_as(
+				Expr::col((CacheProbe::Input, CachedRows::Value)).cast_as_signed_integer(),
+				CacheProbe::CachedWidth,
+			)
+			.expr_as(
+				SimpleExpr::FunctionCall(
+					"pg_typeof".into_iden(),
+					vec![Expr::col((CacheProbe::Input, CachedRows::Value)).into()],
+				)
+				.cast_as_text(),
+				CacheProbe::NativeType,
+			)
+			.from_subquery(input, CacheProbe::Input)
+			.build(PostgresQueryBuilder);
+		let seed = if wide {
+			sqlx::query(&sql).bind(7_i32)
+		} else {
+			sqlx::query(&sql).bind(7_i64)
+		};
+		let row = seed.fetch_one(&mut *connection).await.unwrap();
+		assert_eq!(row.get::<i64, _>("cached_width"), 7);
+		assert_eq!(
+			row.get::<String, _>("native_type"),
+			if wide { "integer" } else { "bigint" }
+		);
+		assert!(connection.cached_statements_size() > 0);
+		if wide {
+			let error = sqlx::query(&sql)
+				.bind(expected)
+				.persistent(false)
+				.fetch_one(&mut *connection)
+				.await
+				.unwrap_err();
+			assert_eq!(
+				error.as_database_error().unwrap().code().as_deref(),
+				Some("22P03")
+			);
+		}
+		let mut arguments = sqlx::postgres::PgArguments::default();
+		if wide {
+			arguments.add(expected).unwrap();
+		} else {
+			arguments.add(i32::try_from(expected).unwrap()).unwrap();
+		}
+
+		// Act: clear the incompatible statement on the same dedicated connection.
+		let row = uncached_postgres_query(connection, &sql, arguments)
+			.await
+			.unwrap()
+			.fetch_one(&mut *connection)
+			.await
+			.unwrap();
+
+		// Assert: retain the native width and full value without caching the query.
+		assert_eq!(row.get::<i64, _>("cached_width"), expected);
+		assert_eq!(row.get::<String, _>("native_type"), native_type);
+		assert_eq!(connection.cached_statements_size(), 0);
+		let row = sqlx::query(&sql)
+			.bind(9_i32)
+			.fetch_one(&mut *connection)
+			.await
+			.unwrap();
+		assert_eq!(row.get::<i64, _>("cached_width"), 9);
+		assert_eq!(row.get::<String, _>("native_type"), "integer");
+		assert!(connection.cached_statements_size() > 0);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn dropping_partial_unnamed_stream_allows_cached_connection_reuse(
+		#[future] postgres_fixture: PostgresFixture,
+	) {
+		// Arrange: three rows ensure dropping after the first row leaves unread rows.
+		let mut fixture = postgres_fixture.await;
+		let connection = &mut fixture.connection;
+		let mut unread_rows = Query::select().expr(Expr::constant_true()).to_owned();
+		for _ in 0..2 {
+			unread_rows.union_all(Query::select().expr(Expr::constant_true()).to_owned());
+		}
+		let (sql, _) = Query::select()
+			.expr_as(
+				Expr::val(7_i32).cast_as_signed_integer(),
+				CacheProbe::CachedWidth,
+			)
+			.from_subquery(unread_rows, CacheProbe::UnreadRows)
+			.build(PostgresQueryBuilder);
+		let seeded = sqlx::query(&sql)
+			.bind(7_i32)
+			.fetch_all(&mut *connection)
+			.await
+			.unwrap();
+		assert_eq!(seeded.len(), 3);
+		assert!(connection.cached_statements_size() > 0);
+		let mut arguments = sqlx::postgres::PgArguments::default();
+		arguments.add(1_i64 << 40).unwrap();
+
+		// Act: drop a partially consumed stream while retaining its connection guard.
+		{
+			let mut rows = uncached_postgres_query(connection, &sql, arguments)
+				.await
+				.unwrap()
+				.fetch(&mut *connection);
+			let row = rows.next().await.unwrap().unwrap();
+			assert_eq!(row.get::<i64, _>("cached_width"), 1_i64 << 40);
+		}
+
+		// Assert: the original INT4 query can drain pending messages and cache again.
+		assert_eq!(connection.cached_statements_size(), 0);
+		let rows = sqlx::query(&sql)
+			.bind(8_i32)
+			.fetch_all(&mut *connection)
+			.await
+			.unwrap();
+		assert_eq!(rows.len(), 3);
+		for row in rows {
+			assert_eq!(row.get::<i64, _>("cached_width"), 8);
+		}
+		assert!(connection.cached_statements_size() > 0);
+	}
+
+	#[rstest]
+	#[case::commit(true)]
+	#[case::rollback(false)]
+	#[tokio::test]
+	async fn uncached_query_keeps_transaction_changes_on_its_connection(
+		#[future] postgres_fixture: PostgresFixture,
+		#[case] commit: bool,
+	) {
+		// Arrange: the fixture's disposable database owns the table and its cleanup.
+		let mut fixture = postgres_fixture.await;
+		let connection = &mut fixture.connection;
+		let table = Query::create_table()
+			.table(CachedRows::Table.into_iden())
+			.col(ColumnDef::new(CachedRows::Value).big_integer())
+			.to_owned();
+		let (create, _) = PostgresQueryBuilder.build_create_table(&table);
+		sqlx::query(&create)
+			.execute(&mut *connection)
+			.await
+			.unwrap();
+		let mut transaction = connection.begin().await.unwrap();
+		let (sql, _) = Query::insert()
+			.into_table(CachedRows::Table.into_iden())
+			.columns([CachedRows::Value])
+			.values_panic([7_i32])
+			.build(PostgresQueryBuilder);
+		assert_eq!(
+			sqlx::query(&sql)
+				.bind(7_i32)
+				.execute(&mut *transaction)
+				.await
+				.unwrap()
+				.rows_affected(),
+			1
+		);
+		assert!(transaction.cached_statements_size() > 0);
+		let mut arguments = sqlx::postgres::PgArguments::default();
+		arguments.add(1_i64 << 40).unwrap();
+
+		// Act: execute the INT8 INSERT without replacing or ending the transaction.
+		assert_eq!(
+			uncached_postgres_query(&mut transaction, &sql, arguments)
+				.await
+				.unwrap()
+				.execute(&mut *transaction)
+				.await
+				.unwrap()
+				.rows_affected(),
+			1
+		);
+		let (select, _) = Query::select()
+			.column(CachedRows::Value)
+			.from(CachedRows::Table.into_iden())
+			.order_by(CachedRows::Value, Order::Asc)
+			.build(PostgresQueryBuilder);
+		let values: Vec<i64> = sqlx::query_scalar(&select)
+			.fetch_all(&mut *transaction)
+			.await
+			.unwrap();
+		assert_eq!(values, [7, 1_i64 << 40]);
+		if commit {
+			transaction.commit().await.unwrap();
+		} else {
+			transaction.rollback().await.unwrap();
+		}
+
+		// Assert: both INSERTs share the enclosing transaction's commit/rollback result.
+		let values: Vec<i64> = sqlx::query_scalar(&select)
+			.fetch_all(&mut *connection)
+			.await
+			.unwrap();
+		if commit {
+			assert_eq!(values, [7, 1_i64 << 40]);
+		} else {
+			assert!(values.is_empty());
+		}
 	}
 }
