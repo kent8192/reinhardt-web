@@ -53,6 +53,7 @@ impl QuoteStyle {
 	///
 	/// Each segment is escaped independently, so a `.` can only separate
 	/// quoted identifiers and never terminates one.
+	#[cfg(feature = "orm")]
 	pub(crate) fn quote_qualified_identifier(&self, name: &str) -> String {
 		name.split('.')
 			.map(|part| self.quote_identifier(part))

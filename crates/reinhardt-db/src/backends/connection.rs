@@ -992,6 +992,7 @@ impl DatabaseConnection {
 		self.backend.execute(sql, params).await
 	}
 
+	#[cfg(any(feature = "orm", feature = "migrations"))]
 	pub(crate) async fn execute_with_context(
 		&self,
 		sql: &str,
@@ -1012,6 +1013,7 @@ impl DatabaseConnection {
 		self.backend.fetch_one(sql, params).await
 	}
 
+	#[cfg(feature = "orm")]
 	pub(crate) async fn fetch_one_with_context(
 		&self,
 		sql: &str,
@@ -1042,6 +1044,7 @@ impl DatabaseConnection {
 		self.backend.fetch_stream(sql, params, chunk_size)
 	}
 
+	#[cfg(feature = "orm")]
 	pub(crate) fn fetch_stream_with_context(
 		&self,
 		sql: String,
@@ -1053,10 +1056,12 @@ impl DatabaseConnection {
 			.fetch_stream_with_context(sql, params, chunk_size, context)
 	}
 
+	#[cfg(feature = "orm")]
 	pub(crate) fn supports_row_streaming(&self) -> bool {
 		self.backend.supports_row_streaming()
 	}
 
+	#[cfg(feature = "orm")]
 	pub(crate) async fn fetch_all_with_context(
 		&self,
 		sql: &str,
@@ -1077,6 +1082,7 @@ impl DatabaseConnection {
 		self.backend.fetch_optional(sql, params).await
 	}
 
+	#[cfg(feature = "orm")]
 	pub(crate) async fn fetch_optional_with_context(
 		&self,
 		sql: &str,
