@@ -17,7 +17,6 @@ mod wasm_only {
 		InlineStyle, PrepopulatedField,
 	};
 	use reinhardt_core::model_form::ModelFormTableName;
-	use std::collections::HashMap;
 	use std::fmt::Debug;
 
 	/// Operation currently performed by an admin form.
