@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Use the current AWS HTTPS transport for SQS without retaining the legacy rustls 0.21 client.
+
 ## [0.3.25](https://github.com/kent8192/reinhardt-web/compare/reinhardt-tasks@v0.3.24...reinhardt-tasks@v0.3.25) - 2026-10-20
 
 ### Security

@@ -36,7 +36,10 @@ sqlx = { workspace = true, features = ["runtime-tokio", "tls-rustls"], optional 
 aws-config = { version = "1.1.7", features = [
   "behavior-version-latest",
 ], optional = true }
-aws-sdk-sqs = { version = "1.76.0", optional = true }
+aws-sdk-sqs = { version = "1.76.0", default-features = false, features = [
+  "default-https-client",
+  "rt-tokio",
+], optional = true }
 # Activate the workspace AWS compatibility constraint (reinhardt-web#6318).
 aws-smithy-types = { workspace = true, optional = true }
 time = { workspace = true, optional = true }
