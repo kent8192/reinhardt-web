@@ -24,6 +24,9 @@
 //! ### DDL (Data Definition Language)
 //! - **Column nullability** - Explicit `SET NOT NULL` / `DROP NOT NULL` changes;
 //!   omitting `ColumnDef::not_null` preserves existing PostgreSQL-family constraints
+//! - **CockroachDB alteration batches** -
+//!   [`CockroachDBQueryBuilder::build_alter_table_statements`] returns individual
+//!   statements with escaped schema literals for prepared execution of column type changes
 //! - **Indexes** - CREATE/DROP INDEX, including typed MySQL `TEXT`/`BLOB` column prefixes
 //! - **Schema management** - CREATE/ALTER/DROP SCHEMA (PostgreSQL, CockroachDB)
 //! - **Sequence operations** - CREATE/ALTER/DROP SEQUENCE (PostgreSQL, CockroachDB)

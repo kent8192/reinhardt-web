@@ -144,6 +144,74 @@ fn cockroachdb_keeps_type_free_operations_in_one_statement() {
 }
 
 #[rstest]
+fn cockroachdb_alter_statements_render_executable_schema_literals() {
+	// Arrange
+	let mut stmt = Query::alter_table();
+	stmt.table("user;\"data")
+		.modify_column(
+			ColumnDef::new("age")
+				.column_type(ColumnType::Integer)
+				.not_null(false)
+				.default(7.into()),
+		)
+		.add_column(
+			ColumnDef::new("note")
+				.column_type(ColumnType::Text)
+				.default("first'; $1 second".into()),
+		);
+
+	// Act
+	let statements = CockroachDBQueryBuilder::new().build_alter_table_statements(&stmt);
+
+	// Assert
+	let actual: Vec<_> = statements
+		.into_iter()
+		.map(|(sql, values)| (sql, values.0))
+		.collect();
+	assert_eq!(
+		actual,
+		vec![
+			(
+				"ALTER TABLE \"user;\"\"data\" ALTER COLUMN \"age\" TYPE INTEGER".into(),
+				vec![]
+			),
+			(
+				"ALTER TABLE \"user;\"\"data\" ALTER COLUMN \"age\" DROP NOT NULL".into(),
+				vec![]
+			),
+			(
+				"ALTER TABLE \"user;\"\"data\" ALTER COLUMN \"age\" SET DEFAULT 7".into(),
+				vec![]
+			),
+			(
+				"ALTER TABLE \"user;\"\"data\" ADD COLUMN \"note\" TEXT DEFAULT 'first''; $1 second'".into(),
+				vec![]
+			),
+		]
+	);
+}
+
+#[rstest]
+fn cockroachdb_alter_statements_preserve_type_free_batch() {
+	// Arrange
+	let mut stmt = Query::alter_table();
+	stmt.table("users")
+		.modify_column(ColumnDef::new("age").not_null(true).default(7.into()))
+		.add_column(ColumnDef::new("name").column_type(ColumnType::Text));
+
+	// Act
+	let statements = CockroachDBQueryBuilder::new().build_alter_table_statements(&stmt);
+
+	// Assert
+	assert_eq!(statements.len(), 1);
+	assert_eq!(
+		statements[0].0,
+		"ALTER TABLE \"users\" ALTER COLUMN \"age\" SET NOT NULL, ALTER COLUMN \"age\" SET DEFAULT 7, ADD COLUMN \"name\" TEXT"
+	);
+	assert!(statements[0].1.is_empty());
+}
+
+#[rstest]
 #[should_panic(expected = "SQLite does not support MODIFY COLUMN - table recreation required")]
 fn sqlite_explicit_column_nullability_requires_recreation() {
 	// Arrange
