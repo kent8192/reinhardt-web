@@ -2345,9 +2345,25 @@ fn relation_selector_renders_accessible_horizontal_and_vertical_structure() {
 			assert!(html.contains("aria-label=\"Load more relation options after page 1\""));
 			assert!(html.contains(r#"aria-live="polite"#));
 			assert!(html.contains(r#"hidden="hidden"#));
-			assert_eq!(html.matches(r#"name="tags"#).count(), 1);
-			assert_eq!(html.matches(r#"value="2"#).count(), 1);
-			assert_eq!(html.matches(r#"value="3"#).count(), 1);
+			let container = web_sys::window()
+				.expect("window")
+				.document()
+				.expect("document")
+				.create_element("div")
+				.expect("create form container");
+			container.set_inner_html(html);
+			let form: web_sys::HtmlFormElement = container
+				.query_selector("form")
+				.expect("query form")
+				.expect("form exists")
+				.unchecked_into();
+			let submitted = web_sys::FormData::new_with_form(&form)
+				.expect("serialize form")
+				.get_all("tags")
+				.iter()
+				.map(|value| value.as_string().expect("relation ID is a string"))
+				.collect::<Vec<_>>();
+			assert_eq!(submitted, ["2", "3"]);
 		}
 		assert!(horizontal.contains("relation-selector--horizontal"));
 		assert!(!horizontal.contains("relation-selector--vertical"));
