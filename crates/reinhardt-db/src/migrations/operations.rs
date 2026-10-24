@@ -4141,6 +4141,10 @@ impl OperationStatement {
 
 impl Operation {
 	/// Convert Operation to reinhardt-query statement or sanitized raw SQL
+	///
+	/// `AlterColumn` applies the new definition's effective nullability, including
+	/// an explicit `DROP NOT NULL` for nullable columns. An existing primary key
+	/// retains NOT NULL because this operation does not remove its constraint.
 	pub fn to_statement(&self) -> OperationStatement {
 		match self {
 			Operation::CreateTable {
@@ -4163,11 +4167,13 @@ impl Operation {
 			Operation::AlterColumn {
 				table,
 				column,
+				old_definition,
 				new_definition,
 				..
 			} => OperationStatement::TableAlter(self.build_alter_column(
 				table,
 				column,
+				old_definition.as_ref(),
 				new_definition,
 			)),
 			Operation::RenameTable { old_name, new_name } => {
@@ -4592,6 +4598,7 @@ impl Operation {
 		&self,
 		table: &str,
 		column: &str,
+		old_definition: Option<&ColumnDefinition>,
 		new_definition: &ColumnDefinition,
 	) -> AlterTableStatement {
 		let mut stmt = Query::alter_table();
@@ -4600,9 +4607,11 @@ impl Operation {
 		let mut col_def = ColumnDef::new(Alias::new(column));
 		col_def = self.apply_column_type(col_def, &new_definition.type_definition);
 
-		if new_definition.not_null {
-			col_def = col_def.not_null(true);
-		}
+		// A primary key constraint survives AlterColumn, including PK demotion.
+		// Preserve its implicit NOT NULL until that constraint is removed.
+		let not_null = new_definition.effective_not_null()
+			|| old_definition.is_some_and(|old| old.primary_key);
+		col_def = col_def.not_null(not_null);
 
 		stmt.modify_column(col_def);
 		stmt.to_owned()
@@ -5345,41 +5354,83 @@ mod tests {
 		);
 	}
 
-	#[test]
-	fn test_alter_column_to_statement() {
+	#[rstest]
+	#[case::relax_known(Some(true), false, false, false, "DROP")]
+	#[case::require_known(Some(false), false, true, false, "SET")]
+	#[case::relax_unknown(None, false, false, false, "DROP")]
+	#[case::require_unknown(None, false, true, false, "SET")]
+	#[case::unchanged_nullable(Some(false), false, false, false, "DROP")]
+	#[case::unchanged_required(Some(true), false, true, false, "SET")]
+	#[case::primary_key_promoted(Some(false), false, false, true, "SET")]
+	#[case::primary_key_implicit_required(Some(false), true, false, true, "SET")]
+	#[case::primary_key_demoted(Some(true), true, false, false, "SET")]
+	fn test_alter_column_to_statement(
+		#[case] old_not_null: Option<bool>,
+		#[case] old_primary_key: bool,
+		#[case] new_not_null: bool,
+		#[case] new_primary_key: bool,
+		#[case] expected_action: &str,
+		#[values(SqlDialect::Postgres, SqlDialect::Cockroachdb, SqlDialect::Mysql)]
+		dialect: SqlDialect,
+	) {
+		use reinhardt_query::backend::{
+			CockroachDBQueryBuilder, PostgresQueryBuilder, QueryBuilder,
+		};
+
+		// Arrange
 		let op = Operation::AlterColumn {
 			table: "users".to_string(),
 			column: "age".to_string(),
-			old_definition: None,
+			old_definition: old_not_null.map(|not_null| ColumnDefinition {
+				not_null,
+				primary_key: old_primary_key,
+				..ColumnDefinition::new("age", FieldType::Integer)
+			}),
 			new_definition: ColumnDefinition {
-				name: "age".to_string(),
-				type_definition: FieldType::BigInteger,
-				not_null: true,
-				unique: false,
-				primary_key: false,
-				auto_increment: false,
-				default: None,
+				not_null: new_not_null,
+				primary_key: new_primary_key,
+				..ColumnDefinition::new("metadata_name", FieldType::BigInteger)
 			},
 			mysql_options: None,
 		};
 
+		// Act
 		let stmt = op.to_statement();
-		let sql = stmt.to_sql_string(crate::backends::types::DatabaseType::Postgres);
-		assert!(
-			sql.contains("ALTER TABLE"),
-			"SQL should contain ALTER TABLE keyword, got: {}",
-			sql
-		);
-		assert!(
-			sql.contains("users"),
-			"SQL should reference 'users' table, got: {}",
-			sql
-		);
-		assert!(
-			sql.contains("age"),
-			"SQL should reference 'age' column, got: {}",
-			sql
-		);
+		let (sql, expected) = match dialect {
+			SqlDialect::Postgres | SqlDialect::Cockroachdb => {
+				let OperationStatement::TableAlter(stmt) = stmt else {
+					panic!("AlterColumn must produce a structured TableAlter statement");
+				};
+				let (sql, _) = if matches!(dialect, SqlDialect::Postgres) {
+					PostgresQueryBuilder::new().build_alter_table(&stmt)
+				} else {
+					CockroachDBQueryBuilder::new().build_alter_table(&stmt)
+				};
+				let prefix = "ALTER TABLE \"users\" ALTER COLUMN \"age\"";
+				let expected = if matches!(dialect, SqlDialect::Postgres) {
+					format!("{prefix} TYPE BIGINT, ALTER COLUMN \"age\" {expected_action} NOT NULL")
+				} else {
+					format!("{prefix} TYPE BIGINT; {prefix} {expected_action} NOT NULL")
+				};
+				(sql, expected)
+			}
+			SqlDialect::Mysql => {
+				let sql = stmt.to_sql_string(crate::backends::types::DatabaseType::Mysql);
+				let suffix = if expected_action == "SET" {
+					" NOT NULL"
+				} else {
+					""
+				};
+				(
+					sql,
+					format!("ALTER TABLE `users` MODIFY COLUMN `age` BIGINT{suffix}"),
+				)
+			}
+			SqlDialect::Sqlite => unreachable!("SQLite requires table recreation"),
+		};
+
+		// Assert
+		assert_eq!(sql, expected);
 	}
 
 	#[test]
