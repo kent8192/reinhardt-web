@@ -1,7 +1,7 @@
 //! Link column type implementation
 
-use crate::builder::html::{a, td};
-use crate::dom::Element;
+use super::cell;
+use crate::component::{Page, PageElement};
 use crate::tables::column::Column as ColumnTrait;
 use std::any::Any;
 
@@ -9,18 +9,31 @@ use std::any::Any;
 ///
 /// This column type renders values as HTML anchor tags with customizable URLs.
 /// The URL pattern can include placeholders like `{id}` that will be replaced
-/// with actual values.
+/// with actual values. `String`, `&'static str`, `i32`, and `i64` values are
+/// supported; other types substitute an empty string.
+///
+/// The resulting URL passes through the [`Page`] URL sanitizer, which omits
+/// the `href` attribute when the URL starts with `../` or uses a scheme other
+/// than `http`, `https`, `mailto`, `ftp`, `ftps`, or `tel`.
 ///
 /// # Example
 ///
-/// ```rust,ignore
-/// use reinhardt_pages::tables::columns::LinkColumn;
+/// ```
+/// use reinhardt_pages::tables::{ColumnTrait, LinkColumn};
 ///
 /// // Simple link
-/// let column = LinkColumn::new("name", "Name", "/users/{id}");
+/// let column = LinkColumn::new("id", "Profile", "/users/{id}");
+/// assert_eq!(
+///     column.render(&String::from("42")).render_to_string(),
+///     r#"<td><a href="/users/42">42</a></td>"#
+/// );
 ///
 /// // With custom text
-/// let column = LinkColumn::with_text("email", "Email", "/users/{id}", "View Profile");
+/// let column = LinkColumn::with_text("id", "Profile", "/users/{id}", "View Profile");
+/// assert_eq!(
+///     column.render(&42_i64).render_to_string(),
+///     r#"<td><a href="/users/42">View Profile</a></td>"#
+/// );
 /// ```
 pub struct LinkColumn {
 	name: String,
@@ -100,9 +113,9 @@ impl ColumnTrait for LinkColumn {
 		&self.label
 	}
 
-	fn render(&self, value: &dyn Any) -> Element {
+	fn render(&self, value: &dyn Any) -> Page {
 		let value_str = if let Some(s) = value.downcast_ref::<String>() {
-			s.as_str().to_string()
+			s.clone()
 		} else if let Some(s) = value.downcast_ref::<&str>() {
 			(*s).to_string()
 		} else if let Some(n) = value.downcast_ref::<i32>() {
@@ -118,9 +131,8 @@ impl ColumnTrait for LinkColumn {
 			.url_pattern
 			.replace(&format!("{{{}}}", self.name), &value_str);
 
-		let text = self.text_override.as_deref().unwrap_or(&value_str);
-		let link = a().attr("href", &url).text(text).build();
-		td().child(link).build()
+		let text = self.text_override.clone().unwrap_or(value_str);
+		cell(PageElement::new("a").attr("href", url).child(text))
 	}
 
 	fn is_orderable(&self) -> bool {

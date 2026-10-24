@@ -389,6 +389,12 @@ impl<T> Default for Spy<T> {
 
 /// Simple handler wrapper for testing
 ///
+/// Deprecated: use [`crate::stub::StubRouter`] for async, method-aware routes.
+/// Use `reinhardt_testkit::stub::StubRouter`, `reinhardt_test::stub::StubRouter`,
+/// or `reinhardt::test::stub::StubRouter` through your existing test facade.
+/// The deprecation starts in `0.4.0-alpha.21`. This handler and its re-exports
+/// remain available throughout `0.4.x`; removal is planned for `0.5.0`.
+///
 /// Provides a convenient way to create handlers from closures for testing purposes.
 /// The handler function can be any closure that takes a `Request` and returns a
 /// [`Result<Response>`].
@@ -398,6 +404,8 @@ impl<T> Default for Spy<T> {
 /// ## Basic usage
 ///
 /// ```no_run
+/// # // Keep compatibility coverage until SimpleHandler is removed.
+/// # #![allow(deprecated)]
 /// use reinhardt_testkit::mock::SimpleHandler;
 /// use reinhardt_http::{Request, Response};
 /// use reinhardt_http::Handler;
@@ -412,6 +420,8 @@ impl<T> Default for Spy<T> {
 /// ## With path-based routing
 ///
 /// ```no_run
+/// # // Keep compatibility coverage until SimpleHandler is removed.
+/// # #![allow(deprecated)]
 /// use reinhardt_testkit::mock::SimpleHandler;
 /// use reinhardt_http::{Request, Response};
 ///
@@ -427,6 +437,8 @@ impl<T> Default for Spy<T> {
 /// ## With custom logic
 ///
 /// ```no_run
+/// # // Keep compatibility coverage until SimpleHandler is removed.
+/// # #![allow(deprecated)]
 /// use reinhardt_testkit::mock::SimpleHandler;
 /// use reinhardt_http::{Request, Response};
 /// use std::sync::{Arc, Mutex};
@@ -440,6 +452,10 @@ impl<T> Default for Spy<T> {
 ///     Ok(Response::ok().with_body(format!("Call count: {}", *count)))
 /// });
 /// ```
+#[deprecated(
+	since = "0.4.0-alpha.21",
+	note = "Use stub::StubRouter through your test facade: reinhardt_testkit::stub, reinhardt_test::stub, or reinhardt::test::stub for async, method-aware test routes. Removal is planned for 0.5.0"
+)]
 pub struct SimpleHandler<F>
 where
 	F: Fn(reinhardt_http::Request) -> reinhardt_http::Result<reinhardt_http::Response>
@@ -450,6 +466,8 @@ where
 	handler_fn: F,
 }
 
+// Keep compatibility coverage until SimpleHandler is removed.
+#[allow(deprecated)]
 impl<F> SimpleHandler<F>
 where
 	F: Fn(reinhardt_http::Request) -> reinhardt_http::Result<reinhardt_http::Response>
@@ -466,6 +484,8 @@ where
 	/// # Examples
 	///
 	/// ```no_run
+	/// # // Keep compatibility coverage until SimpleHandler is removed.
+	/// # #![allow(deprecated)]
 	/// use reinhardt_testkit::mock::SimpleHandler;
 	/// use reinhardt_http::{Request, Response};
 	///
@@ -478,6 +498,8 @@ where
 	}
 }
 
+// Keep compatibility coverage until SimpleHandler is removed.
+#[allow(deprecated)]
 #[async_trait::async_trait]
 impl<F> reinhardt_http::Handler for SimpleHandler<F>
 where

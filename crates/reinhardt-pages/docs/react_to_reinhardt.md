@@ -1007,6 +1007,11 @@ on error.
 
 React Router concepts map to `ClientRouter`, route handlers returning `Page`,
 `Link` for anchor generation, and `use_router` for imperative navigation.
+`useLocation().pathname` maps to the reactive `use_router().current_path()`
+signal, and the matched route's name is available as
+`use_router().current_route_name()`. `NavLink` maps to `Link` with
+`active_class(...)` (plus `match_prefix()` for section links); with an SPA
+router installed, a matching `Link` also renders `aria-current="page"`.
 
 ```rust,ignore
 use reinhardt::pages::prelude::*;

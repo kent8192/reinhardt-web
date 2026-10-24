@@ -1465,6 +1465,7 @@ async fn execute_with_capabilities<P: CapabilityProvider>(
 				crate::showmigrations::migration_dependency_context(&command_context);
 			Some(
 				crate::builtin::prepare_makemigrations_state(
+					&command_context,
 					selection.source,
 					migration_dir,
 					database_url.as_deref(),
@@ -1580,9 +1581,9 @@ async fn execute_with_capabilities<P: CapabilityProvider>(
 	{
 		let environment_url = env::var("DATABASE_URL").ok();
 		let url_override = database.as_deref().or(environment_url.as_deref());
-		let (_prepared, selected_url) =
+		let (prepared, selected_url) =
 			prepare_migration_database(&provider, "migrate", "default", url_override).await?;
-		return execute_migrate(MigrateParams {
+		let mut ctx = migrate_context_from_params(MigrateParams {
 			app_label: app_label.clone(),
 			migration_name: migration_name.clone(),
 			database: Some(selected_url),
@@ -1591,8 +1592,16 @@ async fn execute_with_capabilities<P: CapabilityProvider>(
 			plan: *plan,
 			migrations_dir: migrations_dir.clone(),
 			verbosity,
-		})
-		.await;
+		});
+		crate::showmigrations::attach_migration_settings(
+			&mut ctx,
+			prepared.settings::<MigrationSettings>(None)?.as_ref(),
+		);
+		crate::showmigrations::attach_core_migration_metadata(
+			&mut ctx,
+			prepared.settings::<CoreMigrationMetadata>(None)?.as_ref(),
+		);
+		return MigrateCommand.execute(&ctx).await.map_err(Into::into);
 	}
 	#[cfg(feature = "migrations")]
 	if let Commands::Showmigrations {
@@ -2210,35 +2219,6 @@ async fn execute_with_registry_and_optional_settings_with_contract_state(
 	.await
 }
 
-/// Resolve CLI arguments into a built-in or registered custom command.
-///
-/// The resolver is deliberately side-effect free so callers can inspect clap
-/// errors without terminating the current process.
-#[cfg(test)]
-fn resolve_cli_command<I, T>(
-	args: I,
-	registry: &CommandRegistry,
-) -> Result<(Commands, u8), clap::Error>
-where
-	I: IntoIterator<Item = T>,
-	T: Into<std::ffi::OsString> + Clone,
-{
-	let raw_args: Vec<std::ffi::OsString> = args.into_iter().map(Into::into).collect();
-
-	match Cli::try_parse_from(raw_args.clone()) {
-		Ok(cli) => Ok((cli.command, cli.verbosity)),
-		Err(clap_err) if is_unknown_subcommand(&clap_err) => {
-			match resolve_custom_command(&raw_args, registry).map_err(|error| {
-				clap::Error::raw(clap::error::ErrorKind::ValueValidation, error.to_string())
-			})? {
-				Some((name, args, verbosity)) => Ok((Commands::Custom { name, args }, verbosity)),
-				None => Err(clap_err),
-			}
-		}
-		Err(clap_err) => Err(clap_err),
-	}
-}
-
 /// Returns `true` for commands that need URL patterns registered **before**
 /// the command body runs.
 ///
@@ -2250,6 +2230,24 @@ where
 /// `Generateopenapi` still receive the pre-dispatch
 /// [`auto_register_router`] call until they grow their own explicit
 /// `register_*_from_inventory()` methods (tracked separately).
+#[cfg(test)]
+fn resolve_cli_command<I, T>(
+	args: I,
+	registry: &CommandRegistry,
+) -> Result<(Commands, u8), clap::Error>
+where
+	I: IntoIterator<Item = T>,
+	T: Into<OsString> + Clone,
+{
+	let args: Vec<OsString> = args.into_iter().map(Into::into).collect();
+	parse_cli_arguments(&args, registry).map_err(|error| match error {
+		DriverParseError::Clap(error) => *error,
+		DriverParseError::Command(error) => {
+			clap::Error::raw(clap::error::ErrorKind::ValueValidation, error.to_string())
+		}
+	})
+}
+
 fn requires_router(command: &Commands) -> bool {
 	match command {
 		#[cfg(feature = "contract")]
@@ -3456,9 +3454,7 @@ fn resolve_custom_command<T: AsRef<OsStr>>(
 		}
 		let flag = utf8_custom_argument(iter.next().unwrap().as_ref())?; // safe: peeked above
 
-		if flag == "--verbose" {
-			verbosity = verbosity.saturating_add(1);
-		} else if let Some(short_flags) = flag.strip_prefix('-')
+		if let Some(short_flags) = flag.strip_prefix('-')
 			&& !flag.starts_with("--")
 			&& short_flags.chars().all(|short_flag| short_flag == 'v')
 		{
@@ -5045,6 +5041,142 @@ mod tests {
 
 	use std::sync::{Arc, Mutex};
 
+	#[cfg(feature = "contract")]
+	#[rstest]
+	#[case(&["manage", "makemigrations", "--database", "other"])]
+	#[case(&["manage", "makemigrations", "--state-source", "database", "--check"])]
+	#[case(&["manage", "makemigrations", "--state-source", "temporary-db", "--empty"])]
+	#[case(&["manage", "makemigrations", "--state-source", "files", "--force-empty-state"])]
+	#[case(&["manage", "makemigrations", "--empty", "--merge"])]
+	fn capability_parser_rejects_conflicting_state_flags(#[case] args: &[&str]) {
+		// Arrange
+		let args: Vec<_> = args.iter().map(std::ffi::OsString::from).collect();
+
+		// Act
+		let error = parse_capability_cli_arguments(&args, &CommandRegistry::new())
+			.err()
+			.expect("incompatible state options must fail before settings bootstrap");
+
+		// Assert
+		let DriverParseError::Clap(error) = error else {
+			panic!("expected a clap argument error");
+		};
+		assert_eq!(error.kind(), ErrorKind::ArgumentConflict);
+	}
+
+	#[cfg(feature = "contract")]
+	#[rstest]
+	fn capability_parser_preserves_legacy_commands_and_global_verbosity() {
+		// Arrange
+		let args: Vec<_> = [
+			"manage",
+			"--verbosity",
+			"--verbosity",
+			"makemigrations",
+			"--check",
+		]
+		.into_iter()
+		.map(std::ffi::OsString::from)
+		.collect();
+
+		// Act
+		let (command, verbosity, selection) =
+			parse_capability_cli_arguments(&args, &CommandRegistry::new()).unwrap();
+
+		// Assert
+		assert!(matches!(
+			command,
+			Commands::Makemigrations { check: true, .. }
+		));
+		assert_eq!(verbosity, 2);
+		assert_eq!(
+			selection.unwrap().source,
+			crate::builtin::MigrationStateSource::Files
+		);
+		assert!(
+			Cli::try_parse_from(["manage", "makemigrations", "--state-source", "files"]).is_err()
+		);
+	}
+
+	#[cfg(feature = "contract")]
+	struct CapabilityAudit;
+
+	#[cfg(feature = "contract")]
+	#[async_trait]
+	impl crate::CapabilityCommand for CapabilityAudit {
+		fn cli(&self) -> clap::Command {
+			clap::Command::new("audit")
+		}
+
+		fn requirements(&self, _matches: &clap::ArgMatches) -> Vec<crate::CapabilityRequirement> {
+			Vec::new()
+		}
+
+		async fn execute(
+			&self,
+			_matches: &clap::ArgMatches,
+			_context: &crate::CapabilityContext,
+		) -> crate::CommandResult<()> {
+			unreachable!("parser-only test command must not execute")
+		}
+	}
+
+	#[cfg(feature = "contract")]
+	#[rstest]
+	#[case(&["--verbosity"], 1)]
+	#[case(&["--verbosity", "--verbosity"], 2)]
+	#[case(&["-vv", "--verbosity"], 3)]
+	#[case(&["--verbosity=3"], 3)]
+	fn capability_parser_counts_verbosity_without_consuming_custom_command(
+		#[case] flags: &[&str],
+		#[case] expected: u8,
+	) {
+		// Arrange
+		let mut registry = CommandRegistry::new();
+		registry.register_capability(Box::new(CapabilityAudit));
+		let args: Vec<_> = std::iter::once("manage")
+			.chain(flags.iter().copied())
+			.chain(["audit", "--scope", "users"])
+			.map(std::ffi::OsString::from)
+			.collect();
+
+		// Act
+		let (command, verbosity, selection) =
+			parse_capability_cli_arguments(&args, &registry).unwrap();
+
+		// Assert
+		assert_eq!(verbosity, expected);
+		assert!(selection.is_none());
+		assert!(matches!(command, Commands::Custom { name, args }
+			if name == "audit" && args == ["--scope", "users"]));
+	}
+
+	#[cfg(feature = "contract")]
+	#[rstest]
+	#[case("--verbosity=invalid")]
+	#[case("--unknown-option")]
+	fn capability_parser_rejects_invalid_global_options(#[case] flag: &str) {
+		// Arrange
+		let mut registry = CommandRegistry::new();
+		registry.register_capability(Box::new(CapabilityAudit));
+		let args: Vec<_> = ["manage", flag, "audit"]
+			.into_iter()
+			.map(std::ffi::OsString::from)
+			.collect();
+		let expected = Cli::try_parse_from(&args).unwrap_err().kind();
+
+		// Act
+		let DriverParseError::Clap(error) = parse_capability_cli_arguments(&args, &registry)
+			.err()
+			.expect("invalid global option must fail before dispatch")
+		else {
+			panic!("expected a clap argument error");
+		};
+
+		// Assert
+		assert_eq!(error.kind(), expected);
+	}
+
 	#[cfg(feature = "openapi")]
 	struct EnvVarGuard {
 		key: &'static str,
@@ -5197,14 +5329,22 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn resolve_cli_command_preserves_custom_args_and_verbosity() {
 		let recorded = Arc::new(Mutex::new(None));
 		let mut registry = CommandRegistry::new();
 		registry.register(Box::new(RecordingCommand::new("audit", recorded)));
 
 		let (command, verbosity) = resolve_cli_command(
-			["manage", "--verbosity", "3", "audit", "--scope", "users"],
+			[
+				"manage",
+				"--verbosity",
+				"--verbosity",
+				"--verbosity",
+				"audit",
+				"--scope",
+				"users",
+			],
 			&registry,
 		)
 		.expect("custom command resolves");

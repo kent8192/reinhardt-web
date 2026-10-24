@@ -116,6 +116,9 @@ pub(crate) struct RelAttribute {
 	pub db_column: Option<String>,
 	/// Custom constraint name
 	pub db_constraint: Option<String>,
+	/// Fields that both models carry under the same name and that lead the
+	/// foreign key, for example a tenant column in a tenant-scoped key.
+	pub shared_fields: Vec<String>,
 	/// Parent link (for OneToOne inheritance)
 	pub parent_link: Option<bool>,
 	/// Polymorphic name (for polymorphic associations)
@@ -151,6 +154,7 @@ impl Default for RelAttribute {
 			db_index: None,
 			db_column: None,
 			db_constraint: None,
+			shared_fields: Vec::new(),
 			parent_link: None,
 			name: None,
 			composite: None,
@@ -218,6 +222,8 @@ impl RelAttribute {
 			} else if path.is_ident("db_constraint") {
 				let value = parse_string_value(&meta)?;
 				result.db_constraint = Some(value);
+			} else if path.is_ident("shared_fields") {
+				result.shared_fields = parse_string_list_value(&meta)?;
 			} else if path.is_ident("parent_link") {
 				let value = parse_bool_value(&meta)?;
 				result.parent_link = Some(value);
@@ -258,8 +264,51 @@ impl RelAttribute {
 		Ok(result)
 	}
 
+	/// Validate `shared_fields` against the relationship type and actions.
+	fn validate_shared_fields(&self) -> syn::Result<()> {
+		if self.shared_fields.is_empty() {
+			return Ok(());
+		}
+		if self.rel_type != RelationType::ForeignKey {
+			return Err(syn::Error::new(
+				self.span,
+				"'shared_fields' is only supported by #[rel(foreign_key, ...)]",
+			));
+		}
+		// PostgreSQL applies SET NULL and SET DEFAULT to every referencing
+		// column, so the shared columns would be overwritten as well.
+		for (option, action) in [("on_delete", self.on_delete), ("on_update", self.on_update)] {
+			if matches!(action, CascadeAction::SetNull | CascadeAction::SetDefault) {
+				return Err(syn::Error::new(
+					self.span,
+					format!(
+						"'{option}' cannot be SetNull or SetDefault with 'shared_fields' \
+						 because the action would also overwrite the shared columns"
+					),
+				));
+			}
+		}
+		let mut seen = std::collections::HashSet::new();
+		for field in &self.shared_fields {
+			if field.is_empty() {
+				return Err(syn::Error::new(
+					self.span,
+					"'shared_fields' entries must not be empty",
+				));
+			}
+			if !seen.insert(field.as_str()) {
+				return Err(syn::Error::new(
+					self.span,
+					format!("'shared_fields' lists '{field}' more than once"),
+				));
+			}
+		}
+		Ok(())
+	}
+
 	/// Validate the parsed attribute based on relationship type.
 	fn validate(&self) -> syn::Result<()> {
+		self.validate_shared_fields()?;
 		match self.rel_type {
 			RelationType::ForeignKey | RelationType::OneToOne => {
 				// ForeignKey/OneToOne uses ForeignKeyField<T>/OneToOneField<T> type parameters.
@@ -337,6 +386,16 @@ impl RelAttribute {
 	}
 }
 
+/// Parse a bracketed list of string literals from meta.
+fn parse_string_list_value(meta: &syn::meta::ParseNestedMeta<'_>) -> syn::Result<Vec<String>> {
+	let value = meta.value()?;
+	let content;
+	syn::bracketed!(content in value);
+	let values =
+		content.parse_terminated(<syn::LitStr as syn::parse::Parse>::parse, syn::Token![,])?;
+	Ok(values.iter().map(syn::LitStr::value).collect())
+}
+
 /// Parse a string value from meta.
 fn parse_string_value(meta: &syn::meta::ParseNestedMeta<'_>) -> syn::Result<String> {
 	let lit: Lit = meta.value()?.parse()?;
@@ -390,6 +449,67 @@ mod tests {
 			.expect_err("one_to_many without foreign_key should fail validation");
 
 		assert!(error.to_string().contains("foreign_key"));
+	}
+
+	#[test]
+	fn test_shared_fields_parse_in_order() {
+		// Arrange
+		let attr: syn::Attribute =
+			syn::parse_quote!(#[rel(foreign_key, shared_fields = ["tenant", "region"])]);
+
+		// Act
+		let rel = RelAttribute::from_attribute(&attr).expect("shared_fields should parse");
+
+		// Assert
+		assert_eq!(rel.shared_fields, vec!["tenant", "region"]);
+	}
+
+	#[test]
+	fn test_shared_fields_require_foreign_key() {
+		// Arrange
+		let attr: syn::Attribute =
+			syn::parse_quote!(#[rel(one_to_one, shared_fields = ["tenant"])]);
+
+		// Act
+		let error = RelAttribute::from_attribute(&attr).expect_err("one_to_one must reject it");
+
+		// Assert
+		assert_eq!(
+			error.to_string(),
+			"'shared_fields' is only supported by #[rel(foreign_key, ...)]"
+		);
+	}
+
+	#[test]
+	fn test_shared_fields_reject_actions_that_overwrite_them() {
+		// Arrange
+		let attr: syn::Attribute =
+			syn::parse_quote!(#[rel(foreign_key, shared_fields = ["tenant"], on_delete = SetNull)]);
+
+		// Act
+		let error = RelAttribute::from_attribute(&attr).expect_err("SET NULL must be rejected");
+
+		// Assert
+		assert_eq!(
+			error.to_string(),
+			"'on_delete' cannot be SetNull or SetDefault with 'shared_fields' because the action would also overwrite the shared columns"
+		);
+	}
+
+	#[test]
+	fn test_shared_fields_reject_duplicates() {
+		// Arrange
+		let attr: syn::Attribute =
+			syn::parse_quote!(#[rel(foreign_key, shared_fields = ["tenant", "tenant"])]);
+
+		// Act
+		let error = RelAttribute::from_attribute(&attr).expect_err("duplicates must be rejected");
+
+		// Assert
+		assert_eq!(
+			error.to_string(),
+			"'shared_fields' lists 'tenant' more than once"
+		);
 	}
 
 	#[test]

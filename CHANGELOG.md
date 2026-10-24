@@ -7,6 +7,132 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.22](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.4.0-alpha.21...reinhardt-web@v0.4.0-alpha.22) - 2026-10-22
+
+### Documentation
+
+- add release announcement(s)
+
+### Fixed
+
+- *(ci)* allow aws-smithy-schema 0.2 alongside aws-smithy-runtime 1.16.1
+- *(deps)* remove legacy aws sdk tls transports
+
+### Maintenance
+
+- *(deps)* refresh full-feature dependency policy
+
+## [0.4.0-alpha.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.4.0-alpha.20...reinhardt-web@v0.4.0-alpha.21) - 2026-10-18
+
+### Added
+
+- *(test)* add method-aware async stub router
+- *(testkit)* add ordered per-request headers and payloads
+- *(testkit)* fork clients with independent state and transport
+- *(auth)* [**breaking**] add refresh token support to oauth2_server
+- *(testkit)* make http_client timeout configurable and add a streaming client fixture
+
+### Changed
+
+- *(test)* migrate header requests to the request builder
+
+### Documentation
+
+- add release announcement(s)
+- *(test)* document async stub routes through test facades
+- *(test)* record SimpleHandler migration and removal timeline
+- *(auth)* document oauth2_server refresh tokens
+- *(testkit)* clarify read_timeout semantics of streaming_http_client
+- *(utils)* declare native-only utils APIs as Parity P0
+- *(rest)* scope the SimpleSearchBackend output guarantee to its condition
+
+### Fixed
+
+- *(testkit)* correct SimpleHandler deprecation guidance
+- *(admin)* handle independently enabled pgvector field types
+- *(admin)* reject vector edits without the admin feature
+- *(testkit)* make native NATS JetStream fixture future Send
+- *(auth)* enforce audience allowlist and allow unscoped families on refresh
+- *(auth)* deserialize before deleting in DatabaseSessionBackend::take
+- *(auth)* serialize InMemorySessionBackend writes with take
+- *(ci)* allow bit-set 0.8 alongside proptest 1.12 in deny policy
+- *(utils)* keep native-only dependencies out of browser WASM builds
+- *(utils)* keep filesystem and local-DST APIs native-only on browser WASM
+- *(ci)* allow unmaintained unsafe-libyaml advisory in deny policy
+- *(ci)* allow rustls 0.21 advisories retained by AWS SDK legacy transport
+- *(rest)* keep SimpleSearchBackend output scannable by chained filters
+- *(ci)* allow zip 3.0.0 advisories from the utoipa-swagger-ui build script
+- *(ci)* forward admin pgvector in the alpha.20 reinhardt-test baseline
+
+### Maintenance
+
+- *(test)* merge develop/0.4.0 into stub router branch
+- *(testkit)* merge develop client transport changes
+- *(testkit)* sync latest develop after conflict resolution
+- *(audit)* classify refresh token runtime SQL sites
+- *(rest)* refresh SimpleSearchBackend runtime SQL fingerprints for [[#6804](https://github.com/kent8192/reinhardt-web/issues/6804)](https://github.com/kent8192/reinhardt-web/issues/6804)
+
+### Testing
+
+- *(testkit)* move HTTP stub route coverage to integration suite
+- *(admin)* inherit workspace patches in vector consumer
+- *(db)* refresh generated execution regression contracts
+- *(testkit)* compare form fields independently of map order
+- *(ci)* cover pgvector forwarding in the alpha.20 reinhardt-test baseline
+
+## [0.4.0-alpha.20](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.4.0-alpha.19...reinhardt-web@v0.4.0-alpha.20) - 2026-10-06
+
+### Added
+
+- *(conf)* backport deferred management settings bootstrap
+- *(commands)* backport scoped migration dispatch
+
+### Changed
+
+- *(testkit)* use typed truncate statements for table cleanup
+
+### Documentation
+
+- *(db)* clarify the insert builder NULL parameter contract
+
+### Fixed
+
+- *(commands)* honor capability migration app scope
+- *(commands)* include capability contract in full preset
+- *(commands)* count global verbosity before custom dispatch
+- *(commands)* resolve conditional migration dependencies
+- *(commands)* fail checks for manual migration proposals
+- *(commands)* omit credential-bearing database URL logs
+- *(orm)* avoid RETURNING in MySQL bulk create
+- *(orm)* apply field metadata to MySQL bulk inserts
+- *(orm)* preserve MySQL datetime and JSON bindings
+- *(orm)* preserve MySQL bulk row semantics
+- *(db)* preserve wide Session integer values
+- *(sync)* reconcile migration and query regressions
+- *(db)* keep generated array conversion available in minimal builds
+- *(db)* preserve query builder parameter variants
+- *(commands)* validate targets before reconciling migration history
+- *(migrations)* resolve SQL assets in filesystem repository reads
+- *(migrations)* confine repository source identity scans
+
+### Maintenance
+
+- *(ui-tests)* fetch dependencies before offline consumer checks
+- *(orm)* merge main into MySQL bulk insert repair
+- *(db)* merge main into insert-select conflict fix
+- *(sync)* merge main into develop/0.4.0
+- *(sync)* merge updated main into develop/0.4.0
+- *(tests)* release uncached build output before post-job cleanup
+- reduce integration test build disk usage
+
+### Testing
+
+- *(db)* align standalone predicate SQL expectations
+- *(cli)* align capability verbosity regression with main
+- *(db)* align integration expectations with generated bindings
+- *(db)* gate zero-sentinel model fixtures on migrations
+- *(facade)* fetch isolated UUID consumer dependencies
+
 ## [0.4.0-alpha.19](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.4.0-alpha.18...reinhardt-web@v0.4.0-alpha.19) - 2026-10-03
 
 ### Documentation
@@ -385,6 +511,127 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Testing
 
 - *(db)* align migration compatibility contracts
+
+## [0.3.25](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.3.24...reinhardt-web@v0.3.25) - 2026-10-20
+
+### Documentation
+
+- *(rest)* scope the SimpleSearchBackend output guarantee to its condition
+
+### Fixed
+
+- *(rest)* keep SimpleSearchBackend output scannable by chained filters
+- *(ci)* allow zip 3.0.0 advisories from the utoipa-swagger-ui build script
+- *(db)* keep QuerySet UnwindSafe with structured join conditions
+
+### Other
+
+- resolve conflicts with origin/main
+
+### Testing
+
+- *(db)* expect grouped CASE operands on MySQL and SQLite
+
+## [0.3.24](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.3.23...reinhardt-web@v0.3.24) - 2026-10-14
+
+### Documentation
+
+- add release announcement(s)
+- *(agents)* attribute AI work to the agent and model that wrote it
+
+### Fixed
+
+- *(ci)* allow bit-set 0.8 alongside proptest 1.12 in deny policy
+- *(db)* emit nullability changes in forward AlterColumn SQL
+- *(db)* keep NOT NULL when AlterColumn demotes a primary key
+- *(admin)* propagate database errors from scoped detail fetches
+- *(auth)* accept NAT64 addresses that embed public IPv4
+- *(dentdelion)* accept NAT64 addresses that embed public IPv4
+- *(middleware)* issue CSRF token for the rotated session ID
+- *(dentdelion)* port owner-scoped event bus calls to shared bus state
+
+
+## [0.3.23](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.3.22...reinhardt-web@v0.3.23) - 2026-10-08
+
+### Documentation
+
+- add release announcement(s)
+
+### Fixed
+
+- *(facade)* forward optional WebSocket and GraphQL test features
+- *(testkit)* replace default headers with per-request values
+- *(testkit)* retain repeated per-request header values
+
+### Maintenance
+
+- *(urls)* merge main while preserving head and options overrides
+
+## [0.3.22](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.3.21...reinhardt-web@v0.3.22) - 2026-10-06
+
+### Fixed
+
+- *(middleware)* expose component features through the facade
+- *(tests)* fetch uncached middleware consumer dependencies
+
+## [0.3.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.3.20...reinhardt-web@v0.3.21) - 2026-10-05
+
+### Added
+
+- *(conf)* backport deferred management settings bootstrap
+- *(commands)* backport scoped migration dispatch
+
+### Changed
+
+- *(testkit)* use typed truncate statements for table cleanup
+
+### Documentation
+
+- *(auth)* clarify legacy OAuth2 helper scope
+- *(auth)* clarify OAuth2 helper scope and validation
+- *(auth)* complete OAuth setup and token docs
+- *(auth)* align OAuth2 module catalog wording
+- *(commands)* clarify migration comparison scope
+- *(commands)* correct REST scaffold routing examples
+- *(auth)* remove redundant permission context link target
+
+### Fixed
+
+- *(commands)* honor makemigrations migration directory
+- *(commands)* reject non-utf8 migration directory paths
+- *(query)* preserve PostgreSQL expression grouping
+- *(macros)* honor db_column in composite primary keys
+- *(orm)* match every composite key component when updating
+- *(commands)* scope migrations to installed apps
+- *(commands)* resolve installed app paths to migration labels
+- *(commands)* preserve installed migration scope and history
+- *(migrations)* preserve scoped model move history
+- *(commands)* honor capability migration app scope
+- *(commands)* include capability contract in full preset
+- *(commands)* count global verbosity before custom dispatch
+- *(commands)* resolve conditional migration dependencies
+- *(commands)* fail checks for manual migration proposals
+- *(commands)* omit credential-bearing database URL logs
+- *(orm)* avoid RETURNING in MySQL bulk create
+- *(orm)* apply field metadata to MySQL bulk inserts
+- *(orm)* preserve MySQL datetime and JSON bindings
+- *(orm)* preserve MySQL bulk row semantics
+- *(db)* preserve wide Session integer values
+- *(views)* parse generic list filters using model field types
+
+### Maintenance
+
+- *(query)* integrate main rendering fixes
+- merge main into installed app migration fix
+- *(ui-tests)* fetch dependencies before offline consumer checks
+- *(orm)* merge main into MySQL bulk insert repair
+- *(db)* merge main into insert-select conflict fix
+
+### Testing
+
+- *(db)* align negated filter SQL expectations
+- *(db)* align standalone predicate SQL expectations
+- *(rest)* align mysql search expectations with hex escapes
 
 ## [0.3.20](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.3.19...reinhardt-web@v0.3.20) - 2026-09-25
 

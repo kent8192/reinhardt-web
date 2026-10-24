@@ -8,3 +8,6 @@ mysql:8.0
 
 # Cache/Key-Value Stores
 redis:7-alpine
+
+# Message Queues
+nats:2.12-alpine

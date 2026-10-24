@@ -32,33 +32,57 @@ use reinhardt_query::Value;
 /// SQL and its owned arguments, kept together until the consumer executes it.
 ///
 /// This type deliberately does not implement Debug: argument values may be sensitive.
+///
+/// # API parity
+///
+/// P0 (native-only): absent on `wasm32` targets.
 pub struct PreparedQuery<A> {
 	sql: String,
 	arguments: A,
 }
 impl<A> PreparedQuery<A> {
 	/// Consume the pair for `sqlx::query_with` or `sqlx::query_as_with`.
+	///
+	/// # API parity
+	///
+	/// P0 (native-only): absent on `wasm32` targets.
 	pub fn into_parts(self) -> (String, A) {
 		(self.sql, self.arguments)
 	}
 	/// Inspect the generated SQL without displaying argument values.
+	///
+	/// # API parity
+	///
+	/// P0 (native-only): absent on `wasm32` targets.
 	pub fn sql(&self) -> &str {
 		&self.sql
 	}
 }
 
 /// Redacted argument adaptation failure. Indices are one-based.
+///
+/// # API parity
+///
+/// P0 (native-only): absent on `wasm32` targets.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("cannot encode {value_type} argument {index} for {backend}: {reason}")]
 #[non_exhaustive]
 pub struct BindError {
 	/// Backend whose encoder rejected the argument.
+	///
+	/// P0 (native-only): absent on `wasm32` targets.
 	pub backend: &'static str,
 	/// One-based position in the renderer's Values sequence.
+	///
+	/// P0 (native-only): absent on `wasm32` targets.
 	pub index: usize,
 	/// Value variant, without its contents.
+	///
+	/// P0 (native-only): absent on `wasm32` targets.
 	pub value_type: &'static str,
 	/// Technical reason, without its contents.
+	///
+	/// P0 (native-only): absent on `wasm32` targets.
 	pub reason: &'static str,
 }
 // Other workspace consumers can enable additional Value variants independently.

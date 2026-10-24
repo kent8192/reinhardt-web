@@ -9,7 +9,10 @@ use crate::core::{
 	canonicalize_admin_primary_key,
 };
 use crate::server::audit;
-use crate::server::error::{AdminAuth, IntoServerFnError, MapServerFnError, ModelPermission};
+use crate::server::error::{
+	AdminAuth, IntoServerFnError, MapServerFnError, ModelPermission,
+	save_hook_error_to_server_error,
+};
 use crate::server::security::sanitize_mutation_values;
 use crate::types::AdminError;
 use reinhardt_db::orm::{DatabaseConnection, transaction::AtomicTransaction};
@@ -56,6 +59,9 @@ impl From<InlinePermission> for ModelPermission {
 pub(crate) enum InlineTransactionError {
 	#[error(transparent)]
 	Admin(#[from] AdminError),
+	/// `ModelAdmin::before_save` rejected the parent save.
+	#[error("save rejected by before_save hook: {0}")]
+	SaveHook(AdminError),
 	#[error(transparent)]
 	Inline(#[from] InlineMutationError),
 	#[error(transparent)]
@@ -549,6 +555,7 @@ pub(crate) fn map_inline_mutation_error(error: InlineMutationError) -> ServerFnE
 pub(crate) fn map_inline_transaction_error(error: InlineTransactionError) -> ServerFnError {
 	match error {
 		InlineTransactionError::Admin(error) => error.into_server_fn_error(),
+		InlineTransactionError::SaveHook(error) => save_hook_error_to_server_error(error),
 		InlineTransactionError::Inline(error) => map_inline_mutation_error(error),
 		InlineTransactionError::Core(_) => {
 			ServerFnError::server(500, "Database transaction failed")

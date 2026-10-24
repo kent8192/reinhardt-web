@@ -2161,6 +2161,18 @@ pub(crate) async fn resolve_relation_option(
 	relation_option_from_record(relation, &record).map_server_fn_error()
 }
 
+/// Foreign-key values validated by [`validate_relation_values`].
+#[cfg(server)]
+pub(crate) struct ValidatedRelationValues {
+	/// Values keyed by the logical relation field name, whichever alias was
+	/// submitted, as seen by save hooks.
+	pub(crate) logical: HashMap<String, serde_json::Value>,
+	/// The same values keyed by their persisted database column.
+	pub(crate) columns: HashMap<String, serde_json::Value>,
+}
+
+/// Remove submitted foreign-key values from `data`, validate them against the
+/// related admin, and normalize each to the related object's target value.
 #[cfg(server)]
 pub(crate) async fn validate_relation_values(
 	auth: &AdminAuth,
@@ -2170,10 +2182,13 @@ pub(crate) async fn validate_relation_values(
 	db: &AdminDatabase,
 	source_admin: &Arc<dyn ModelAdmin>,
 	data: &mut HashMap<String, serde_json::Value>,
-) -> Result<HashMap<String, serde_json::Value>, ServerFnError> {
+) -> Result<ValidatedRelationValues, ServerFnError> {
 	let relations =
 		resolve_relation_configuration(site, source_admin.as_ref()).map_server_fn_error()?;
-	let mut normalized_values = HashMap::new();
+	let mut validated = ValidatedRelationValues {
+		logical: HashMap::new(),
+		columns: HashMap::new(),
+	};
 
 	for relation in &relations {
 		let logical_name = relation.foreign_key.logical_name.as_str();
@@ -2231,10 +2246,13 @@ pub(crate) async fn validate_relation_values(
 			}
 		};
 
-		normalized_values.insert(column_name.to_string(), normalized);
+		validated
+			.logical
+			.insert(logical_name.to_owned(), normalized.clone());
+		validated.columns.insert(column_name.to_owned(), normalized);
 	}
 
-	Ok(normalized_values)
+	Ok(validated)
 }
 
 /// Search or resolve related objects for one configured foreign-key field.

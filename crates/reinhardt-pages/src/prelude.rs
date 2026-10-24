@@ -104,7 +104,7 @@
 //!   [`EventType`], [`document`](fn@document)
 //!
 //! ## Routing
-//! - [`Link`], [`PrefetchMode`], [`Loader`], `RouterOutlet`, `RouteLoaderError`
+//! - [`Link`], [`ActiveMatch`], [`PrefetchMode`], [`Loader`], `RouterOutlet`, `RouteLoaderError`
 //!
 //! ## Macros
 //! - [`page`] - Component DSL for defining views
@@ -222,6 +222,7 @@ pub use crate::dom::{CustomEventOptions, Document, Element, EventHandle, EventTy
 
 // Non-deprecated rendering primitives.
 pub use crate::route_params;
+pub use crate::router::ActiveMatch;
 pub use crate::router::Link;
 pub use crate::router::NavigationGuardId;
 pub use crate::router::PrefetchMode;

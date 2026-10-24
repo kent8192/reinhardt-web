@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.22](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.4.0-alpha.21...reinhardt-conf@v0.4.0-alpha.22) - 2026-10-22
+
+### Fixed
+
+- *(deps)* remove legacy aws sdk tls transports
+
+### Security
+
+- Use the current AWS SDK HTTPS transport for Secrets Manager, including custom HTTP endpoints, and remove the legacy TLS dependency chain.
+
+## [0.4.0-alpha.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.4.0-alpha.20...reinhardt-conf@v0.4.0-alpha.21) - 2026-10-18
+
+### Fixed
+
+- *(conf,websockets)* redact secret fields in settings Debug output
+- *(macros,conf)* redact #[setting(secret)] fields in generated Debug
+
+### Maintenance
+
+- *(sync)* merge main into develop/0.4.0
+
+## [0.4.0-alpha.20](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.4.0-alpha.19...reinhardt-conf@v0.4.0-alpha.20) - 2026-10-06
+
+### Added
+
+- *(conf)* backport deferred management settings bootstrap
+
+### Fixed
+
+- *(conf)* initialize MySQL settings and audit indexes safely
+
+### Maintenance
+
+- *(sync)* merge main into develop/0.4.0
+
 ## [0.4.0-alpha.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.4.0-alpha.17...reinhardt-conf@v0.4.0-alpha.18) - 2026-09-27
 
 ### Fixed
@@ -82,6 +117,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Maintenance
 
 - merge main into develop/0.4.0
+
+## [0.3.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.3.20...reinhardt-conf@v0.3.21) - 2026-10-05
+
+### Added
+
+- *(conf)* backport deferred management settings bootstrap
+
+### Fixed
+
+- *(conf)* initialize MySQL settings and audit indexes safely
 
 ## [0.3.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.3.17...reinhardt-conf@v0.3.18) - 2026-09-16
 

@@ -30,11 +30,18 @@ use crate::types::{DynIden, IntoIden};
 ///     .min_value(Some(1))
 ///     .max_value(Some(1000));
 /// ```
+///
+/// # Extensibility
+///
+/// This struct is `#[non_exhaustive]` and its fields are crate-private, so new
+/// sequence options can be added without breaking downstream code. Construct it
+/// with [`SequenceDef::new`] and the chained builder methods.
 #[derive(Debug, Clone)]
-// Allow dead_code: DDL definition struct for CREATE SEQUENCE; fields populated by builder but not yet consumed by backend SQL generation
-#[allow(dead_code)]
+#[non_exhaustive]
 pub struct SequenceDef {
 	pub(crate) name: DynIden,
+	pub(crate) schema: Option<DynIden>,
+	pub(crate) data_type: Option<SequenceType>,
 	pub(crate) if_not_exists: bool,
 	pub(crate) increment: Option<i64>,
 	pub(crate) min_value: Option<Option<i64>>,
@@ -45,10 +52,58 @@ pub struct SequenceDef {
 	pub(crate) owned_by: Option<OwnedBy>,
 }
 
+/// PostgreSQL sequence integer width.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum SequenceType {
+	/// Signed 16-bit values.
+	SmallInteger,
+	/// Signed 32-bit values.
+	Integer,
+	/// Signed 64-bit values.
+	BigInteger,
+}
+
+impl SequenceType {
+	pub(crate) fn sql(self) -> &'static str {
+		match self {
+			Self::SmallInteger => "smallint",
+			Self::Integer => "integer",
+			Self::BigInteger => "bigint",
+		}
+	}
+}
+
 /// Ownership specification for sequences
+///
+/// This enum is `#[non_exhaustive]`: PostgreSQL ownership forms may gain new
+/// variants in a minor release. Existing variants remain directly constructible,
+/// but code outside this crate that matches on `OwnedBy` must include a wildcard
+/// arm. Interpreters should report an explicit unsupported-ownership error from
+/// that arm instead of silently ignoring the value.
+///
+/// # Examples
+///
+/// ```rust
+/// use reinhardt_query::types::{IntoIden, sequence::OwnedBy};
+///
+/// let owner = OwnedBy::Column {
+///     table: "orders".into_iden(),
+///     column: "id".into_iden(),
+/// };
+///
+/// let kind = match &owner {
+///     OwnedBy::Column { .. } => "column",
+///     OwnedBy::SchemaColumn { .. } => "schema column",
+///     OwnedBy::None => "none",
+///     // Required outside `reinhardt-query`: future ownership forms land here.
+///     _ => return Err("unsupported sequence ownership"),
+/// };
+/// assert_eq!(kind, "column");
+/// # Ok::<(), &'static str>(())
+/// ```
 #[derive(Debug, Clone)]
-// Allow dead_code: enum variants define OWNED BY options for sequences; not all consumed yet by backend SQL generation
-#[allow(dead_code)]
+#[non_exhaustive]
 pub enum OwnedBy {
 	/// OWNED BY table.column
 	Column {
@@ -59,6 +114,15 @@ pub enum OwnedBy {
 	},
 	/// OWNED BY NONE
 	None,
+	/// OWNED BY schema.table.column with independently quoted identifiers.
+	SchemaColumn {
+		/// Schema containing the owning table.
+		schema: DynIden,
+		/// Physical table name.
+		table: DynIden,
+		/// Physical column name.
+		column: DynIden,
+	},
 }
 
 /// Sequence option for ALTER SEQUENCE operations
@@ -79,9 +143,34 @@ pub enum OwnedBy {
 /// // INCREMENT BY 5
 /// let opt = SequenceOption::IncrementBy(5);
 /// ```
+///
+/// # Extensibility
+///
+/// This enum is `#[non_exhaustive]`: new `ALTER SEQUENCE` options may be added
+/// in a minor release. Existing variants remain directly constructible, but code
+/// outside this crate that matches on `SequenceOption` must include a wildcard
+/// arm. Interpreters should report an explicit unsupported-option error from
+/// that arm instead of silently skipping the option.
+///
+/// ```rust
+/// use reinhardt_query::types::sequence::SequenceOption;
+///
+/// fn describe(option: &SequenceOption) -> Result<String, String> {
+///     match option {
+///         SequenceOption::IncrementBy(step) => Ok(format!("INCREMENT BY {step}")),
+///         SequenceOption::Cycle => Ok("CYCLE".to_string()),
+///         SequenceOption::NoCycle => Ok("NO CYCLE".to_string()),
+///         // Required outside `reinhardt-query`: fail explicitly on options this
+///         // caller does not interpret, including ones added in later releases.
+///         other => Err(format!("unsupported sequence option: {other:?}")),
+///     }
+/// }
+///
+/// assert_eq!(describe(&SequenceOption::IncrementBy(5)).unwrap(), "INCREMENT BY 5");
+/// assert!(describe(&SequenceOption::Cache(20)).is_err());
+/// ```
 #[derive(Debug, Clone)]
-// Allow dead_code: enum variants define all ALTER SEQUENCE options; not all consumed yet by backend SQL generation
-#[allow(dead_code)]
+#[non_exhaustive]
 pub enum SequenceOption {
 	/// RESTART [WITH value]
 	Restart(Option<i64>),
@@ -103,9 +192,40 @@ pub enum SequenceOption {
 	NoCycle,
 	/// OWNED BY table.column or OWNED BY NONE
 	OwnedBy(OwnedBy),
+	/// Change the sequence integer width.
+	AsType(SequenceType),
+	/// Change the configured start without restarting allocation.
+	StartWith(i64),
 }
 
 impl SequenceDef {
+	/// Qualify this sequence with a separately quoted schema identifier.
+	pub fn schema<S: IntoIden>(mut self, schema: S) -> Self {
+		self.schema = Some(schema.into_iden());
+		self
+	}
+
+	/// Set the PostgreSQL sequence integer width.
+	pub fn as_type(mut self, data_type: SequenceType) -> Self {
+		self.data_type = Some(data_type);
+		self
+	}
+
+	/// Associate the sequence with a qualified physical column.
+	pub fn owned_by_schema_column<S: IntoIden, T: IntoIden, C: IntoIden>(
+		mut self,
+		schema: S,
+		table: T,
+		column: C,
+	) -> Self {
+		self.owned_by = Some(OwnedBy::SchemaColumn {
+			schema: schema.into_iden(),
+			table: table.into_iden(),
+			column: column.into_iden(),
+		});
+		self
+	}
+
 	/// Create a new sequence definition
 	///
 	/// # Examples
@@ -118,6 +238,8 @@ impl SequenceDef {
 	pub fn new<N: IntoIden>(name: N) -> Self {
 		Self {
 			name: name.into_iden(),
+			schema: None,
+			data_type: None,
 			if_not_exists: false,
 			increment: None,
 			min_value: None,

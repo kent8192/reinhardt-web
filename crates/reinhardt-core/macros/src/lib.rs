@@ -507,6 +507,20 @@ pub fn installed_apps(input: TokenStream) -> TokenStream {
 /// the same context in the complete HTTP, WebSocket, gRPC, DI, and streaming
 /// route aggregate returned to server startup.
 ///
+/// # Target behavior
+///
+/// The synchronous form (1) registers both native routes and client routes: on
+/// `wasm32-unknown-unknown` it submits a `ClientRouterRegistration` built from
+/// the router's client side. The async forms (2 and 3) are native-only: the
+/// annotated function is compiled out of wasm builds, so no client routes could
+/// be registered and the single-page application would launch with an empty
+/// route table. To surface that at build time, an `async fn` annotated with
+/// `#[routes]` fails to compile for wasm with a diagnostic that asks for a
+/// synchronous function. Keep `routes()` synchronous and move native-only async
+/// setup behind a native `#[cfg]` when the project also builds for wasm. Client
+/// registration from an async function is tracked in
+/// [issue #6733](https://github.com/kent8192/reinhardt-web/issues/6733).
+///
 /// # Arguments
 ///
 /// The `#[routes]` macro does not accept any arguments. It only emits
@@ -522,6 +536,8 @@ pub fn installed_apps(input: TokenStream) -> TokenStream {
 /// - The return type must be `UnifiedRouter` (not `Arc<UnifiedRouter>`)
 /// - Native registration preserves the complete protocol aggregate
 /// - Sync functions cannot use `#[inject]` (DI resolution is inherently async)
+/// - Async functions are native-only and are rejected on wasm (see
+///   "Target behavior")
 #[proc_macro_attribute]
 pub fn routes(args: TokenStream, input: TokenStream) -> TokenStream {
 	let input = parse_macro_input!(input as ItemFn);
@@ -809,12 +825,25 @@ pub fn injectable(args: TokenStream, input: TokenStream) -> TokenStream {
 /// # Relationship ID Fields
 ///
 /// `#[rel(foreign_key)]` and `#[rel(one_to_one)]` generate a `{field}_id` field
-/// using the related model's primary-key type. With `null = true`, its type is
+/// using the related model's primary-key type, with the relation field's
+/// visibility. With `null = true`, its type is
 /// `Option<PrimaryKey>`; otherwise it is `PrimaryKey`. This applies independently
 /// of model-form generation. Nullable IDs accept `None` for SQL NULL and
 /// `Some(id)` for an existing relationship, including on models without `form`.
 /// Code that previously assigned a bare ID to a nullable relation must wrap it
 /// in `Some(...)`.
+///
+/// # Shared-Column Foreign Keys
+///
+/// `#[rel(foreign_key, shared_fields = ["tenant"])]` puts fields that both
+/// models carry under the same name in front of the `{field}_id` column, so the
+/// key becomes `(tenant, task_id) REFERENCES tasks (tenant, id)`. Each entry
+/// names a non-relationship field; its column on either side follows that
+/// model's `db_column`. The referenced model needs a unique constraint over the
+/// same columns. `on_delete` and `on_update` cannot be `SetNull` or
+/// `SetDefault`, because those actions would overwrite the shared columns.
+/// `db_constraint = "..."` names the constraint instead of the generated
+/// `fk_{table}_{column}` name.
 ///
 /// # Info Companion Type (Issues #4194, #5272)
 ///
@@ -1395,6 +1424,10 @@ pub fn dto(args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// Mark a terminal field as secret with `#[setting(secret)]`. Resolved settings
 /// metadata records only its classification and key presence, never its value.
+/// When the fragment derives `Debug` (explicitly or through the macro's default
+/// derives), the macro replaces that derive with an impl that prints secret
+/// fields as `"[REDACTED]"` (`Some("[REDACTED]")` / `None` for `Option`).
+/// A hand-written `Debug` impl is left untouched.
 ///
 /// Omitting `section = "..."` creates an embedded settings node instead of a
 /// root fragment. Embedded nodes participate in recursive schema metadata and

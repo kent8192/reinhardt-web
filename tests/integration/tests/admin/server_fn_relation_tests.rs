@@ -1,11 +1,11 @@
 //! Integration tests for permission-aware admin relation lookups.
 
 use super::server_fn_helpers::{
-	AdminDatabaseDepends, ServerFnContext, TEST_CSRF_TOKEN, make_auth_user, make_staff_request,
-	relation_invalid_config_context, relation_logical_fields_context,
+	AdminDatabaseDepends, SavedRelationChanges, ServerFnContext, TEST_CSRF_TOKEN, make_auth_user,
+	make_staff_request, relation_invalid_config_context, relation_logical_fields_context,
 	relation_logical_readonly_context, relation_physical_readonly_context,
-	relation_pk_fallback_context, relation_server_fn_context, relation_source_denied_context,
-	relation_target_denied_context,
+	relation_pk_fallback_context, relation_save_hook_context, relation_server_fn_context,
+	relation_source_denied_context, relation_target_denied_context,
 };
 use reinhardt_admin::adapters::MutationRequest;
 use reinhardt_admin::core::AdminRecord;
@@ -16,6 +16,7 @@ use rstest::*;
 use serde_json::{Value, json};
 use serial_test::serial;
 use std::collections::HashMap;
+use std::sync::PoisonError;
 
 const RELATION_UUID: &str = "5f7278bc-9669-4fdf-8492-b57d5fd908ce";
 
@@ -902,6 +903,101 @@ async fn server_fn_relation_update_accepts_logical_name_for_physical_field_allow
 	assert_eq!(response.success, true);
 	assert_eq!(row.get("title"), Some(&json!("Logical alias update")));
 	assert_eq!(row.get("target_key"), Some(&json!(2)));
+}
+
+#[rstest]
+#[case::logical_name("target")]
+#[case::physical_column("target_key")]
+#[tokio::test]
+#[serial(admin_relation_server_fn)]
+async fn server_fn_relation_create_save_hook_sees_relation_under_logical_name(
+	#[future] relation_save_hook_context: (ServerFnContext, SavedRelationChanges),
+	#[case] submitted_name: &str,
+) {
+	// Arrange
+	let ((site, db, _connection_lease), saved_changes) = relation_save_hook_context.await;
+	let mut data = relation_mutation_data(json!(2));
+	data.remove("target_key");
+	data.insert(submitted_name.to_string(), json!(2));
+	let request = MutationRequest {
+		csrf_token: TEST_CSRF_TOKEN.to_string(),
+		data,
+	};
+
+	// Act
+	let response = create_record(
+		"AdminRelationSourceModel".to_string(),
+		request,
+		site,
+		db.clone(),
+		make_staff_request(),
+		make_auth_user(),
+	)
+	.await
+	.expect("relation create should succeed");
+	let rows = relation_source_rows(&db).await;
+	let created = rows
+		.iter()
+		.find(|row| row.get("title") == Some(&json!("Created relation source")))
+		.expect("the relation source should be created");
+	let changes = saved_changes
+		.lock()
+		.unwrap_or_else(PoisonError::into_inner)
+		.clone();
+
+	// Assert
+	assert_eq!(response.success, true);
+	assert_eq!(created.get("target_key"), Some(&json!(2)));
+	assert_eq!(changes.len(), 1);
+	assert_eq!(changes[0].new_value("target"), Some(&json!(2)));
+	assert_eq!(changes[0].new_value("target_key"), None);
+	assert!(changes[0].changed_fields().any(|field| field == "target"));
+}
+
+#[rstest]
+#[case::logical_name("target")]
+#[case::physical_column("target_key")]
+#[tokio::test]
+#[serial(admin_relation_server_fn)]
+async fn server_fn_relation_update_save_hook_sees_relation_transition_under_logical_name(
+	#[future] relation_save_hook_context: (ServerFnContext, SavedRelationChanges),
+	#[case] submitted_name: &str,
+) {
+	// Arrange
+	let ((site, db, _connection_lease), saved_changes) = relation_save_hook_context.await;
+	let request = MutationRequest {
+		csrf_token: TEST_CSRF_TOKEN.to_string(),
+		data: HashMap::from([(submitted_name.to_string(), json!(2))]),
+	};
+
+	// Act
+	let response = update_record(
+		"AdminRelationSourceModel".to_string(),
+		"1".to_string(),
+		request,
+		site,
+		db.clone(),
+		make_staff_request(),
+		make_auth_user(),
+	)
+	.await
+	.expect("relation update should succeed");
+	let row = relation_source_record(&db).await;
+	let changes = saved_changes
+		.lock()
+		.unwrap_or_else(PoisonError::into_inner)
+		.clone();
+
+	// Assert
+	assert_eq!(response.success, true);
+	assert_eq!(row.get("target_key"), Some(&json!(2)));
+	assert_eq!(changes.len(), 1);
+	assert_eq!(changes[0].transition::<i64>("target"), Some((1, 2)));
+	assert_eq!(changes[0].new_value("target_key"), None);
+	assert_eq!(
+		changes[0].changed_fields().collect::<Vec<_>>(),
+		vec!["target"]
+	);
 }
 
 #[rstest]

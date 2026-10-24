@@ -99,8 +99,11 @@ fn rendered_data_bearing_source_compiles_with_its_own_imports() {
 	use reinhardt_db::migrations::{
 		AlterTableOptions, ColumnDefinition, Constraint, DeferrableOption, FieldType,
 		FilesystemRepository, ForeignKeyAction, GeneratedColumnDefinition, GeneratedStorage,
-		IndexType, InterleaveSpec, Migration, MigrationRenderOptions, MySqlAlgorithm, MySqlLock,
-		Operation, PartitionDef, PartitionOptions, PartitionType, PartitionValues, SchemaExpr,
+		IdentityDefinition, IdentityGeneration, IdentityOperation, IndexType, InterleaveSpec,
+		Migration, MigrationRenderOptions, MySqlAlgorithm, MySqlLock, Operation, PartitionDef,
+		PartitionOptions, PartitionType, PartitionValues, QualifiedName, SchemaExpr, SequenceBound,
+		SequenceDataType, SequenceDefault, SequenceDefinition, SequenceKey, SequenceOperation,
+		SequenceOptions, SequenceOwner,
 	};
 	use std::{fs, process::Command};
 	use tempfile::TempDir;
@@ -118,6 +121,17 @@ fn rendered_data_bearing_source_compiles_with_its_own_imports() {
 			columns: vec![
 				ColumnDefinition::new("id", FieldType::Integer),
 				generated_column,
+				ColumnDefinition::new("number", FieldType::BigInteger)
+					.with_not_null(true)
+					.with_identity(Some(
+						IdentityDefinition::new(IdentityGeneration::Always)
+							.with_sequence_name(QualifiedName::new("identity_numbers")),
+					)),
+				ColumnDefinition::new("sequence_value", FieldType::SmallInteger)
+					.with_sequence_default(Some(SequenceDefault::new(
+						SequenceKey::new("accounts", "numbers"),
+						QualifiedName::new("account_numbers"),
+					))),
 			],
 			constraints: vec![Constraint::ForeignKey {
 				name: "accounts_owner_fk".to_string(),
@@ -156,6 +170,37 @@ fn rendered_data_bearing_source_compiles_with_its_own_imports() {
 					.with_lock(MySqlLock::Shared),
 			),
 			operator_class: None,
+		},
+		Operation::Sequence {
+			operation: SequenceOperation::Create {
+				definition: SequenceDefinition::new(
+					SequenceKey::new("accounts", "numbers"),
+					QualifiedName::new("account_numbers"),
+				)
+				.with_options(
+					SequenceOptions::new()
+						.with_data_type(SequenceDataType::SmallInteger)
+						.with_increment(-2)
+						.with_start(-10)
+						.with_max_value(SequenceBound::Default)
+						.with_min_value(SequenceBound::Value(-100))
+						.with_cache(5)
+						.with_cycle(false),
+				)
+				.with_owned_by(Some(SequenceOwner::new(
+					QualifiedName::new("accounts"),
+					"sequence_value",
+				))),
+			},
+		},
+		Operation::Identity {
+			operation: IdentityOperation::new(
+				QualifiedName::new("accounts"),
+				"number",
+				FieldType::BigInteger,
+				Some(IdentityDefinition::new(IdentityGeneration::Always)),
+				Some(IdentityDefinition::new(IdentityGeneration::ByDefault)),
+			),
 		},
 	];
 	let source = FilesystemRepository::new("/unused")
@@ -365,8 +410,9 @@ fn migration_renderer_round_trips_supported_operation_source() {
 async fn migration_renderer_compatibility_matrix_covers_every_operation_variant() {
 	use reinhardt_db::migrations::{
 		BulkLoadFormat, BulkLoadOptions, BulkLoadSource, ColumnDefinition, Constraint, FieldType,
-		FilesystemRepository, Migration, MigrationError, MigrationRenderOptions, MigrationSource,
-		Operation,
+		FilesystemRepository, IdentityDefinition, IdentityGeneration, IdentityOperation, Migration,
+		MigrationError, MigrationRenderOptions, MigrationSource, Operation, QualifiedName,
+		SequenceDefinition, SequenceKey, SequenceOperation,
 	};
 	use std::collections::HashMap;
 	use tempfile::TempDir;
@@ -582,6 +628,11 @@ async fn migration_renderer_compatibility_matrix_covers_every_operation_variant(
 			if_not_exists: true,
 			schema: None,
 		},
+		Operation::DropExtension {
+			name: "pg_trgm".into(),
+			if_exists: true,
+			cascade: false,
+		},
 		Operation::BulkLoad {
 			table: "accounts".to_string(),
 			source: BulkLoadSource::Stdin,
@@ -598,9 +649,26 @@ async fn migration_renderer_compatibility_matrix_covers_every_operation_variant(
 			columns: vec!["tenant_id".to_string(), "id".to_string()],
 			constraint_name: Some("accounts_pkey".to_string()),
 		},
+		Operation::Sequence {
+			operation: SequenceOperation::Create {
+				definition: SequenceDefinition::new(
+					SequenceKey::new("accounts", "numbers"),
+					QualifiedName::new("account_numbers"),
+				),
+			},
+		},
+		Operation::Identity {
+			operation: IdentityOperation::new(
+				QualifiedName::new("accounts"),
+				"value",
+				FieldType::Integer,
+				None,
+				Some(IdentityDefinition::new(IdentityGeneration::Always)),
+			),
+		},
 	]);
 	let expected_variants = operations.len();
-	assert_eq!(expected_variants, 33);
+	assert_eq!(expected_variants, 36);
 	for (index, operation) in operations.into_iter().enumerate() {
 		let (kind, supported) = match &operation {
 			Operation::CreateTable { .. } => ("CreateTable", true),
@@ -633,9 +701,15 @@ async fn migration_renderer_compatibility_matrix_covers_every_operation_variant(
 			Operation::CreateSchema { .. } => ("CreateSchema", true),
 			Operation::DropSchema { .. } => ("DropSchema", true),
 			Operation::CreateExtension { .. } => ("CreateExtension", true),
+			Operation::DropExtension { .. } => ("DropExtension", true),
 			Operation::BulkLoad { .. } => ("BulkLoad", true),
 			Operation::SetAutoIncrementValue { .. } => ("SetAutoIncrementValue", true),
 			Operation::CreateCompositePrimaryKey { .. } => ("CreateCompositePrimaryKey", true),
+			Operation::Sequence { .. } => ("Sequence", true),
+			Operation::Identity { .. } => ("Identity", true),
+			// `Operation` is non-exhaustive outside reinhardt-db. A new variant
+			// must be added to the matrix above instead of being skipped here.
+			other => panic!("operation variant missing from the source matrix: {other:?}"),
 		};
 		let temp_dir = TempDir::new().unwrap();
 		let repository = FilesystemRepository::new(temp_dir.path());
@@ -665,5 +739,53 @@ async fn migration_renderer_compatibility_matrix_covers_every_operation_variant(
 			.await
 			.unwrap();
 		assert_eq!(loaded[0].operations, vec![operation], "{kind}");
+	}
+}
+
+#[cfg(feature = "migrations")]
+mod persisted_operations {
+	use reinhardt_db::migrations::Operation;
+	use rstest::rstest;
+
+	#[rstest]
+	fn known_operation_keeps_its_json_tag() {
+		// Arrange
+		let operation = Operation::RenameTable {
+			old_name: "accounts".to_string(),
+			new_name: "users".to_string(),
+		};
+
+		// Act
+		let json = serde_json::to_value(&operation).expect("operation should serialize");
+		let decoded: Operation =
+			serde_json::from_value(json.clone()).expect("operation should deserialize");
+
+		// Assert
+		assert_eq!(
+			json,
+			serde_json::json!({
+				"type": "RenameTable",
+				"old_name": "accounts",
+				"new_name": "users",
+			})
+		);
+		assert_eq!(decoded, operation);
+	}
+
+	#[rstest]
+	fn unknown_operation_type_fails_explicitly() {
+		// Arrange
+		let persisted = r#"{"type": "FutureOperation", "table": "accounts"}"#;
+
+		// Act
+		let error = serde_json::from_str::<Operation>(persisted)
+			.expect_err("an unknown operation type must not deserialize");
+
+		// Assert
+		let message = error.to_string();
+		assert!(
+			message.starts_with("unknown variant `FutureOperation`, expected one of"),
+			"{message}"
+		);
 	}
 }

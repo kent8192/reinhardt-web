@@ -158,9 +158,10 @@ async fn test_invalid_http_headers(#[future] http1_server: TestServer) {
 	assert!(body.contains("Missing Content-Type header"));
 
 	// Test 2: Valid headers
-	let headers = &[("Content-Type", "application/json")];
 	let response = client
-		.get_with_headers("/test", headers)
+		.request(http::Method::GET, "/test")
+		.header(http::header::CONTENT_TYPE, "application/json")
+		.send()
 		.await
 		.expect("Failed to send request");
 
@@ -193,8 +194,11 @@ async fn test_oversized_headers(#[future] http1_server: TestServer) {
 
 	// Leak the string to get a static lifetime for the header value
 	let large_header_value: &'static str = Box::leak(large_header_value.into_boxed_str());
-	let headers = &[("X-Large-Header", large_header_value)];
-	let response = client.get_with_headers("/test", headers).await;
+	let response = client
+		.request(http::Method::GET, "/test")
+		.header("X-Large-Header", large_header_value)
+		.send()
+		.await;
 
 	// Server should either reject the request or handle it gracefully
 	// hyper may reject oversized headers before reaching our handler
@@ -239,7 +243,10 @@ async fn test_json_parse_errors(#[future] http1_server: TestServer) {
 
 	// Test 1: Invalid JSON syntax
 	let response = client
-		.post_raw_with_headers("/parse", b"{invalid json", "application/json", &[])
+		.request(http::Method::POST, "/parse")
+		.body(bytes::Bytes::copy_from_slice(b"{invalid json"))
+		.header(http::header::CONTENT_TYPE, "application/json")
+		.send()
 		.await
 		.expect("Failed to send request");
 
@@ -249,7 +256,10 @@ async fn test_json_parse_errors(#[future] http1_server: TestServer) {
 
 	// Test 2: Empty body
 	let response = client
-		.post_raw_with_headers("/parse", b"", "application/json", &[])
+		.request(http::Method::POST, "/parse")
+		.body(bytes::Bytes::copy_from_slice(b""))
+		.header(http::header::CONTENT_TYPE, "application/json")
+		.send()
 		.await
 		.expect("Failed to send request");
 
@@ -257,7 +267,10 @@ async fn test_json_parse_errors(#[future] http1_server: TestServer) {
 
 	// Test 3: Valid JSON
 	let response = client
-		.post_raw_with_headers("/parse", br#"{"key": "value"}"#, "application/json", &[])
+		.request(http::Method::POST, "/parse")
+		.body(bytes::Bytes::copy_from_slice(br#"{"key": "value"}"#))
+		.header(http::header::CONTENT_TYPE, "application/json")
+		.send()
 		.await
 		.expect("Failed to send request");
 

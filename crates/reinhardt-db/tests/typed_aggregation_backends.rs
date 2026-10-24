@@ -221,19 +221,11 @@ async fn create_schema(connection: &DatabaseConnection, backend: &str) {
 		.expect("model_records schema should be created");
 }
 
-async fn seed_data(connection: &DatabaseConnection, backend: &str) {
+async fn seed_data(connection: &DatabaseConnection) {
 	let uuid_one = "00000000-0000-0000-0000-000000000001";
 	let uuid_two = "00000000-0000-0000-0000-000000000002";
-	let uuid_type_one = if backend == "postgres" {
-		format!("'{uuid_one}'")
-	} else {
-		format!("'{uuid_one}'")
-	};
-	let uuid_type_two = if backend == "postgres" {
-		format!("'{uuid_two}'")
-	} else {
-		format!("'{uuid_two}'")
-	};
+	let uuid_type_one = format!("'{uuid_one}'");
+	let uuid_type_two = format!("'{uuid_two}'");
 	let rows = [
 		format!(
 			"(1, 'alpha', 10, 1.5, 10.25, {uuid_type_one}, '2024-01-02', '03:04:05', '2024-01-02 03:04:05+00:00')"
@@ -284,7 +276,7 @@ async fn run_matrix(fixture: BackendFixture) {
 	let backend = fixture.name();
 	let mut connection = fixture.connection();
 	create_schema(&connection, backend).await;
-	seed_data(&connection, backend).await;
+	seed_data(&connection).await;
 
 	let aggregates = [
 		label(func::count_all::<AggregateRecord>(), "row_count"),

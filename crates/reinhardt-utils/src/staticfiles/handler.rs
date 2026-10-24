@@ -1,7 +1,7 @@
 use mime_guess::from_path;
 use std::fs;
 use std::io;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tracing;
 
 /// Errors that can occur when serving static files.
@@ -61,6 +61,11 @@ impl StaticFileHandler {
 	/// When a directory is requested, the handler will try to serve
 	/// the first matching index file from this list.
 	///
+	/// Index files are confined to the root like explicitly requested files:
+	/// an index whose resolved path leaves the root (for example through a
+	/// symlink or an absolute name) is rejected with
+	/// [`StaticError::DirectoryTraversal`] instead of being served.
+	///
 	/// # Example
 	///
 	/// ```rust
@@ -89,6 +94,10 @@ impl StaticFileHandler {
 	}
 
 	/// Resolves and validates a request path to an absolute filesystem path within the root.
+	///
+	/// When `path` names a directory, the first existing index file is
+	/// returned at its in-directory path after its symlink-resolved target
+	/// has been checked against the root.
 	pub async fn resolve_path(&self, path: &str) -> Result<PathBuf, StaticError> {
 		let path = path.trim_start_matches('/');
 
@@ -128,7 +137,18 @@ impl StaticFileHandler {
 		if canonical_file.is_dir() {
 			for index_file in &self.index_files {
 				let index_path = canonical_file.join(index_file);
-				if index_path.exists() && index_path.is_file() {
+				// The index is read through `index_path`, which follows any
+				// symlink, so its canonical target must pass the same root
+				// containment check as an explicitly requested file.
+				let Ok(canonical_index) = index_path.canonicalize() else {
+					continue;
+				};
+				if !canonical_index.starts_with(&canonical_root) {
+					return Err(StaticError::DirectoryTraversal(
+						Path::new(path).join(index_file).display().to_string(),
+					));
+				}
+				if canonical_index.is_file() {
 					return Ok(index_path);
 				}
 			}

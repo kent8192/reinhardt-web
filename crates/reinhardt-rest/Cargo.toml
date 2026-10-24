@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-rest"
-version = "0.4.0-alpha.19"
+version = "0.4.0-alpha.22"
 description = "REST API framework aggregator for Reinhardt"
 keywords = ["rest", "api", "web", "framework", "django"]
 categories = ["web-programming", "web-programming::http-server"]
@@ -143,6 +143,7 @@ hyper = { workspace = true }
 bytes = { workspace = true }
 rstest = { workspace = true }
 testcontainers = { workspace = true }
+testcontainers-modules = { workspace = true }
 sqlx = { workspace = true }
 tempfile = { workspace = true }
 env_logger = "0.11"

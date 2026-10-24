@@ -182,6 +182,17 @@ impl PostgresQueryBuilder {
 		}
 	}
 
+	/// Build a typed ANALYZE statement after checking backend capabilities.
+	///
+	/// Native and WASM construction/rendering behavior is identical.
+	pub fn build_analyze_checked(
+		&self,
+		statement: &crate::query::AnalyzeStatement,
+	) -> Result<(String, Values), crate::QueryBuildError> {
+		crate::error::validate_analyze_for_backend(statement, "PostgreSQL")?;
+		Ok(self.build_analyze(statement))
+	}
+
 	/// Build a SELECT statement through the checked query-building API.
 	pub fn build_select_checked(
 		&self,
@@ -267,7 +278,7 @@ impl PostgresQueryBuilder {
 		writer.push_space();
 
 		if let Some(column_type) = &column.column_type {
-			if column.auto_increment {
+			if column.auto_increment && column.identity.is_none() {
 				use crate::types::ColumnType;
 				let serial_type = match column_type {
 					ColumnType::SmallInteger => "SMALLSERIAL",
@@ -279,6 +290,10 @@ impl PostgresQueryBuilder {
 			} else {
 				writer.push(&self.column_type_to_sql(column_type));
 			}
+		}
+
+		if let Some(identity) = &column.identity {
+			self.write_identity(writer, identity);
 		}
 
 		if let Some(generated) = &column.generated {
@@ -308,6 +323,58 @@ impl PostgresQueryBuilder {
 			writer.push_space();
 			writer.push("(");
 			self.write_simple_expr_unquoted(writer, check_expr);
+			writer.push(")");
+		}
+	}
+
+	fn write_identity(&self, writer: &mut SqlWriter, identity: &crate::types::IdentityDef) {
+		use crate::types::IdentityGeneration;
+		writer.push(" GENERATED ");
+		writer.push(match identity.generation {
+			IdentityGeneration::Always => "ALWAYS",
+			IdentityGeneration::ByDefault => "BY DEFAULT",
+		});
+		writer.push(" AS IDENTITY");
+		let options = &identity.options;
+		let mut parts = Vec::new();
+		if let Some(value) = options.increment {
+			parts.push(format!("INCREMENT BY {value}"));
+		}
+		for (name, value) in [
+			("MINVALUE", options.min_value),
+			("MAXVALUE", options.max_value),
+		] {
+			match value {
+				Some(Some(value)) => parts.push(format!("{name} {value}")),
+				Some(None) => parts.push(format!("NO {name}")),
+				None => {}
+			}
+		}
+		if let Some(value) = options.start {
+			parts.push(format!("START WITH {value}"));
+		}
+		if let Some(value) = options.cache {
+			parts.push(format!("CACHE {value}"));
+		}
+		if let Some(value) = options.cycle {
+			parts.push(if value { "CYCLE" } else { "NO CYCLE" }.into());
+		}
+		if let Some(name) = &identity.name {
+			let qualified = identity.schema.as_ref().map_or_else(
+				|| self.escape_iden(&name.to_string()),
+				|schema| {
+					format!(
+						"{}.{}",
+						self.escape_iden(&schema.to_string()),
+						self.escape_iden(&name.to_string())
+					)
+				},
+			);
+			parts.push(format!("SEQUENCE NAME {qualified}"));
+		}
+		if !parts.is_empty() {
+			writer.push(" (");
+			writer.push(&parts.join(" "));
 			writer.push(")");
 		}
 	}
@@ -853,6 +920,11 @@ impl PostgresQueryBuilder {
 	/// Write a simple expression
 	fn write_simple_expr(&self, writer: &mut SqlWriter, expr: &SimpleExpr) {
 		match expr {
+			SimpleExpr::Grouped(expr) => {
+				writer.push("(");
+				self.write_simple_expr(writer, expr);
+				writer.push(")");
+			}
 			SimpleExpr::Column(col_ref) => {
 				self.write_column_ref(writer, col_ref);
 			}
@@ -901,7 +973,7 @@ impl PostgresQueryBuilder {
 				self.write_grouped_expr(writer, expr, parenthesized, false);
 			}
 			SimpleExpr::FunctionCall(func_name, args) => {
-				writer.push(&func_name.to_string());
+				writer.push(&super::safe_function_name(func_name, '"'));
 				writer.push("(");
 				writer.push_list(args, ", ", |w, arg| {
 					self.write_simple_expr(w, arg);
@@ -1016,6 +1088,13 @@ impl PostgresQueryBuilder {
 				self.write_binary_operand(writer, pattern, BinOper::Like, true, false);
 				writer.push(" ESCAPE '\\'");
 			}
+			SimpleExpr::InsensitiveLikeWithEscape(expr, pattern) => {
+				writer.push("(");
+				self.write_binary_operand(writer, expr, BinOper::ILike, false, false);
+				writer.push(" ILIKE ");
+				self.write_binary_operand(writer, pattern, BinOper::ILike, true, false);
+				writer.push(" ESCAPE '\\')");
+			}
 			SimpleExpr::CustomWithExpr(template, exprs) => {
 				// Replace `?` placeholders with the rendered expressions
 				let mut parts = template.split('?');
@@ -1053,12 +1132,25 @@ impl PostgresQueryBuilder {
 				writer.push_space();
 				writer.push_identifier(&alias.to_string(), |s| self.escape_iden(s));
 			}
+			SimpleExpr::TextCast(expr) => {
+				writer.push("CAST(");
+				self.write_simple_expr(writer, expr);
+				writer.push(" AS TEXT)");
+			}
+			SimpleExpr::SignedIntegerCast(expr) => {
+				writer.push("CAST(");
+				self.write_simple_expr(writer, expr);
+				writer.push(" AS BIGINT)");
+			}
 			SimpleExpr::Cast(expr, type_name) => {
 				writer.push("CAST(");
 				self.write_simple_expr(writer, expr);
 				writer.push(" AS ");
 				writer.push_identifier(&type_name.to_string(), |s| self.escape_iden(s));
 				writer.push(")");
+			}
+			SimpleExpr::MySqlLastInsertId(_) => {
+				panic!("MySQL last insert ID is not supported by PostgreSQL")
 			}
 			SimpleExpr::PgExtractEpoch(expression) => {
 				writer.push("EXTRACT(EPOCH FROM ");
@@ -1180,11 +1272,23 @@ impl PostgresQueryBuilder {
 					}
 				}
 			}
+			SimpleExpr::Grouped(expr) => {
+				writer.push("(");
+				self.write_simple_expr_unquoted(writer, expr);
+				writer.push(")");
+			}
 			SimpleExpr::LikeWithEscape(expr, pattern) => {
 				self.write_binary_operand(writer, expr, BinOper::Like, false, true);
 				writer.push(" LIKE ");
 				self.write_binary_operand(writer, pattern, BinOper::Like, true, true);
 				writer.push(" ESCAPE '\\'");
+			}
+			SimpleExpr::InsensitiveLikeWithEscape(expr, pattern) => {
+				writer.push("(");
+				self.write_binary_operand(writer, expr, BinOper::ILike, false, true);
+				writer.push(" ILIKE ");
+				self.write_binary_operand(writer, pattern, BinOper::ILike, true, true);
+				writer.push(" ESCAPE '\\')");
 			}
 			SimpleExpr::Binary(left, op, right) => match (op, right.as_ref()) {
 				(BinOper::Between | BinOper::NotBetween, SimpleExpr::Tuple(items))
@@ -1228,7 +1332,7 @@ impl PostgresQueryBuilder {
 				self.write_grouped_expr(writer, expr, parenthesized, true);
 			}
 			SimpleExpr::FunctionCall(func_name, args) => {
-				writer.push(&func_name.to_string());
+				writer.push(&super::safe_function_name(func_name, '"'));
 				writer.push("(");
 				writer.push_list(args, ", ", |w, arg| {
 					self.write_simple_expr_unquoted(w, arg);
@@ -1313,12 +1417,25 @@ impl PostgresQueryBuilder {
 				writer.push_space();
 				writer.push_identifier(&alias.to_string(), |s| self.escape_iden(s));
 			}
+			SimpleExpr::TextCast(expr) => {
+				writer.push("CAST(");
+				self.write_simple_expr_unquoted(writer, expr);
+				writer.push(" AS TEXT)");
+			}
+			SimpleExpr::SignedIntegerCast(expr) => {
+				writer.push("CAST(");
+				self.write_simple_expr_unquoted(writer, expr);
+				writer.push(" AS BIGINT)");
+			}
 			SimpleExpr::Cast(expr, type_name) => {
 				writer.push("CAST(");
 				self.write_simple_expr_unquoted(writer, expr);
 				writer.push(" AS ");
 				writer.push_identifier(&type_name.to_string(), |s| self.escape_iden(s));
 				writer.push(")");
+			}
+			SimpleExpr::MySqlLastInsertId(_) => {
+				panic!("MySQL last insert ID is not supported by PostgreSQL")
 			}
 			SimpleExpr::PgExtractEpoch(expression) => {
 				writer.push("EXTRACT(EPOCH FROM ");
@@ -1901,16 +2018,20 @@ impl PostgresQueryBuilder {
 		// ON CONFLICT clause
 		if let Some(on_conflict) = &stmt.on_conflict {
 			use crate::query::{OnConflictAction, OnConflictTarget};
-			let has_target =
-				!matches!(&on_conflict.target, OnConflictTarget::Columns(cols) if cols.is_empty());
+			let has_target = on_conflict.constraint.is_some()
+				|| !matches!(&on_conflict.target, OnConflictTarget::Columns(cols) if cols.is_empty());
 			assert!(
 				has_target || matches!(on_conflict.action, OnConflictAction::DoNothing),
 				"PostgreSQL ON CONFLICT DO UPDATE requires a conflict target"
 			);
 			writer.push_keyword("ON CONFLICT");
 
-			// Target columns
-			if has_target {
+			// Named constraints and column targets are mutually exclusive.
+			if let Some(constraint) = &on_conflict.constraint {
+				writer.push_keyword("ON CONSTRAINT");
+				writer.push_space();
+				writer.push_identifier(&constraint.to_string(), |s| self.escape_iden(s));
+			} else if has_target {
 				writer.push_space();
 				writer.push("(");
 				match &on_conflict.target {
@@ -1942,6 +2063,18 @@ impl PostgresQueryBuilder {
 					});
 				}
 			}
+		}
+
+		if let Some(conflict) = &stmt.on_conflict
+			&& let Some(condition) = &conflict.action_condition
+		{
+			assert!(
+				matches!(conflict.action, crate::query::OnConflictAction::DoUpdate(_)),
+				"DO NOTHING cannot have an action condition"
+			);
+			writer.push_keyword("WHERE");
+			writer.push_space();
+			self.write_simple_expr(&mut writer, condition);
 		}
 
 		// RETURNING clause (PostgreSQL specific)
@@ -2161,6 +2294,9 @@ impl PostgresQueryBuilder {
 					if let Some(col_type) = &column_def.column_type {
 						writer.push(&self.column_type_to_sql(col_type));
 					}
+					if let Some(identity) = &column_def.identity {
+						self.write_identity(&mut writer, identity);
+					}
 					if let Some(generated) = &column_def.generated {
 						self.write_generated_column(&mut writer, generated);
 					}
@@ -2229,6 +2365,53 @@ impl PostgresQueryBuilder {
 						self.write_simple_expr(&mut writer, default);
 					}
 				}
+				AlterTableOperation::AddIdentity { column, identity } => {
+					writer.push("ALTER COLUMN ");
+					writer.push_identifier(&column.to_string(), |s| self.escape_iden(s));
+					writer.push(" ADD");
+					self.write_identity(&mut writer, identity);
+				}
+				AlterTableOperation::SetIdentity { column, identity } => {
+					assert!(
+						identity.name.is_none() && identity.schema.is_none(),
+						"SET IDENTITY cannot rename its sequence"
+					);
+					writer.push("ALTER COLUMN ");
+					writer.push_identifier(&column.to_string(), |s| self.escape_iden(s));
+					writer.push(" SET GENERATED ");
+					writer.push(match identity.generation {
+						crate::types::IdentityGeneration::Always => "ALWAYS",
+						crate::types::IdentityGeneration::ByDefault => "BY DEFAULT",
+					});
+					let options = &identity.options;
+					if let Some(value) = options.increment {
+						writer.push(&format!(" SET INCREMENT BY {value}"));
+					}
+					for (name, value) in [
+						("MINVALUE", options.min_value),
+						("MAXVALUE", options.max_value),
+					] {
+						match value {
+							Some(Some(value)) => writer.push(&format!(" SET {name} {value}")),
+							Some(None) => writer.push(&format!(" SET NO {name}")),
+							None => {}
+						}
+					}
+					if let Some(value) = options.start {
+						writer.push(&format!(" SET START WITH {value}"));
+					}
+					if let Some(value) = options.cache {
+						writer.push(&format!(" SET CACHE {value}"));
+					}
+					if let Some(value) = options.cycle {
+						writer.push(if value { " SET CYCLE" } else { " SET NO CYCLE" });
+					}
+				}
+				AlterTableOperation::DropIdentity { column } => {
+					writer.push("ALTER COLUMN ");
+					writer.push_identifier(&column.to_string(), |s| self.escape_iden(s));
+					writer.push(" DROP IDENTITY");
+				}
 				AlterTableOperation::AddConstraint(constraint) => {
 					writer.push("ADD ");
 					self.write_table_constraint(&mut writer, constraint);
@@ -2259,6 +2442,13 @@ impl PostgresQueryBuilder {
 		mut writer: SqlWriter,
 	) -> (String, Values) {
 		// CREATE UNIQUE INDEX IF NOT EXISTS
+		assert!(
+			stmt.columns
+				.iter()
+				.all(|column| column.prefix_length.is_none()),
+			"PostgreSQL does not support index column prefixes"
+		);
+
 		writer.push("CREATE");
 		writer.push_space();
 		if stmt.unique {
@@ -3803,9 +3993,19 @@ impl QueryBuilder for PostgresQueryBuilder {
 
 		// Sequence name
 		writer.push_space();
+		if let Some(schema) = &seq_def.schema {
+			writer.push_identifier(&schema.to_string(), |s| self.escape_iden(s));
+			writer.push(".");
+		}
 		writer.push_identifier(&Iden::to_string(seq_def.name.as_ref()), |s| {
 			self.escape_iden(s)
 		});
+
+		if let Some(data_type) = seq_def.data_type {
+			writer.push_keyword("AS");
+			writer.push_space();
+			writer.push(data_type.sql());
+		}
 
 		// INCREMENT BY
 		if let Some(increment) = seq_def.increment {
@@ -3873,6 +4073,18 @@ impl QueryBuilder for PostgresQueryBuilder {
 			writer.push_keyword("OWNED BY");
 			writer.push_space();
 			match owned_by {
+				OwnedBy::SchemaColumn {
+					schema,
+					table,
+					column,
+				} => {
+					for (index, identifier) in [schema, table, column].iter().enumerate() {
+						if index > 0 {
+							writer.push(".");
+						}
+						writer.push_identifier(&identifier.to_string(), |s| self.escape_iden(s));
+					}
+				}
 				OwnedBy::Column { table, column } => {
 					writer
 						.push_identifier(&Iden::to_string(table.as_ref()), |s| self.escape_iden(s));
@@ -3906,14 +4118,39 @@ impl QueryBuilder for PostgresQueryBuilder {
 
 		// Sequence name
 		writer.push_space();
+		if let Some(schema) = &stmt.schema {
+			writer.push_identifier(&schema.to_string(), |s| self.escape_iden(s));
+			writer.push(".");
+		}
 		writer.push_identifier(&Iden::to_string(stmt.name.as_ref()), |s| {
 			self.escape_iden(s)
 		});
+
+		if let Some(name) = &stmt.rename_to {
+			assert!(
+				stmt.options.is_empty(),
+				"sequence rename cannot be combined with option changes"
+			);
+			writer.push_keyword("RENAME TO");
+			writer.push_space();
+			writer.push_identifier(&name.to_string(), |s| self.escape_iden(s));
+			return writer.finish();
+		}
 
 		// Options
 		for option in &stmt.options {
 			writer.push_space();
 			match option {
+				SequenceOption::AsType(data_type) => {
+					writer.push_keyword("AS");
+					writer.push_space();
+					writer.push(data_type.sql());
+				}
+				SequenceOption::StartWith(value) => {
+					writer.push_keyword("START WITH");
+					writer.push_space();
+					writer.push(&value.to_string());
+				}
 				SequenceOption::Restart(value) => {
 					writer.push_keyword("RESTART");
 					if let Some(val) = value {
@@ -3958,6 +4195,20 @@ impl QueryBuilder for PostgresQueryBuilder {
 					writer.push_keyword("OWNED BY");
 					writer.push_space();
 					match owned_by {
+						OwnedBy::SchemaColumn {
+							schema,
+							table,
+							column,
+						} => {
+							for (index, identifier) in [schema, table, column].iter().enumerate() {
+								if index > 0 {
+									writer.push(".");
+								}
+								writer.push_identifier(&identifier.to_string(), |s| {
+									self.escape_iden(s)
+								});
+							}
+						}
 						OwnedBy::Column { table, column } => {
 							writer.push_identifier(&Iden::to_string(table.as_ref()), |s| {
 								self.escape_iden(s)
@@ -3993,6 +4244,10 @@ impl QueryBuilder for PostgresQueryBuilder {
 
 		// Sequence name
 		writer.push_space();
+		if let Some(schema) = &stmt.schema {
+			writer.push_identifier(&schema.to_string(), |s| self.escape_iden(s));
+			writer.push(".");
+		}
 		writer.push_identifier(&Iden::to_string(stmt.name.as_ref()), |s| {
 			self.escape_iden(s)
 		});
@@ -8090,6 +8345,7 @@ mod tests {
 			default: None,
 			check: None,
 			generated: None,
+			identity: None,
 			comment: None,
 		});
 		stmt.columns.push(ColumnDef {
@@ -8102,6 +8358,7 @@ mod tests {
 			default: None,
 			check: None,
 			generated: None,
+			identity: None,
 			comment: None,
 		});
 
@@ -8129,6 +8386,7 @@ mod tests {
 			default: None,
 			check: None,
 			generated: None,
+			identity: None,
 			comment: None,
 		});
 
@@ -8155,6 +8413,7 @@ mod tests {
 			default: None,
 			check: None,
 			generated: None,
+			identity: None,
 			comment: None,
 		});
 
@@ -8181,6 +8440,7 @@ mod tests {
 			default: None,
 			check: None,
 			generated: None,
+			identity: None,
 			comment: None,
 		});
 
@@ -8206,6 +8466,7 @@ mod tests {
 			default: None,
 			check: None,
 			generated: None,
+			identity: None,
 			comment: None,
 		});
 
@@ -8231,6 +8492,7 @@ mod tests {
 			default: Some(Expr::value(true).into_simple_expr()),
 			check: None,
 			generated: None,
+			identity: None,
 			comment: None,
 		});
 
@@ -8256,6 +8518,7 @@ mod tests {
 			default: None,
 			check: Some(Expr::col("age").gte(0).into_simple_expr()),
 			generated: None,
+			identity: None,
 			comment: None,
 		});
 
@@ -8335,6 +8598,7 @@ mod tests {
 			default: None,
 			check: None,
 			generated: None,
+			identity: None,
 			comment: None,
 		});
 		stmt.columns.push(ColumnDef {
@@ -8347,6 +8611,7 @@ mod tests {
 			default: None,
 			check: None,
 			generated: None,
+			identity: None,
 			comment: None,
 		});
 		stmt.constraints.push(TableConstraint::PrimaryKey {
@@ -8378,6 +8643,7 @@ mod tests {
 			default: None,
 			check: None,
 			generated: None,
+			identity: None,
 			comment: None,
 		});
 		stmt.columns.push(ColumnDef {
@@ -8390,6 +8656,7 @@ mod tests {
 			default: None,
 			check: None,
 			generated: None,
+			identity: None,
 			comment: None,
 		});
 		stmt.constraints.push(TableConstraint::ForeignKey {
@@ -8422,6 +8689,7 @@ mod tests {
 			expression: None,
 			order: None,
 			operator_class: None,
+			prefix_length: None,
 		});
 
 		let (sql, values) = builder.build_create_index(&stmt);
@@ -8446,6 +8714,7 @@ mod tests {
 			expression: None,
 			order: None,
 			operator_class: None,
+			prefix_length: None,
 		});
 
 		let (sql, values) = builder.build_create_index(&stmt);
@@ -8470,6 +8739,7 @@ mod tests {
 			expression: None,
 			order: None,
 			operator_class: None,
+			prefix_length: None,
 		});
 
 		let (sql, values) = builder.build_create_index(&stmt);
@@ -8494,6 +8764,7 @@ mod tests {
 			expression: None,
 			order: Some(Order::Desc),
 			operator_class: None,
+			prefix_length: None,
 		});
 
 		let (sql, values) = builder.build_create_index(&stmt);
@@ -8518,12 +8789,14 @@ mod tests {
 			expression: None,
 			order: Some(Order::Asc),
 			operator_class: None,
+			prefix_length: None,
 		});
 		stmt.columns.push(IndexColumn {
 			name: "first_name".into_iden(),
 			expression: None,
 			order: Some(Order::Asc),
 			operator_class: None,
+			prefix_length: None,
 		});
 
 		let (sql, values) = builder.build_create_index(&stmt);
@@ -8548,6 +8821,7 @@ mod tests {
 			expression: None,
 			order: None,
 			operator_class: None,
+			prefix_length: None,
 		});
 
 		let (sql, values) = builder.build_create_index(&stmt);
@@ -8572,6 +8846,7 @@ mod tests {
 			expression: None,
 			order: None,
 			operator_class: None,
+			prefix_length: None,
 		});
 
 		let (sql, values) = builder.build_create_index(&stmt);
@@ -8595,6 +8870,7 @@ mod tests {
 			expression: None,
 			order: None,
 			operator_class: None,
+			prefix_length: None,
 		});
 		stmt.r#where = Some(Expr::col("active").eq(true).into_simple_expr());
 
@@ -8625,6 +8901,7 @@ mod tests {
 				default: None,
 				check: None,
 				generated: None,
+				identity: None,
 				comment: None,
 			}));
 
@@ -8731,6 +9008,7 @@ mod tests {
 				default: None,
 				check: None,
 				generated: None,
+				identity: None,
 				comment: None,
 			}));
 

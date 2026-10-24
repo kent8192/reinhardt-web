@@ -1,7 +1,7 @@
 //! Choice column type implementation
 
-use crate::builder::html::td;
-use crate::dom::Element;
+use super::{cell, placeholder_cell};
+use crate::component::Page;
 use crate::tables::column::Column as ColumnTrait;
 use std::any::Any;
 use std::collections::HashMap;
@@ -57,15 +57,10 @@ impl ColumnTrait for ChoiceColumn {
 		&self.label
 	}
 
-	fn render(&self, value: &dyn Any) -> Element {
-		if let Some(val) = value.downcast_ref::<String>() {
-			let display = self
-				.choices
-				.get(val)
-				.map_or(val.as_str(), |label| label.as_str());
-			td().text(display).build()
-		} else {
-			td().text("-").build()
+	fn render(&self, value: &dyn Any) -> Page {
+		match value.downcast_ref::<String>() {
+			Some(val) => cell(self.choices.get(val).unwrap_or(val)),
+			None => placeholder_cell(),
 		}
 	}
 

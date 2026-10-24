@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.22](https://github.com/kent8192/reinhardt-web/compare/reinhardt-websockets@v0.4.0-alpha.21...reinhardt-websockets@v0.4.0-alpha.22) - 2026-10-22
+
+### Documentation
+
+- update version references to v0.4.0
+- update version references to v0.3.25
+
+### Maintenance
+
+- *(release)* target 0.3.24 instead of 0.4.0
+- *(sync)* merge main into develop/0.4.0
+
+### Security
+
+- *(websockets)* apply Redis credential and TLS fields to the connection
+
+## [0.4.0-alpha.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-websockets@v0.4.0-alpha.20...reinhardt-websockets@v0.4.0-alpha.21) - 2026-10-18
+
+### Fixed
+
+- *(conf,websockets)* redact secret fields in settings Debug output
+- *(macros,conf)* redact #[setting(secret)] fields in generated Debug
+- *(websockets)* redact password in RedisConfig Debug output
+
+### Security
+
+- *(websockets)* apply Redis credential and TLS fields to the connection
+
 ## [0.4.0-alpha.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-websockets@v0.4.0-alpha.14...reinhardt-websockets@v0.4.0-alpha.15) - 2026-09-10
 
 ### Documentation
@@ -48,6 +76,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Maintenance
 
 - merge main into develop/0.4.0
+
+## [0.3.25](https://github.com/kent8192/reinhardt-web/compare/reinhardt-websockets@v0.3.24...reinhardt-websockets@v0.3.25) - 2026-10-20
+
+### Security
+
+- *(websockets)* apply Redis credential and TLS fields to the connection
+
 
 ## [0.3.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-websockets@v0.3.15...reinhardt-websockets@v0.3.16) - 2026-09-08
 

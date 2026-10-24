@@ -24,7 +24,9 @@ pub use crate::core::serde::{Deserialize, Serialize};
 pub use reinhardt_tasks::{Scheduler, Task, TaskExecutor, TaskQueue};
 
 #[cfg(all(feature = "test", native))]
-pub use reinhardt_test::{APIClient, APIRequestFactory, APITestCase, TestResponse};
+pub use reinhardt_test::{
+	APIClient, APIRequestFactory, APITestCase, TestRequestBuilder, TestResponse,
+};
 
 #[cfg(all(feature = "storage", native))]
 pub use reinhardt_utils::storage::{InMemoryStorage, LocalStorage, Storage};

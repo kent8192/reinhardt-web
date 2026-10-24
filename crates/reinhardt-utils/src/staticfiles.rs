@@ -1,4 +1,7 @@
 //! Static files and production utilities for Reinhardt
+//!
+//! **Parity: P0.** Native-only; this module is absent from
+//! `wasm32-unknown-unknown` builds because it serves files over native HTTP.
 
 /// Cache control configuration and middleware.
 pub mod caching;

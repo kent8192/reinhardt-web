@@ -24,6 +24,10 @@
 //! `Model::objects().all()` so model-level custom manager filters apply to list
 //! and lookup paths.
 //!
+//! Configured request filters use model field metadata to parse typed values.
+//! Invalid typed values return validation errors; fields without metadata retain
+//! string values, including numeric-looking text.
+//!
 //! # Examples
 //!
 //! ```rust,no_run
@@ -83,3 +87,22 @@ pub use destroy_api::DestroyAPIView;
 pub use list_api::ListAPIView;
 pub use retrieve_api::RetrieveAPIView;
 pub use update_api::UpdateAPIView;
+
+fn request_filter_value<M: reinhardt_db::orm::Model>(
+	field: &str,
+	value: &str,
+) -> reinhardt_core::exception::Result<reinhardt_db::orm::FilterValue> {
+	match M::field_metadata()
+		.into_iter()
+		.find(|metadata| metadata.name == field)
+	{
+		Some(metadata) => reinhardt_db::orm::model::filter_value_from_field(&metadata, value)
+			.map_err(|_| {
+				reinhardt_core::exception::Error::Validation(format!(
+					"invalid {} value: {value}",
+					metadata.field_type
+				))
+			}),
+		None => Ok(reinhardt_db::orm::FilterValue::String(value.to_owned())),
+	}
+}

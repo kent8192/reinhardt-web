@@ -423,3 +423,6 @@ pub use reinhardt_query::prelude::{
 // Re-export reinhardt-query Value as QueryBuilderValue to avoid conflict with
 // annotation::Value and types::SqlValue
 pub use reinhardt_query::prelude::Value as QueryBuilderValue;
+
+#[cfg(test)]
+pub(crate) mod test_connection;

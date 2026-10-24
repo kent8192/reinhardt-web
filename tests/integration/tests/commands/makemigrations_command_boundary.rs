@@ -584,6 +584,65 @@ async fn execute_cli(arguments: &[&str]) -> Result<(), Box<dyn std::error::Error
 }
 
 #[rstest]
+#[tokio::test]
+#[serial(command_current_dir)]
+async fn sql_assets_file_state_check_detects_independent_model_drift() {
+	// Arrange
+	let _registry = ModelRegistryGuard::clear();
+	let project = TempDir::new_in("/tmp").unwrap();
+	std::fs::create_dir_all(project.path().join("src/bin")).unwrap();
+	std::fs::write(project.path().join("src/bin/manage.rs"), "fn main() {}\n").unwrap();
+	let _cwd = ProjectDirGuard::enter(project.path());
+	let root = project.path().join("migrations");
+	let app = root.join("assets");
+	std::fs::create_dir_all(&app).unwrap();
+	std::fs::write(
+		app.join("guard.sql"),
+		"DO $guard$ BEGIN PERFORM 1; END $guard$;\n",
+	)
+	.unwrap();
+	let text = r#"// reinhardt-migration-source: 1
+fn migration() -> Migration {
+    Migration::new("0001_initial", "assets")
+        .add_operation(Operation::CreateTable {
+            name: "asset_items".into(), columns: vec![ColumnDefinition::new("name", FieldType::Text)],
+            constraints: vec![], without_rowid: None, partition: None, interleave_in_parent: None,
+        })
+        .add_operation(Operation::RunSQL { sql: include_str!("guard.sql").into(), reverse_sql: None })
+}
+"#;
+	let path = app.join("0001_initial.rs");
+	std::fs::write(&path, text).unwrap();
+	let mut model = ModelMetadata::new("assets", "AssetItems", "asset_items");
+	model.add_field(
+		"name".into(),
+		FieldMetadata::new(FieldType::Text).with_nullable(true),
+	);
+	global_registry().register_model(model.clone());
+	let mut context = makemigrations_context(Some("assets"), &root);
+	context.set_option("check".into(), "true".into());
+	// Act
+	MakeMigrationsCommand.execute(&context).await.unwrap();
+	model.add_field(
+		"extra".into(),
+		FieldMetadata::new(FieldType::Integer).with_nullable(true),
+	);
+	global_registry().register_model(model);
+	let error = MakeMigrationsCommand
+		.execute(&context)
+		.await
+		.unwrap_err()
+		.to_string();
+	// Assert
+	assert!(error.contains("1 migration(s) would be created"), "{error}");
+	assert_eq!(std::fs::read(&path).unwrap(), text.as_bytes());
+	assert_eq!(
+		migration_file_names(&root, "assets"),
+		vec!["0001_initial.rs", "guard.sql"]
+	);
+}
+
+#[rstest]
 #[case::default(None, false)]
 #[case::relative(Some("requested"), false)]
 #[case::absolute_with_spaces_and_unicode(Some("custom migrations/日本語"), true)]

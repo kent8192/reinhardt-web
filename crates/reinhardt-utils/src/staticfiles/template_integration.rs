@@ -119,7 +119,7 @@ impl TemplateStaticConfig {
 	/// # }
 	/// ```
 	pub async fn from_storage(storage: &ManifestStaticFilesStorage) -> io::Result<Self> {
-		let manifest_path = storage.location.join(&storage.manifest_name);
+		let manifest_path = storage.manifest_path()?;
 
 		if !manifest_path.exists() {
 			return Ok(Self {

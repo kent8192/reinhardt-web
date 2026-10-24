@@ -13,11 +13,11 @@ Add `reinhardt` to your `Cargo.toml`:
 <!-- reinhardt-version-sync:3 -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.4.0-alpha.19", features = ["middleware"] }
+reinhardt = { version = "0.4.0-alpha.22", features = ["middleware"] }
 
 # Or use a preset:
-# reinhardt = { version = "0.4.0-alpha.19", features = ["standard"] }  # Recommended
-# reinhardt = { version = "0.4.0-alpha.19", features = ["full"] }      # All features
+# reinhardt = { version = "0.4.0-alpha.22", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.4.0-alpha.22", features = ["full"] }      # All features
 ```
 
 Then import middleware features:
@@ -261,9 +261,36 @@ middleware-owned `SessionStore` to DI. A session `USER_ID_SESSION_KEY` is only
 an identity reference; it does not establish `AuthState` because account status
 and privileges can change after a session is created. Configure an
 authentication middleware that validates the current user record before using
-`CurrentUser<U>` or authorization guards. `CookieSessionAuthMiddleware` remains
-available for custom `AsyncSessionBackend` integrations, but it only restores
-flags stored in the session and must not be treated as an account validator.
+`CurrentUser<U>` or authorization guards. For custom `AsyncSessionBackend`
+integrations, configure `CookieSessionAuthMiddleware::with_auth_backend` with
+an `AuthBackend` that resolves the current user. It checks account status and
+privileges on every request. Sessions without an auth backend remain anonymous,
+and stored `is_staff` / `is_superuser` flags no longer grant access.
+Applications that previously constructed `CookieSessionAuthMiddleware` with
+`new` or `with_config` must call `with_auth_backend` and provide an implementation
+of `AuthBackend::get_user` before cookie sessions can authenticate users.
+The returned `AuthIdentity::is_account_active` and `is_admin` values must reflect
+the current account record; return `None` when an account has been deleted.
+
+Sessions are stored lazily. A request without a stored session gets a fresh
+`SessionData` that is stored only once a handler saves it (for example through
+`SessionAuthExt::login`). Its ID is still sent as the session cookie so that
+values bound to it, such as CSRF tokens, stay valid; the ID is signed with a
+random key held by the store and expires after the session TTL, so the store
+does not need to remember it. The in-memory `SessionStore` holds at most
+`SessionStore::DEFAULT_MAX_SESSIONS` (100,000) sessions. Saving a new session
+into a full store drops expired sessions, then evicts those closest to expiry.
+Change the limit with `SessionStore::set_max_sessions`.
+
+Sessions are stored lazily. A request without a stored session gets a fresh
+`SessionData` that is stored only once a handler saves it (for example through
+`SessionAuthExt::login`). Its ID is still sent as the session cookie so that
+values bound to it, such as CSRF tokens, stay valid; the ID is signed with a
+random key held by the store and expires after the session TTL, so the store
+does not need to remember it. The in-memory `SessionStore` holds at most
+`SessionStore::DEFAULT_MAX_SESSIONS` (100,000) sessions. Saving a new session
+into a full store drops expired sessions, then evicts those closest to expiry.
+Change the limit with `SessionStore::set_max_sessions`.
 
 - `USER_ID_SESSION_KEY` — the canonical session-store key (`"user_id"`)
   every handler should read from / write to instead of hardcoding a literal.

@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use http::header::{HeaderMap, HeaderName, HeaderValue};
 use reinhardt_core::exception::Result;
 use reinhardt_http::{Handler, Middleware};
 use reinhardt_http::{Request, Response};
@@ -95,6 +96,22 @@ pub struct StaticFilesConfig {
 	/// These fragments are not escaped. They are intended for framework-owned
 	/// development scripts such as hot-reload clients, not user input.
 	pub trusted_html_injections: Vec<String>,
+	/// Response headers attached to every response this middleware serves.
+	///
+	/// The middleware answers file, directory index, and SPA fallback requests
+	/// without calling the next handler, so router-level middleware never sees
+	/// those responses. Use this map to attach security headers such as
+	/// `Content-Security-Policy`, `X-Content-Type-Options`, `X-Frame-Options`,
+	/// `Referrer-Policy`, or `Strict-Transport-Security` to the SPA shell and
+	/// static assets. Requests forwarded to the next handler are left untouched.
+	///
+	/// Configured headers are applied last. A configured name replaces every
+	/// value the middleware set for that name (for example `Cache-Control`);
+	/// all other middleware headers such as `Content-Type` and `ETag` are kept.
+	/// Do not configure framing headers such as `Content-Length`.
+	///
+	/// Empty by default.
+	pub response_headers: HeaderMap,
 }
 
 impl Default for StaticFilesConfig {
@@ -115,6 +132,7 @@ impl Default for StaticFilesConfig {
 			manifest_aliases: HashMap::new(),
 			template_static_config: None,
 			trusted_html_injections: Vec::new(),
+			response_headers: HeaderMap::new(),
 		}
 	}
 }
@@ -274,6 +292,60 @@ impl StaticFilesConfig {
 			"trusted_html_injection must not be empty"
 		);
 		self.trusted_html_injections.push(fragment);
+		self
+	}
+
+	/// Replace the response headers attached to every served response.
+	///
+	/// See the [`response_headers` field](StaticFilesConfig#structfield.response_headers)
+	/// for which responses receive the headers and how they interact with
+	/// headers set by the middleware.
+	/// A [`HeaderMap`] holding several values for one name sends that header
+	/// once per value.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use http::header::{self, HeaderMap, HeaderValue};
+	/// use reinhardt_utils::staticfiles::middleware::StaticFilesConfig;
+	///
+	/// let mut headers = HeaderMap::new();
+	/// headers.insert(header::X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff"));
+	/// headers.insert(header::REFERRER_POLICY, HeaderValue::from_static("no-referrer"));
+	///
+	/// let config = StaticFilesConfig::new("dist").response_headers(headers);
+	///
+	/// assert_eq!(config.response_headers[header::REFERRER_POLICY], "no-referrer");
+	/// ```
+	pub fn response_headers(mut self, headers: HeaderMap) -> Self {
+		self.response_headers = headers;
+		self
+	}
+
+	/// Add one response header attached to every served response.
+	///
+	/// Replaces any value previously configured for the same name. See the
+	/// [`response_headers` field](StaticFilesConfig#structfield.response_headers)
+	/// for which responses receive the header and how it interacts with headers
+	/// set by the middleware.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use http::header::{self, HeaderValue};
+	/// use reinhardt_utils::staticfiles::middleware::StaticFilesConfig;
+	///
+	/// let config = StaticFilesConfig::new("dist")
+	///     .response_header(
+	///         header::CONTENT_SECURITY_POLICY,
+	///         HeaderValue::from_static("default-src 'self'; frame-ancestors 'none'"),
+	///     )
+	///     .response_header(header::X_FRAME_OPTIONS, HeaderValue::from_static("DENY"));
+	///
+	/// assert_eq!(config.response_headers[header::X_FRAME_OPTIONS], "DENY");
+	/// ```
+	pub fn response_header(mut self, name: HeaderName, value: HeaderValue) -> Self {
+		self.response_headers.insert(name, value);
 		self
 	}
 }
@@ -677,7 +749,7 @@ impl StaticFilesMiddleware {
 	///
 	/// Priority:
 	/// 1. `index_file` — explicit path (can be outside `root_dir`)
-	/// 2. `index_files` — searched within `root_dir`
+	/// 2. `index_files` — searched within `root_dir`, confined to it
 	async fn serve_spa_fallback(&self) -> Option<Response> {
 		// Priority 1: Explicit index file path (can be outside root_dir)
 		if let Some(ref index_path) = self.config.index_file {
@@ -685,14 +757,10 @@ impl StaticFilesMiddleware {
 			return self.build_spa_response(content, index_path);
 		}
 
-		// Priority 2: Search within root_dir (existing behavior)
-		for index_file in &self.config.index_files {
-			let path = self.config.root_dir.join(index_file);
-			if let Ok(content) = tokio::fs::read(&path).await {
-				return self.build_spa_response(content, &path);
-			}
-		}
-		None
+		// Priority 2: The root directory index. The handler was built with
+		// `index_files` and rejects an index that resolves outside root_dir.
+		let file = self.handler.serve("/").await.ok()?;
+		self.build_spa_response(file.content, &file.path)
 	}
 
 	/// Build a SPA response from raw file content, injecting WASM script if applicable.
@@ -773,6 +841,19 @@ impl StaticFilesMiddleware {
 		Some(response)
 	}
 
+	/// Attach the configured response headers to a response served by this
+	/// middleware.
+	fn apply_response_headers(&self, mut response: Response) -> Response {
+		if !self.config.response_headers.is_empty() {
+			// `HeaderMap::extend` replaces every existing value of each
+			// configured name and keeps repeated configured values intact.
+			response
+				.headers
+				.extend(self.config.response_headers.clone());
+		}
+		response
+	}
+
 	/// Serve a file directly from a configured filesystem path (bypasses `root_dir` security check).
 	///
 	/// The path may be absolute or relative, depending on how it was configured (e.g. via CLI
@@ -848,7 +929,7 @@ impl Middleware for StaticFilesMiddleware {
 
 		// Try to serve the static file
 		if let Some(response) = self.try_serve(&file_path).await {
-			return Ok(response);
+			return Ok(self.apply_response_headers(response));
 		}
 
 		// In SPA mode, try to serve index.html for routes not in excluded_prefixes
@@ -860,7 +941,7 @@ impl Middleware for StaticFilesMiddleware {
 				.any(|prefix| Self::matches_excluded_prefix(path, prefix))
 			&& let Some(response) = self.serve_spa_fallback().await
 		{
-			return Ok(response);
+			return Ok(self.apply_response_headers(response));
 		}
 
 		// Fall through to the next handler
@@ -878,7 +959,7 @@ impl Middleware for StaticFilesMiddleware {
 mod tests {
 	use super::*;
 	use crate::staticfiles::caching::{CacheControlConfig, CachePolicy};
-	use rstest::rstest;
+	use rstest::{fixture, rstest};
 
 	#[test]
 	fn test_config_defaults() {
@@ -888,6 +969,7 @@ mod tests {
 		assert!(config.spa_mode);
 		assert_eq!(config.index_files, vec!["index.html".to_string()]);
 		assert!(config.trusted_html_injections.is_empty());
+		assert!(config.response_headers.is_empty());
 	}
 
 	#[test]
@@ -2215,6 +2297,248 @@ mod tests {
 		assert_eq!(
 			body, "/* served */",
 			"with empty passthrough_prefixes the file under root_dir wins"
+		);
+	}
+
+	const TEST_CSP: &str = "default-src 'self'; frame-ancestors 'none'";
+
+	/// Static root with a hashed-free asset and an `index.html` shell, used by
+	/// the response header tests.
+	#[fixture]
+	fn spa_root() -> tempfile::TempDir {
+		let dir = tempfile::tempdir().unwrap();
+		std::fs::write(
+			dir.path().join("index.html"),
+			"<html><body>shell</body></html>",
+		)
+		.unwrap();
+		std::fs::write(dir.path().join("app.css"), "body { color: red }").unwrap();
+		dir
+	}
+
+	fn response_header_names(response: &Response) -> Vec<String> {
+		let mut names: Vec<String> = response
+			.headers
+			.keys()
+			.map(|name| name.as_str().to_owned())
+			.collect();
+		names.sort();
+		names
+	}
+
+	#[rstest]
+	fn test_response_header_builders_insert_and_replace() {
+		// Arrange
+		let mut replacement = HeaderMap::new();
+		replacement.insert(
+			http::header::REFERRER_POLICY,
+			HeaderValue::from_static("no-referrer"),
+		);
+
+		// Act
+		let single = StaticFilesConfig::new("dist")
+			.response_header(
+				http::header::X_FRAME_OPTIONS,
+				HeaderValue::from_static("SAMEORIGIN"),
+			)
+			.response_header(
+				http::header::X_FRAME_OPTIONS,
+				HeaderValue::from_static("DENY"),
+			);
+		let replaced = single.clone().response_headers(replacement.clone());
+
+		// Assert
+		assert_eq!(single.response_headers.len(), 1);
+		assert_eq!(
+			single.response_headers[http::header::X_FRAME_OPTIONS],
+			"DENY"
+		);
+		assert_eq!(replaced.response_headers, replacement);
+	}
+
+	#[rstest]
+	#[case::file("/app.css", "body { color: red }")]
+	#[case::directory_index("/", "<html><body>shell</body></html>")]
+	#[case::spa_fallback("/dashboard/settings", "<html><body>shell</body></html>")]
+	#[tokio::test]
+	async fn test_response_headers_applied_to_served_responses(
+		spa_root: tempfile::TempDir,
+		#[case] request_path: &str,
+		#[case] expected_body: &str,
+	) {
+		// Arrange
+		let config = StaticFilesConfig::new(spa_root.path())
+			.auto_inject_wasm(false)
+			.response_header(
+				http::header::CONTENT_SECURITY_POLICY,
+				HeaderValue::from_static(TEST_CSP),
+			)
+			.response_header(
+				http::header::X_CONTENT_TYPE_OPTIONS,
+				HeaderValue::from_static("nosniff"),
+			);
+		let middleware = StaticFilesMiddleware::new(config);
+		let next: Arc<dyn Handler> = Arc::new(PassthroughProbeHandler);
+
+		// Act
+		let response = middleware
+			.process(build_request(request_path), next)
+			.await
+			.unwrap();
+
+		// Assert
+		assert_eq!(
+			String::from_utf8(response.body.to_vec()).unwrap(),
+			expected_body
+		);
+		assert_eq!(
+			response.headers[http::header::CONTENT_SECURITY_POLICY],
+			TEST_CSP
+		);
+		assert_eq!(
+			response.headers[http::header::X_CONTENT_TYPE_OPTIONS],
+			"nosniff"
+		);
+		assert!(response.headers.contains_key(http::header::ETAG));
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_response_headers_not_applied_to_forwarded_responses(spa_root: tempfile::TempDir) {
+		// Arrange
+		let config = StaticFilesConfig::new(spa_root.path())
+			.spa_mode(false)
+			.response_header(
+				http::header::CONTENT_SECURITY_POLICY,
+				HeaderValue::from_static(TEST_CSP),
+			);
+		let middleware = StaticFilesMiddleware::new(config);
+		let next: Arc<dyn Handler> = Arc::new(PassthroughProbeHandler);
+
+		// Act
+		let response = middleware
+			.process(build_request("/api/items"), next)
+			.await
+			.unwrap();
+
+		// Assert
+		assert_eq!(
+			String::from_utf8(response.body.to_vec()).unwrap(),
+			"from-next-handler"
+		);
+		assert!(response.headers.is_empty());
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_empty_response_headers_add_nothing(spa_root: tempfile::TempDir) {
+		// Arrange
+		let config = StaticFilesConfig::new(spa_root.path())
+			.auto_inject_wasm(false)
+			.cache_config(CacheControlConfig::disabled());
+		let middleware = StaticFilesMiddleware::new(config);
+		let next: Arc<dyn Handler> = Arc::new(PassthroughProbeHandler);
+
+		// Act
+		let asset = middleware
+			.process(build_request("/app.css"), next.clone())
+			.await
+			.unwrap();
+		let shell = middleware
+			.process(build_request("/dashboard"), next)
+			.await
+			.unwrap();
+
+		// Assert
+		assert_eq!(response_header_names(&asset), ["content-type", "etag"]);
+		assert_eq!(response_header_names(&shell), ["content-type", "etag"]);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_configured_response_header_overrides_middleware_header(
+		spa_root: tempfile::TempDir,
+	) {
+		// Arrange
+		let config = StaticFilesConfig::new(spa_root.path())
+			.auto_inject_wasm(false)
+			.cache_config(CacheControlConfig::new())
+			.response_header(
+				http::header::CACHE_CONTROL,
+				HeaderValue::from_static("no-store"),
+			);
+		let middleware = StaticFilesMiddleware::new(config);
+		let next: Arc<dyn Handler> = Arc::new(PassthroughProbeHandler);
+
+		// Act
+		let response = middleware
+			.process(build_request("/app.css"), next)
+			.await
+			.unwrap();
+
+		// Assert
+		let cache_control: Vec<_> = response
+			.headers
+			.get_all(http::header::CACHE_CONTROL)
+			.iter()
+			.collect();
+		assert_eq!(cache_control, [HeaderValue::from_static("no-store")]);
+		assert_eq!(response.headers[http::header::CONTENT_TYPE], "text/css");
+	}
+
+	/// Builds a default (SPA mode) middleware whose root and nested `docs/`
+	/// directory indexes are symlinks to a file outside `root_dir`.
+	#[cfg(unix)]
+	fn middleware_with_escaping_index_symlinks() -> (tempfile::TempDir, StaticFilesMiddleware) {
+		let dir = tempfile::tempdir().unwrap();
+		let outside = dir.path().join("outside.txt");
+		std::fs::write(&outside, "outside secret").unwrap();
+		let dist = dir.path().join("dist");
+		std::fs::create_dir_all(dist.join("docs")).unwrap();
+		std::os::unix::fs::symlink(&outside, dist.join("index.html")).unwrap();
+		std::os::unix::fs::symlink(&outside, dist.join("docs/index.html")).unwrap();
+		let middleware = StaticFilesMiddleware::new(StaticFilesConfig::new(&dist));
+		(dir, middleware)
+	}
+
+	#[cfg(unix)]
+	#[tokio::test]
+	async fn test_serve_spa_fallback_rejects_index_symlink_outside_root() {
+		// Arrange
+		let (_dir, middleware) = middleware_with_escaping_index_symlinks();
+
+		// Act
+		let response = middleware.serve_spa_fallback().await;
+
+		// Assert
+		assert!(
+			response.is_none(),
+			"SPA fallback must not serve an index symlink that resolves outside root_dir"
+		);
+	}
+
+	#[cfg(unix)]
+	#[rstest]
+	#[case::root_directory("/")]
+	#[case::nested_directory("/docs/")]
+	#[case::spa_route("/dashboard")]
+	#[tokio::test]
+	async fn test_process_never_serves_index_symlink_outside_root(#[case] request_path: &str) {
+		// Arrange
+		let (_dir, middleware) = middleware_with_escaping_index_symlinks();
+		let next: Arc<dyn Handler> = Arc::new(PassthroughProbeHandler);
+
+		// Act
+		let response = middleware
+			.process(build_request(request_path), next)
+			.await
+			.unwrap();
+
+		// Assert
+		let body = String::from_utf8(response.body.to_vec()).unwrap();
+		assert_eq!(
+			body, "from-next-handler",
+			"an index symlink escaping root_dir must fall through instead of being served"
 		);
 	}
 }

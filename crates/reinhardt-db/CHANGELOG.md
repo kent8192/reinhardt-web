@@ -7,6 +7,237 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.22](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.4.0-alpha.21...reinhardt-db@v0.4.0-alpha.22) - 2026-10-22
+
+### Added
+
+- *(macros,db)* [**breaking**] lead foreign keys with columns shared by both models
+
+### Fixed
+
+- *(deps)* remove legacy aws sdk tls transports
+
+### Security
+
+- Use the current AWS SDK HTTPS transport for DynamoDB without the legacy TLS dependency chain.
+
+## [0.4.0-alpha.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.4.0-alpha.20...reinhardt-db@v0.4.0-alpha.21) - 2026-10-18
+
+### Added
+
+- *(query)* add owned SQLx argument adaptation
+- *(query)* add checked numeric PostgreSQL epoch extraction
+- *(db)* execute generated queries with native owned arguments
+- *(db)* bind generated transaction queries and streams natively
+- *(db)* bind generic ORM execution with native arguments
+- *(db)* add constructors and builders for migration state and introspection types
+- feat!(db): make migration operation and state types non-exhaustive
+
+### Changed
+
+- *(db)* consume generated content type arguments
+- *(orm)* own generated async query arguments
+- *(orm)* execute querysets with native generated arguments
+- *(orm)* preserve native arguments through typed upserts
+- *(orm)* retain native arguments in relationship accessors
+- *(orm)* execute manager CRUD with native arguments
+- *(orm)* bind bulk update CASE values natively
+- *(orm)* bind native values for bulk model inserts
+- *(auth)* bind native session persistence statements
+- *(db)* bind native backend builder statements
+- *(db)* bind backend insert statements
+- *(db)* build typed MySQL insert ID operations
+- *(db)* build typed Session model reads
+- *(db)* generate session arguments from typed values
+
+### Documentation
+
+- *(orm)* reflow hybrid DML identifier quoting note
+- *(orm)* note case-sensitive and MySQL quoting effects of DML identifiers
+
+### Fixed
+
+- *(db)* bypass incompatible PostgreSQL generated statement caches
+- *(db)* build typed backend analysis statements
+- *(db)* build portable case-insensitive filters
+- *(db)* build typed inclusive range predicates
+- *(db)* build typed legacy arithmetic expressions
+- *(db)* bind legacy case conditions structurally
+- *(db)* keep builder array validation available with postgres only
+- *(db)* preserve array arguments for raw-only custom backends
+- *(db)* truncate generated temporal arguments to microseconds
+
+### Security
+
+- *(orm)* quote identifiers in hybrid DML and bulk update builders
+
+### Testing
+
+- *(db)* refresh generated execution regression contracts
+- *(db)* build introspection fixtures through constructors
+
+### Breaking Changes
+
+- The migration enums `Operation`, `OperationStatement`, `Constraint`, `IndexType`, and `FieldType` are now `#[non_exhaustive]` (#6511). Existing variants remain constructible, so migration source files keep compiling, but downstream `match` expressions need a wildcard arm. When the caller interprets migrations, that arm should return an explicit unsupported-operation or unsupported-type error rather than silently skipping the value.
+- The migration state, introspection, and registry structs `FieldState`, `ModelState`, `ProjectState`, `introspection::DatabaseSchema`, `TableInfo`, `ColumnInfo`, `ModelMetadata`, and `FieldMetadata` are now `#[non_exhaustive]` (#6511). Replace external struct literals with the constructors and builders: `FieldState::new(..).with_param(..)`, `ModelState::new(..).with_table_name(..).with_field(..)`, `ProjectState::new().with_model(..)`, `DatabaseSchema::new().with_table(..)`, `TableInfo::new(..).with_column(..)`, and `ColumnInfo::new(..).with_default(..)`. Struct update syntax (`..Default::default()`) does not bypass the restriction. Public fields remain readable and assignable, and JSON tags, field names, and migration-source round trips are unchanged.
+
+## [0.4.0-alpha.20](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.4.0-alpha.19...reinhardt-db@v0.4.0-alpha.20) - 2026-10-06
+
+### Documentation
+
+- *(db)* clarify the insert builder NULL parameter contract
+
+## [0.3.25](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.3.24...reinhardt-db@v0.3.25) - 2026-10-20
+
+### Fixed
+
+- *(db)* keep QuerySet UnwindSafe with structured join conditions
+
+### Other
+
+- resolve conflicts with upstream main
+- resolve conflicts with origin/main
+
+### Testing
+
+- *(db)* expect grouped CASE operands on MySQL and SQLite
+
+## [0.3.24](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.3.23...reinhardt-db@v0.3.24) - 2026-10-14
+
+### Fixed
+
+- *(db)* emit nullability changes in forward AlterColumn SQL
+- *(db)* keep NOT NULL when AlterColumn demotes a primary key
+- *(security)* [**breaking**] preserve configuration and typed values in hardening
+
+### Maintenance
+
+- *(merge)* integrate main into security remediation branch
+
+### Fixed
+
+- Accept current-directory components in relative upload directories while retaining parent traversal and filename restrictions.
+
+
+## [0.3.22](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.3.21...reinhardt-db@v0.3.22) - 2026-10-06
+
+### Fixed
+
+- *(migrations)* render binary fields as bytea on PostgreSQL
+- *(features)* forward postgres model macros through facade
+
+## [0.3.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.3.20...reinhardt-db@v0.3.21) - 2026-10-05
+
+### Documentation
+
+- *(db)* update Django composite key comparison
+
+### Fixed
+
+- *(db)* bound generated foreign-key constraint names
+- *(orm)* match every composite key component when updating
+- *(commands)* preserve installed migration scope and history
+- *(migrations)* preserve scoped model move history
+- *(commands)* resolve conditional migration dependencies
+- *(orm)* avoid RETURNING in MySQL bulk create
+- *(orm)* apply field metadata to MySQL bulk inserts
+- *(orm)* preserve MySQL datetime and JSON bindings
+- *(orm)* preserve MySQL bulk row semantics
+- *(db)* preserve wide Session integer values
+
+### Maintenance
+
+- merge main into installed app migration fix
+- *(orm)* merge main into MySQL bulk insert repair
+- *(db)* merge main into insert-select conflict fix
+- *(db)* reconcile MySQL conflict validation with main
+
+### Testing
+
+- *(db)* align negated filter SQL expectations
+- *(db)* align standalone predicate SQL expectations
+
+### Fixed
+
+- *(commands)* resolve conditional migration dependencies
+- *(orm)* avoid RETURNING in MySQL bulk create
+- *(orm)* apply field metadata to MySQL bulk inserts
+- *(orm)* preserve MySQL datetime and JSON bindings
+- *(orm)* preserve MySQL bulk row semantics
+- *(db)* preserve wide Session integer values
+- *(sync)* reconcile migration and query regressions
+- *(db)* keep generated array conversion available in minimal builds
+- *(db)* preserve query builder parameter variants
+- *(migrations)* resolve SQL assets in filesystem repository reads
+- *(migrations)* confine repository source identity scans
+
+### Maintenance
+
+- *(orm)* merge main into MySQL bulk insert repair
+- *(db)* merge main into insert-select conflict fix
+- *(db)* reconcile MySQL conflict validation with main
+- *(sync)* merge main into develop/0.4.0
+- reduce integration test build disk usage
+
+### Testing
+
+- *(db)* align standalone predicate SQL expectations
+- *(db)* align integration expectations with generated bindings
+- *(db)* gate zero-sentinel model fixtures on migrations
+
+### Added
+
+- PostgreSQL sequence options, literal schema identifiers, and structured identity definitions (#6506).
+- Typed sequence/identity migration operations, app declarations, catalog comparison, source/JSON replay, and schema rollback.
+
+### Fixed
+
+- Native PostgreSQL NULL parameters infer their type from SQL context instead
+  of declaring INT4, allowing nullable TIMESTAMPTZ and UUID inserts (#6631).
+
+- Preserve targetless SQLite `ON CONFLICT DO UPDATE` in value and SELECT INSERT
+  builders instead of silently issuing an ordinary INSERT. Targetless updates
+  require SQLite 3.35.0 or later. Preserve `RETURNING` after the conflict action
+  and disambiguate targetless SELECT sources, including compound queries.
+
+- Preserve NULL element positions when decoding supported PostgreSQL scalar
+  arrays, including the distinction between SQL NULL and empty arrays.
+- Preserve unsigned composite primary keys instead of wrapping to a signed key
+  or clamping to `i64::MAX`. PostgreSQL and SQLite reject overflow with a
+  redacted type error before execution; MySQL binds the original `u64`.
+
+### Breaking Changes
+
+- `QueryValue::Null` no longer declares an INT4 PostgreSQL parameter. SQL that
+  relied on that implicit type may need an explicit cast. For example,
+  `SELECT $1 IS NULL` now returns SQLSTATE `42P18` when passed a NULL parameter.
+
+- `Operation` gains `Sequence` and `Identity` variants. Exhaustive downstream matches need corresponding arms.
+- `ProjectState`, catalog/schema structs, and column schema payloads gain metadata fields. Prefer constructors/builders over struct literals. Legacy column JSON/source remains readable.
+- `QueryValue` adds seven `Nullable*Array(Vec<Option<T>>)` variants.
+  Update exhaustive matches to handle the new variants. Existing non-nullable
+  array constructors and payload types are unchanged.
+
+- Add `QueryValue::Uint(u64)` for unsigned query parameters, including
+  `LIMIT`/`OFFSET`. Exhaustive matches must handle the new variant. MySQL
+  result values above `i64::MAX` now use `Uint` instead of decimal text.
+
+### Migration guide
+
+For native PostgreSQL queries with NULL parameters, provide a type through a
+destination column, a typed expression, or a cast. Change `SELECT $1 IS NULL`
+to `SELECT $1::INTEGER IS NULL` to preserve its previous integer context, or
+cast to the intended type, such as `TIMESTAMPTZ` or `UUID`. This behavior takes
+effect in the next 0.4.0 development release; no schema or data migration is
+required. Queries whose destination columns already supply the type need no
+changes.
+
+Custom executors must bind unsigned values with their native driver codec or
+check conversion to the backend's signed type and return
+`DatabaseErrorKind::Type` on overflow. See the
+[unsigned query value migration guide](../../docs/migration/0.4.0-unsigned-query-values.md)
+for a checked conversion example. No schema or stored-key migration is needed.
+
 ## [0.4.0-alpha.19](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.4.0-alpha.18...reinhardt-db@v0.4.0-alpha.19) - 2026-10-03
 
 ### Fixed

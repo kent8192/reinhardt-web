@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.22](https://github.com/kent8192/reinhardt-web/compare/reinhardt-tasks@v0.4.0-alpha.21...reinhardt-tasks@v0.4.0-alpha.22) - 2026-10-22
+
+### Fixed
+
+- *(deps)* remove legacy aws sdk tls transports
+
+### Security
+
+- Use the current AWS SDK HTTPS transport for SQS without the legacy TLS dependency chain.
+
+## [0.4.0-alpha.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-tasks@v0.4.0-alpha.20...reinhardt-tasks@v0.4.0-alpha.21) - 2026-10-18
+
+### Maintenance
+
+- *(sync)* merge main into develop/0.4.0
+
+### Security
+
+- *(tasks)* block mapped and unspecified webhook addresses
+- *(tasks)* stop following webhook redirects
+- *(tasks)* enforce webhook address policy at connection time
+- *(tasks)* block shared and other non-global webhook addresses
+- *(tasks)* check IPv4 addresses embedded in NAT64 and 6to4 targets
+- *(tasks)* report webhook redirects without retrying
+- *(tasks)* match the webhook host in the resolver without case or root dot
+- *(tasks)* bound the body read from failed webhook responses
+
+## [0.4.0-alpha.20](https://github.com/kent8192/reinhardt-web/compare/reinhardt-tasks@v0.4.0-alpha.19...reinhardt-tasks@v0.4.0-alpha.20) - 2026-10-06
+
+### Changed
+
+- *(tasks)* use typed sqlite database-list inspection
+
 ## [0.4.0-alpha.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-tasks@v0.4.0-alpha.17...reinhardt-tasks@v0.4.0-alpha.18) - 2026-09-27
 
 ### Documentation
@@ -44,6 +77,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Maintenance
 
 - merge main into develop/0.4.0
+
+## [0.3.25](https://github.com/kent8192/reinhardt-web/compare/reinhardt-tasks@v0.3.24...reinhardt-tasks@v0.3.25) - 2026-10-20
+
+### Security
+
+- *(tasks)* bound the body read from failed webhook responses
+
+## [0.3.24](https://github.com/kent8192/reinhardt-web/compare/reinhardt-tasks@v0.3.23...reinhardt-tasks@v0.3.24) - 2026-10-14
+
+### Fixed
+
+- *(tasks)* reject unknown SQLite task status values instead of defaulting to pending
+
+
+## [0.3.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-tasks@v0.3.20...reinhardt-tasks@v0.3.21) - 2026-10-05
+
+### Documentation
+
+- *(tasks)* document Kafka task backend
+- *(tasks)* document Kafka backend limitations
+- *(tasks)* document Kafka configuration dependencies
+- *(tasks)* document Kafka delivery semantics
 
 ## [0.3.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-tasks@v0.3.17...reinhardt-tasks@v0.3.18) - 2026-09-16
 

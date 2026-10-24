@@ -14,10 +14,15 @@
 //! CREATE TABLE settings (
 //!     key VARCHAR(255) PRIMARY KEY,
 //!     value TEXT NOT NULL,
-//!     expire_date TIMESTAMP
+//!     expire_date TEXT
 //! );
 //! CREATE INDEX idx_settings_expire_date ON settings(expire_date);
 //! ```
+//!
+//! Expiry values are UTC RFC 3339 strings. MySQL uses `expire_date(64)` for
+//! the index because `TEXT` indexes require a prefix length. Initialization
+//! also adds this index to existing tables without changing stored data and
+//! accepts an existing index on repeated or concurrent calls.
 //!
 //! ## Example
 //!
@@ -284,17 +289,24 @@ impl DatabaseBackend {
 			.map_err(|e| format!("Failed to create table: {}", e))?;
 
 		// Create index on expire_date for efficient cleanup using reinhardt-query
-		let index_stmt = Query::create_index()
+		let mut index_stmt = Query::create_index();
+		index_stmt
 			.if_not_exists()
 			.name("idx_settings_expire_date")
-			.table(Alias::new("settings"))
-			.col(Alias::new("expire_date"))
-			.to_owned();
+			.table(Alias::new("settings"));
+		if self.detect_backend() == "mysql" {
+			// Covers the entire RFC 3339 timestamp while preserving legacy TEXT columns.
+			index_stmt.col_prefix(
+				Alias::new("expire_date"),
+				std::num::NonZeroU32::new(64).unwrap(),
+			);
+		} else {
+			index_stmt.col(Alias::new("expire_date"));
+		}
 
 		let index_sql = self.build_index_sql(&index_stmt);
 
-		sqlx::query(&index_sql)
-			.execute(self.pool.as_ref())
+		crate::settings::database_index::create_index(self.pool.as_ref(), &index_sql)
 			.await
 			.map_err(|e| format!("Failed to create index: {}", e))?;
 

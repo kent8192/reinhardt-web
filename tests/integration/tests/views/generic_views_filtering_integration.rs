@@ -240,18 +240,20 @@ async fn test_multiple_field_filtering(#[future] products_with_data: Arc<PgPool>
 
 	// Filter by category=Accessories AND stock=50
 	let request = create_get_request("/products/?category=Accessories&stock=50");
-	let result = view.dispatch(request).await;
-
-	assert!(result.is_ok(), "Multiple field filtering should succeed");
-	let response = result.unwrap();
+	let response = view
+		.dispatch(request)
+		.await
+		.expect("Multiple field filtering should succeed");
 	assert_eq!(response.status, StatusCode::OK);
 
-	let body_str = String::from_utf8(response.body.to_vec()).unwrap();
+	let products: Vec<Product> = serde_json::from_slice(&response.body).unwrap();
 	// Should contain only Gaming Mouse (category=Accessories, stock=50)
-	assert!(
-		body_str.contains("Gaming Mouse") || body_str.contains("Accessories"),
-		"Response should match both filters"
-	);
+	assert!(!products.is_empty(), "Expected a matching product");
+	for product in products {
+		assert_eq!(product.name, "Gaming Mouse");
+		assert_eq!(product.category, "Accessories");
+		assert_eq!(product.stock, 50);
+	}
 }
 
 /// Test: Case-insensitive search

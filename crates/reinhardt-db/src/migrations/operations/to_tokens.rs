@@ -410,6 +410,12 @@ impl ToTokens for Constraint {
 impl ToTokens for Operation {
 	fn to_tokens(&self, tokens: &mut TokenStream) {
 		match self {
+			Operation::Sequence { operation } => {
+				tokens.extend(quote! { Operation::Sequence { operation: #operation } })
+			}
+			Operation::Identity { operation } => {
+				tokens.extend(quote! { Operation::Identity { operation: #operation } })
+			}
 			Operation::CreateTable {
 				name,
 				columns,
@@ -1029,6 +1035,19 @@ impl ToTokens for Operation {
 					}
 				});
 			}
+			Operation::DropExtension {
+				name,
+				if_exists,
+				cascade,
+			} => {
+				tokens.extend(quote! {
+					Operation::DropExtension {
+						name: #name.to_string(),
+						if_exists: #if_exists,
+						cascade: #cascade,
+					}
+				});
+			}
 			Operation::BulkLoad {
 				table,
 				source,
@@ -1164,6 +1183,14 @@ impl ToTokens for ColumnDefinition {
 			None => quote! { None },
 		};
 
+		let identity_token = self
+			.identity
+			.as_ref()
+			.map(|value| quote! { .with_identity(Some(#value)) });
+		let sequence_default_token = self
+			.sequence_default
+			.as_ref()
+			.map(|value| quote! { .with_sequence_default(Some(#value)) });
 		// Generate FieldType token based on the actual type
 		let field_type_token = match &self.type_definition {
 			// Integer types
@@ -1298,6 +1325,8 @@ impl ToTokens for ColumnDefinition {
 				.with_default(#default_token)
 				.with_generated(#generated_token)
 				.with_domain_option(#domain_token)
+				#identity_token
+				#sequence_default_token
 		});
 	}
 }
@@ -2098,6 +2127,8 @@ mod tests {
 			default: Some("42".to_string()),
 			generated: None,
 			domain: None,
+			identity: None,
+			sequence_default: None,
 		};
 		assert_tokens(
 			&fully_populated,
@@ -2288,6 +2319,8 @@ mod tests {
 			default: Some("1".to_string()),
 			generated: None,
 			domain: None,
+			identity: None,
+			sequence_default: None,
 		};
 		let create = Operation::CreateTable {
 			name: "bookings".to_string(),

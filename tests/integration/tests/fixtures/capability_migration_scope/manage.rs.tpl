@@ -34,18 +34,27 @@ impl CapabilityProvider for Provider {
 			&std::env::var("REINHARDT_TEST_INSTALLED_APPS").expect("test supplies installed apps"),
 		)
 		.expect("installed apps are a JSON array");
+		let config: serde_json::Value = serde_json::from_str(
+			&std::env::var("REINHARDT_TEST_MIGRATION_CONFIG").unwrap_or_else(|_| "{}".to_owned()),
+		)
+		.expect("migration config is JSON");
+		let mut core = serde_json::json!({
+			"base_dir": std::env::current_dir().unwrap(),
+			"installed_apps": installed_apps,
+			"secret_key": "${REINHARDT_MIGRATION_UNRELATED_SECRET}",
+		});
+		if let Some(overrides) = config.get("core").and_then(serde_json::Value::as_object) {
+			core.as_object_mut().unwrap().extend(overrides.clone());
+		}
 		let settings = SettingsBuilder::new()
 			.add_source(
-				DefaultSource::new()
-					.with_value(
-						"core",
-						serde_json::json!({
-							"base_dir": std::env::current_dir().unwrap(),
-							"installed_apps": installed_apps,
-							"secret_key": "${REINHARDT_MIGRATION_UNRELATED_SECRET}",
-						}),
-					)
-					.with_value("migrations", serde_json::json!({})),
+				DefaultSource::new().with_value("core", core).with_value(
+					"migrations",
+					config
+						.get("migrations")
+						.cloned()
+						.unwrap_or(serde_json::json!({})),
+				),
 			)
 			.build_scoped()?;
 		let metadata = CoreMigrationMetadata::resolve(&settings, None)?;

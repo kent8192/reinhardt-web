@@ -92,12 +92,11 @@ async fn test_empty_post_body() {
 
 	// Send POST with empty body
 	let response = client
-		.post_raw_with_headers(
-			"/empty",
-			b"",
-			"application/octet-stream",
-			&[("Content-Length", "0")],
-		)
+		.request(http::Method::POST, "/empty")
+		.body(bytes::Bytes::copy_from_slice(b""))
+		.header(http::header::CONTENT_TYPE, "application/octet-stream")
+		.header("Content-Length", "0")
+		.send()
 		.await
 		.unwrap();
 

@@ -25,6 +25,7 @@ mod postgres;
 mod protocol;
 mod store;
 
+#[cfg(feature = "oidc-op")]
 pub(crate) use protocol::CodeExchangeRequest;
 #[cfg(feature = "oidc-op")]
 pub(crate) use protocol::PreparedAuthorization;
@@ -33,14 +34,18 @@ pub use http::{OAuthBrowserSession, OAuthConsentPresenter, OAuthEndpoint, OAuthH
 #[cfg(feature = "database")]
 pub use postgres::PostgresOAuthStore;
 pub use protocol::{
-	AuthorizationDecision, AuthorizationRequest, IssuedToken, OAuthError, OAuthRateLimiter,
-	OAuthServer, OAuthServerConfig, PendingAuthorization, SharedOAuthRateLimiter, TokenInfo,
-	TokenPrincipal,
+	AuthorizationDecision, AuthorizationRequest, DeviceAuthorizationConfig,
+	DeviceAuthorizationResponse, IssuedToken, OAuthError, OAuthRateLimiter, OAuthServer,
+	OAuthServerConfig, PendingAuthorization, PendingDeviceAuthorization, RefreshTokenPolicy,
+	SharedOAuthRateLimiter, TokenInfo, TokenPrincipal,
 };
 pub use store::{
 	AuthorizationCommit, ClientKind, ClientRegistration, CodeInspection, CodeRedemption,
-	CodeRedemptionRequest, MemoryOAuthStore, OAuthServerStore, PendingRecord, ResourceRegistration,
-	StoredCode, StoredToken,
+	CodeRedemptionRequest, CodeRedemptionWithRefresh, DeviceApproval, DeviceAuthorizationStatus,
+	DeviceDecisionCommit, DevicePoll, DeviceRedemption, DeviceRedemptionRequest, MemoryOAuthStore,
+	OAuthServerStore, PendingRecord, RefreshInspection, RefreshRotation, RefreshRotationRequest,
+	ResourceRegistration, StoredCode, StoredDeviceAuthorization, StoredRefreshToken, StoredToken,
+	StoredTokenFamily,
 };
 
 #[cfg(test)]

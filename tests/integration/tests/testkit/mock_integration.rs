@@ -1,9 +1,13 @@
 use bytes::Bytes;
 use http::StatusCode;
 use reinhardt_http::Handler;
+// Keep compatibility coverage until SimpleHandler is removed.
+#[allow(deprecated)]
 use reinhardt_test::SimpleHandler;
 use rstest::rstest;
 
+// Keep compatibility coverage until SimpleHandler is removed.
+#[allow(deprecated)]
 #[rstest]
 #[tokio::test]
 async fn simple_handler_delegates_real_request_to_closure() {

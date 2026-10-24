@@ -32,17 +32,35 @@ use async_trait::async_trait;
 #[cfg(feature = "redis-channel")]
 use redis::aio::ConnectionManager;
 #[cfg(feature = "redis-channel")]
-use redis::{AsyncCommands, Client};
+use redis::{AsyncCommands, Client, ConnectionAddr, ConnectionInfo, IntoConnectionInfo};
 #[cfg(feature = "redis-channel")]
 use tracing::warn;
 
 /// Redis channel layer configuration
+///
+/// The `Debug` output redacts `password`.
+///
+/// # Effective connection
+///
+/// [`RedisChannelLayer::new`] connects with a single descriptor built from
+/// `url` plus the dedicated `username`, `password` and `tls` fields:
+///
+/// - `username` and `password` are sent to Redis. Credentials embedded in
+///   `url` are also honoured, but a URL credential that differs from the
+///   matching field is rejected as contradictory.
+/// - A username without a password is rejected, because Redis only
+///   authenticates when a password is present.
+/// - `tls = true` upgrades a `redis://` URL to TLS with certificate and
+///   hostname verification, and is rejected for addresses that cannot use TLS
+///   (Unix sockets). A `rediss://` URL always uses TLS.
+/// - `require_auth = true` fails unless `url` or `password` supplies a
+///   password.
 #[cfg(feature = "redis-channel")]
 #[deprecated(
 	since = "0.2.0",
 	note = "Use `RedisChannelSettings` with the `#[settings]` macro instead."
 )]
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct RedisConfig {
 	/// Redis connection URL
 	pub url: String,
@@ -52,14 +70,50 @@ pub struct RedisConfig {
 	pub group_prefix: String,
 	/// Message expiry time (seconds)
 	pub message_expiry: u64,
-	/// Redis password for authentication
+	/// Redis password for authentication.
+	///
+	/// Must match the password embedded in `url`, if any.
 	pub password: Option<String>,
-	/// Redis username for authentication (Redis 6+ ACL)
+	/// Redis username for authentication (Redis 6+ ACL).
+	///
+	/// Requires a password and must match the username embedded in `url`, if any.
 	pub username: Option<String>,
-	/// Enable TLS for secure connection
+	/// Enable TLS for secure connection.
+	///
+	/// Upgrades a `redis://` URL to TLS; connecting fails rather than falling
+	/// back to plaintext.
 	pub tls: bool,
-	/// Require authentication (warns if disabled without credentials)
+	/// Require authentication: connecting fails unless `url` or `password`
+	/// supplies a password.
 	pub require_auth: bool,
+}
+
+#[cfg(feature = "redis-channel")]
+impl std::fmt::Debug for RedisConfig {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		// Exhaustive destructuring makes adding a field a compile error here,
+		// so new fields cannot silently bypass the redaction review.
+		let Self {
+			url,
+			channel_prefix,
+			group_prefix,
+			message_expiry,
+			password,
+			username,
+			tls,
+			require_auth,
+		} = self;
+		f.debug_struct("RedisConfig")
+			.field("url", url)
+			.field("channel_prefix", channel_prefix)
+			.field("group_prefix", group_prefix)
+			.field("message_expiry", message_expiry)
+			.field("password", &password.as_ref().map(|_| "[REDACTED]"))
+			.field("username", username)
+			.field("tls", tls)
+			.field("require_auth", require_auth)
+			.finish()
+	}
 }
 
 #[cfg(feature = "redis-channel")]
@@ -196,6 +250,8 @@ impl RedisConfig {
 
 	/// Enables TLS for secure connection.
 	///
+	/// A `redis://` URL is upgraded to TLS when connecting.
+	///
 	/// # Examples
 	///
 	/// ```
@@ -229,11 +285,20 @@ impl RedisConfig {
 
 	/// Validates authentication configuration and logs warnings.
 	///
-	/// Returns an error if authentication is required but not configured.
+	/// A password embedded in `url` counts as configured. Returns an error if
+	/// authentication is required but no password is configured.
 	pub fn validate_auth(&self) -> Result<(), crate::channels::ChannelError> {
-		use crate::channels::ChannelError;
+		let url_has_password = self
+			.url
+			.as_str()
+			.into_connection_info()
+			.is_ok_and(|info| info.redis_settings().password().is_some());
+		self.check_auth(url_has_password || non_empty(self.password.as_deref()).is_some())
+	}
 
-		if self.require_auth && self.password.is_none() {
+	/// Enforces `require_auth` against whether a password is effectively configured.
+	fn check_auth(&self, has_password: bool) -> ChannelResult<()> {
+		if self.require_auth && !has_password {
 			warn!(
 				"Redis authentication is required but no password is configured. \
 				 This is a security risk. Set a password using .with_password() or \
@@ -242,7 +307,7 @@ impl RedisConfig {
 			return Err(ChannelError::AuthenticationRequired);
 		}
 
-		if self.password.is_none() && !self.require_auth {
+		if !has_password {
 			warn!(
 				"Redis connection is configured without authentication. \
 				 This is not recommended for production environments."
@@ -251,6 +316,92 @@ impl RedisConfig {
 
 		Ok(())
 	}
+
+	/// Builds the connection descriptor that [`RedisChannelLayer::new`] connects with.
+	///
+	/// Applies `username`, `password` and `tls` on top of `url`, rejects
+	/// contradictory combinations, and enforces `require_auth` against the
+	/// effective credentials. Error messages never include credential values.
+	fn connection_info(&self) -> ChannelResult<ConnectionInfo> {
+		let info = self
+			.url
+			.as_str()
+			.into_connection_info()
+			.map_err(|e| config_error(format_args!("invalid Redis URL: {e}")))?;
+
+		let url_settings = info.redis_settings();
+		let username = merge_credential(
+			"username",
+			url_settings.username(),
+			self.username.as_deref(),
+		)?;
+		let password = merge_credential(
+			"password",
+			url_settings.password(),
+			self.password.as_deref(),
+		)?;
+		if username.is_some() && password.is_none() {
+			return Err(config_error(
+				"a Redis username requires a password; Redis does not authenticate with a username alone",
+			));
+		}
+		self.check_auth(password.is_some())?;
+
+		let mut redis_settings = url_settings.clone();
+		if let Some(username) = username {
+			redis_settings = redis_settings.set_username(username);
+		}
+		if let Some(password) = password {
+			redis_settings = redis_settings.set_password(password);
+		}
+
+		let addr = match (self.tls, info.addr()) {
+			(false, addr) | (true, addr @ ConnectionAddr::TcpTls { .. }) => addr.clone(),
+			(true, ConnectionAddr::Tcp(host, port)) => ConnectionAddr::TcpTls {
+				host: host.clone(),
+				port: *port,
+				insecure: false,
+				tls_params: None,
+			},
+			(true, addr) => {
+				return Err(config_error(format_args!(
+					"TLS was requested but the Redis address {addr} cannot use TLS"
+				)));
+			}
+		};
+
+		Ok(info.set_addr(addr).set_redis_settings(redis_settings))
+	}
+}
+
+/// Treats an empty credential as absent.
+#[cfg(feature = "redis-channel")]
+fn non_empty(value: Option<&str>) -> Option<&str> {
+	value.filter(|value| !value.is_empty())
+}
+
+/// Combines a credential embedded in the Redis URL with its dedicated field.
+///
+/// Returns an error when both are set to different values, so neither source
+/// silently overrides the other.
+#[cfg(feature = "redis-channel")]
+fn merge_credential<'a>(
+	name: &str,
+	from_url: Option<&'a str>,
+	from_field: Option<&'a str>,
+) -> ChannelResult<Option<&'a str>> {
+	match (non_empty(from_url), non_empty(from_field)) {
+		(Some(url_value), Some(field_value)) if url_value != field_value => Err(config_error(
+			format_args!("the Redis {name} embedded in the URL contradicts the configured {name}"),
+		)),
+		(url_value, field_value) => Ok(field_value.or(url_value)),
+	}
+}
+
+/// Builds the error returned for an invalid Redis connection configuration.
+#[cfg(feature = "redis-channel")]
+fn config_error(message: impl std::fmt::Display) -> ChannelError {
+	ChannelError::SendError(format!("Redis configuration error: {message}"))
 }
 
 /// Redis-backed channel layer
@@ -275,6 +426,15 @@ pub struct RedisChannelLayer {
 impl RedisChannelLayer {
 	/// Creates a new Redis channel layer.
 	///
+	/// The connection uses `url` together with the `username`, `password` and
+	/// `tls` fields; see [`RedisConfig`] for how they combine.
+	///
+	/// # Errors
+	///
+	/// Returns [`ChannelError::AuthenticationRequired`] when `require_auth` is
+	/// set without a password, and [`ChannelError::SendError`] when the
+	/// configuration is contradictory or the connection fails.
+	///
 	/// # Examples
 	///
 	/// ```no_run
@@ -287,10 +447,11 @@ impl RedisChannelLayer {
 	/// # });
 	/// ```
 	pub async fn new(config: RedisConfig) -> ChannelResult<Self> {
-		// Validate authentication configuration before connecting
-		config.validate_auth()?;
+		// Build and validate the effective descriptor before connecting, so the
+		// credential and TLS fields actually govern the connection.
+		let connection_info = config.connection_info()?;
 
-		let client = Client::open(config.url.as_str())
+		let client = Client::open(connection_info)
 			.map_err(|e| ChannelError::SendError(format!("Redis client error: {}", e)))?;
 
 		let connection = ConnectionManager::new(client)
@@ -831,5 +992,232 @@ mod tests {
 		// Should pass validation
 		let result = config.validate_auth();
 		assert!(result.is_ok());
+	}
+
+	#[rstest::rstest]
+	fn test_redis_config_debug_redacts_password() {
+		// Arrange
+		let config = RedisConfig::new("redis://127.0.0.1:6379".to_string())
+			.with_password("redis-config-password".to_string());
+
+		// Act
+		let output = format!("{config:?}");
+
+		// Assert
+		assert!(!output.contains("redis-config-password"), "{output}");
+		assert!(
+			output.contains("password: Some(\"[REDACTED]\")"),
+			"{output}"
+		);
+	}
+
+	/// Unwraps a configuration error raised before any connection attempt.
+	fn expect_config_error(result: ChannelResult<ConnectionInfo>) -> String {
+		match result {
+			Err(ChannelError::SendError(message)) => message,
+			Err(other) => panic!("expected a configuration error, got {other:?}"),
+			Ok(info) => panic!("expected a configuration error, got {info:?}"),
+		}
+	}
+
+	#[rstest::rstest]
+	fn test_connection_info_applies_credential_fields() {
+		// Arrange
+		let config = RedisConfig::new("redis://127.0.0.1:6379/2".to_string())
+			.with_username("app_user".to_string())
+			.with_password("field-password".to_string());
+
+		// Act
+		let info = config.connection_info().unwrap();
+
+		// Assert
+		let redis = info.redis_settings();
+		assert_eq!(redis.username(), Some("app_user"));
+		assert_eq!(redis.password(), Some("field-password"));
+		assert_eq!(redis.db(), 2);
+		assert_eq!(
+			info.addr(),
+			&ConnectionAddr::Tcp("127.0.0.1".to_string(), 6379)
+		);
+	}
+
+	#[rstest::rstest]
+	fn test_connection_info_upgrades_plain_url_when_tls_requested() {
+		// Arrange
+		let config = RedisConfig::new("redis://cache.example.com:6380".to_string())
+			.with_password("field-password".to_string())
+			.with_tls();
+
+		// Act
+		let info = config.connection_info().unwrap();
+
+		// Assert
+		assert_eq!(
+			info.addr(),
+			&ConnectionAddr::TcpTls {
+				host: "cache.example.com".to_string(),
+				port: 6380,
+				insecure: false,
+				tls_params: None,
+			}
+		);
+	}
+
+	#[rstest::rstest]
+	#[case::plain_url_without_tls("redis://cache.example.com:6380", false, false)]
+	#[case::tls_url_without_tls_field("rediss://cache.example.com:6380", false, true)]
+	#[case::tls_url_with_tls_field("rediss://cache.example.com:6380", true, true)]
+	fn test_connection_info_transport_follows_url_and_tls_field(
+		#[case] url: &str,
+		#[case] tls: bool,
+		#[case] expect_tls: bool,
+	) {
+		// Arrange
+		let mut config =
+			RedisConfig::new(url.to_string()).with_password("field-password".to_string());
+		config.tls = tls;
+
+		// Act
+		let info = config.connection_info().unwrap();
+
+		// Assert
+		let expected = if expect_tls {
+			ConnectionAddr::TcpTls {
+				host: "cache.example.com".to_string(),
+				port: 6380,
+				insecure: false,
+				tls_params: None,
+			}
+		} else {
+			ConnectionAddr::Tcp("cache.example.com".to_string(), 6380)
+		};
+		assert_eq!(info.addr(), &expected);
+	}
+
+	#[cfg(unix)]
+	#[rstest::rstest]
+	fn test_connection_info_rejects_tls_for_unix_socket() {
+		// Arrange
+		let config = RedisConfig::new("redis+unix:///tmp/redis.sock".to_string())
+			.with_password("field-password".to_string())
+			.with_tls();
+
+		// Act
+		let message = expect_config_error(config.connection_info());
+
+		// Assert
+		assert_eq!(
+			message,
+			"Redis configuration error: TLS was requested but the Redis address /tmp/redis.sock cannot use TLS"
+		);
+	}
+
+	#[rstest::rstest]
+	#[case::password(
+		"redis://:url-password@127.0.0.1:6379",
+		None,
+		Some("field-password"),
+		"Redis configuration error: the Redis password embedded in the URL contradicts the configured password"
+	)]
+	#[case::username(
+		"redis://url_user:shared-password@127.0.0.1:6379",
+		Some("field_user"),
+		None,
+		"Redis configuration error: the Redis username embedded in the URL contradicts the configured username"
+	)]
+	#[case::username_without_password(
+		"redis://127.0.0.1:6379",
+		Some("app_user"),
+		None,
+		"Redis configuration error: a Redis username requires a password; Redis does not authenticate with a username alone"
+	)]
+	fn test_connection_info_rejects_contradictory_credentials(
+		#[case] url: &str,
+		#[case] username: Option<&str>,
+		#[case] password: Option<&str>,
+		#[case] expected: &str,
+	) {
+		// Arrange
+		let mut config = RedisConfig::new(url.to_string()).with_require_auth(false);
+		config.username = username.map(str::to_owned);
+		config.password = password.map(str::to_owned);
+
+		// Act
+		let message = expect_config_error(config.connection_info());
+
+		// Assert
+		assert_eq!(message, expected);
+		assert!(!message.contains("url-password"), "{message}");
+		assert!(!message.contains("field-password"), "{message}");
+		assert!(!message.contains("shared-password"), "{message}");
+	}
+
+	#[rstest::rstest]
+	fn test_connection_info_accepts_matching_url_and_field_credentials() {
+		// Arrange
+		let config =
+			RedisConfig::new("redis://app_user:shared-password@127.0.0.1:6379".to_string())
+				.with_username("app_user".to_string())
+				.with_password("shared-password".to_string());
+
+		// Act
+		let info = config.connection_info().unwrap();
+
+		// Assert
+		assert_eq!(info.redis_settings().username(), Some("app_user"));
+		assert_eq!(info.redis_settings().password(), Some("shared-password"));
+	}
+
+	#[rstest::rstest]
+	fn test_require_auth_accepts_password_embedded_in_url() {
+		// Arrange
+		let config = RedisConfig::new("redis://:url-password@127.0.0.1:6379".to_string());
+
+		// Act
+		let validated = config.validate_auth();
+		let info = config.connection_info().unwrap();
+
+		// Assert
+		assert!(validated.is_ok(), "{validated:?}");
+		assert_eq!(info.redis_settings().password(), Some("url-password"));
+	}
+
+	#[rstest::rstest]
+	#[case::no_password(None)]
+	#[case::empty_password(Some(""))]
+	fn test_require_auth_rejects_missing_effective_password(#[case] password: Option<&str>) {
+		// Arrange
+		let mut config = RedisConfig::new("redis://127.0.0.1:6379".to_string());
+		config.password = password.map(str::to_owned);
+
+		// Act
+		let result = config.connection_info();
+
+		// Assert
+		assert!(
+			matches!(result, Err(ChannelError::AuthenticationRequired)),
+			"{result:?}"
+		);
+	}
+
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn test_new_rejects_contradictory_configuration_before_connecting() {
+		// Arrange
+		let config = RedisConfig::new("redis://:url-password@127.0.0.1:1".to_string())
+			.with_password("field-password".to_string());
+
+		// Act
+		let result = RedisChannelLayer::new(config).await;
+
+		// Assert
+		match result {
+			Err(ChannelError::SendError(message)) => assert_eq!(
+				message,
+				"Redis configuration error: the Redis password embedded in the URL contradicts the configured password"
+			),
+			Err(other) => panic!("expected a configuration error, got {other:?}"),
+			Ok(_) => panic!("expected a configuration error, got a connected layer"),
+		}
 	}
 }

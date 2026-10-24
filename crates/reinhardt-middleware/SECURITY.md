@@ -69,6 +69,12 @@ unless their owning control validates them.
   strategy. Applications using custom credential carriers or additional tenant
   and scope context must exclude those paths or provide a principal/tenant-aware
   strategy.
+- Cache storage bounds attacker-selected key cardinality. `CacheMiddleware`
+  enforces `CacheConfig::max_entries` while storing a response by evicting the
+  oldest entries, so distinct live cache keys cannot exceed that limit;
+  `max_entries: None` removes the bound. Entry body size and total cached bytes
+  are not limited, so applications caching large responses must bound response
+  bodies or lower `max_entries`.
 - Rate-limit identities derive from authenticated principals or validated
   network identity. Client-controlled headers, request IDs, and arbitrary
   forwarded addresses cannot select another caller's bucket or evade limits.
@@ -84,5 +90,6 @@ unless their owning control validates them.
 
 Report a security-control ordering bypass, context-confused CSRF or session,
 credentialed CORS overreach, spoofed proxy identity, auth-state timing error,
-security-context cache leakage, spoofable throttling identity, compression
-resource exhaustion, or missing security headers on alternate responses.
+security-context cache leakage, cache growth past `max_entries`, spoofable
+throttling identity, compression resource exhaustion, or missing security
+headers on alternate responses.

@@ -18,7 +18,7 @@ use super::autodetector::{
 use super::{ConstraintDefinition, GeneratedColumnDefinition};
 use crate::field_domain::FieldDomain;
 use crate::naming::{enum_domain_constraint_name, generated_unique_constraint_names};
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::{Arc, RwLock};
 
 #[cfg_attr(doc, aquamarine::aquamarine)]
@@ -47,7 +47,15 @@ use std::sync::{Arc, RwLock};
 ///
 ///     Django -.-> Reinhardt
 /// ```
+///
+/// # Construction
+///
+/// This struct is `#[non_exhaustive]` and already has private fields, so it is
+/// built with [`ModelMetadata::new`] and populated through
+/// [`ModelMetadata::add_field`], [`ModelMetadata::add_constraint`],
+/// [`ModelMetadata::add_index`], and the other mutation methods.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct ModelMetadata {
 	/// Application label (e.g., "auth", "blog")
 	pub app_label: String,
@@ -357,7 +365,15 @@ impl ModelMetadata {
 }
 
 /// Field metadata for registration
+///
+/// # Construction
+///
+/// This struct is `#[non_exhaustive]`, so code outside `reinhardt-db` cannot
+/// build it with a struct literal (struct update syntax does not bypass this).
+/// Use [`FieldMetadata::new`] and the chained `with_*` builders; public fields
+/// stay readable and assignable after construction.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct FieldMetadata {
 	/// Field type (e.g., CharField, IntegerField, ForeignKey)
 	pub field_type: super::FieldType,
@@ -378,6 +394,23 @@ pub struct FieldMetadata {
 }
 
 impl FieldMetadata {
+	/// Declares a structured PostgreSQL identity sequence on this field.
+	pub fn with_identity(mut self, identity: super::IdentityDefinition) -> Self {
+		self.params.insert(
+			"identity".into(),
+			serde_json::to_string(&identity).expect("serializable identity"),
+		);
+		self
+	}
+	/// Declares a typed nextval default and its stable sequence dependency.
+	pub fn with_sequence_default(mut self, default: super::SequenceDefault) -> Self {
+		self.params.insert(
+			"sequence_default".into(),
+			serde_json::to_string(&default).expect("serializable sequence default"),
+		);
+		self
+	}
+
 	/// Creates a new instance.
 	pub fn new(field_type: super::FieldType) -> Self {
 		Self {
@@ -622,13 +655,41 @@ impl ManyToManyMetadata {
 pub struct ModelRegistry {
 	/// Models: (app_label, model_name) -> ModelMetadata
 	models: Arc<RwLock<HashMap<(String, String), ModelMetadata>>>,
+	sequences: Arc<RwLock<BTreeMap<super::SequenceKey, super::SequenceMetadata>>>,
 }
 
 impl ModelRegistry {
+	/// Registers an independent app-scoped sequence, rejecting duplicate identities.
+	pub fn register_sequence(&self, metadata: super::SequenceMetadata) -> super::Result<()> {
+		metadata.validate()?;
+		let mut sequences = self.sequences.write().map_err(|_| {
+			super::MigrationError::InvalidMigration("sequence registry lock is poisoned".into())
+		})?;
+		if sequences.contains_key(&metadata.key) {
+			return Err(super::MigrationError::InvalidMigration(
+				"duplicate sequence declaration identity".into(),
+			));
+		}
+		sequences.insert(metadata.key.clone(), metadata);
+		Ok(())
+	}
+	/// Returns complete sequence dependency context for project-state construction.
+	pub fn try_get_sequences(
+		&self,
+	) -> super::Result<BTreeMap<super::SequenceKey, super::SequenceMetadata>> {
+		self.sequences
+			.read()
+			.map(|sequences| sequences.clone())
+			.map_err(|_| {
+				super::MigrationError::InvalidMigration("sequence registry lock is poisoned".into())
+			})
+	}
+
 	/// Creates a new instance.
 	pub fn new() -> Self {
 		Self {
 			models: Arc::new(RwLock::new(HashMap::new())),
+			sequences: Arc::new(RwLock::new(BTreeMap::new())),
 		}
 	}
 
@@ -882,6 +943,10 @@ impl ModelRegistry {
 
 	/// Clear all registered models
 	pub fn clear(&self) {
+		if let Ok(mut sequences) = self.sequences.write() {
+			sequences.clear();
+		}
+
 		if let Ok(mut models) = self.models.write() {
 			models.clear();
 		}
@@ -1296,6 +1361,8 @@ mod tests {
 			referenced_column: "id".to_string(),
 			on_delete: crate::migrations::autodetector::ForeignKeyAction::Cascade,
 			on_update: crate::migrations::autodetector::ForeignKeyAction::Cascade,
+			shared_columns: Vec::new(),
+			constraint_name: None,
 		};
 		let field = FieldMetadata::new(FieldType::Uuid)
 			.with_param("fk_target_app", "blog")
@@ -1343,6 +1410,8 @@ mod tests {
 			referenced_column: "id".to_string(),
 			on_delete: crate::migrations::autodetector::ForeignKeyAction::Cascade,
 			on_update: crate::migrations::autodetector::ForeignKeyAction::Cascade,
+			shared_columns: Vec::new(),
+			constraint_name: None,
 		};
 		let field = FieldMetadata::new(FieldType::Uuid)
 			.with_param("fk_target_app", "auth")
@@ -1517,6 +1586,8 @@ mod tests {
 				referenced_column: "id".to_string(),
 				on_delete: crate::migrations::ForeignKeyAction::Cascade,
 				on_update: crate::migrations::ForeignKeyAction::NoAction,
+				shared_columns: Vec::new(),
+				constraint_name: None,
 			}),
 		);
 

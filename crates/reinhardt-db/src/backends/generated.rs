@@ -1,8 +1,271 @@
-//! Owned generated arguments and checked compatibility for custom backends.
+//! Argument codecs for renderer-generated SQL, separate from the public raw API.
+//!
+//! Values retain their type and order until native SQLx encoding. Encoding errors
+//! contain only the backend, type, one-based argument index, and a fixed reason.
+//! BigDecimal values use a normalized representation for range checks and encoding.
 
-use super::error::{DatabaseError, DatabaseErrorKind, Result};
-use super::types::{DatabaseType, QueryValue};
 use reinhardt_query::{Value, Values};
+
+use super::{
+	DatabaseError, DatabaseErrorKind, Result,
+	types::{DatabaseType, QueryValue},
+};
+
+#[cfg(feature = "mysql")]
+pub(super) mod mysql;
+#[cfg(feature = "postgres")]
+pub(super) mod postgres;
+#[cfg(feature = "sqlite")]
+pub(super) mod sqlite;
+
+pub(super) fn value_type(value: &Value) -> &'static str {
+	match value {
+		Value::Bool(..) => "Bool",
+		Value::TinyInt(..) => "TinyInt",
+		Value::SmallInt(..) => "SmallInt",
+		Value::Int(..) => "Int",
+		Value::BigInt(..) => "BigInt",
+		Value::TinyUnsigned(..) => "TinyUnsigned",
+		Value::SmallUnsigned(..) => "SmallUnsigned",
+		Value::Unsigned(..) => "Unsigned",
+		Value::BigUnsigned(..) => "BigUnsigned",
+		Value::Float(..) => "Float",
+		Value::Double(..) => "Double",
+		Value::Char(..) => "Char",
+		Value::String(..) => "String",
+		Value::Bytes(..) => "Bytes",
+		Value::ChronoDate(..) => "ChronoDate",
+		Value::ChronoTime(..) => "ChronoTime",
+		Value::ChronoDateTime(..) => "ChronoDateTime",
+		Value::ChronoDateTimeUtc(..) => "ChronoDateTimeUtc",
+		Value::ChronoDateTimeLocal(..) => "ChronoDateTimeLocal",
+		Value::ChronoDateTimeWithTimeZone(..) => "ChronoDateTimeWithTimeZone",
+		Value::Uuid(..) => "Uuid",
+		Value::Json(..) => "Json",
+		Value::Decimal(..) => "Decimal",
+		Value::BigDecimal(..) => "BigDecimal",
+		Value::Array(..) => "Array",
+		#[cfg(feature = "pgvector")]
+		Value::Vector(..) => "Vector",
+	}
+}
+
+fn error(
+	backend: &str,
+	index: usize,
+	kind: &str,
+	reason: &str,
+) -> reinhardt_core::exception::Error {
+	DatabaseError::new(
+		DatabaseErrorKind::Type,
+		format!("cannot encode {kind} argument {index} for {backend}: {reason}"),
+	)
+	.into()
+}
+
+/// Compatibility fallback for external backends implementing only the raw API.
+///
+/// Native backends bypass this adapter. A legacy backend can receive only values
+/// representable without content loss in QueryValue; other values fail closed.
+pub(crate) fn legacy_values(values: Values, backend: &str) -> Result<Vec<QueryValue>> {
+	values
+		.into_iter()
+		.enumerate()
+		.map(|(offset, value)| {
+			let kind = value_type(&value);
+			let fail = |reason| error(backend, offset + 1, kind, reason);
+			let converted = match value {
+				Value::Bool(v) => v.map(QueryValue::Bool),
+				Value::TinyInt(v) => v.map(|v| QueryValue::Int(i64::from(v))),
+				Value::SmallInt(v) => v.map(|v| QueryValue::Int(i64::from(v))),
+				Value::Int(v) => v.map(QueryValue::Int32),
+				Value::BigInt(v) => v.map(QueryValue::Int),
+				Value::TinyUnsigned(v) => v.map(|v| QueryValue::Int(i64::from(v))),
+				Value::SmallUnsigned(v) => v.map(|v| QueryValue::Int(i64::from(v))),
+				Value::Unsigned(v) => v.map(|v| QueryValue::Int(i64::from(v))),
+				Value::BigUnsigned(v) => v.map(QueryValue::Uint),
+				Value::Float(v) => v.map(|v| QueryValue::Float(f64::from(v))),
+				Value::Double(v) => v.map(QueryValue::Float),
+				Value::Char(v) => v.map(|v| QueryValue::String(v.to_string())),
+				Value::String(v) => v.map(|v| QueryValue::String(*v)),
+				Value::Bytes(v) => v.map(|v| QueryValue::Bytes(*v)),
+				Value::ChronoDateTimeUtc(v) => v.map(|v| QueryValue::Timestamp(*v)),
+				Value::ChronoDateTimeLocal(v) => {
+					v.map(|v| QueryValue::Timestamp(v.with_timezone(&chrono::Utc)))
+				}
+				Value::ChronoDateTimeWithTimeZone(v) => {
+					v.map(|v| QueryValue::Timestamp(v.with_timezone(&chrono::Utc)))
+				}
+				Value::Uuid(v) => v.map(|v| QueryValue::Uuid(*v)),
+				Value::Array(ty, values) => {
+					Some(legacy_array(ty, values.map(|v| *v), backend, offset + 1)?)
+				}
+				Value::Json(v) => Some(QueryValue::Json(v)),
+				Value::ChronoDateTime(v) => v.map(|v| QueryValue::NaiveTimestamp(*v)),
+				#[cfg(feature = "pgvector")]
+				Value::Vector(v) => Some(QueryValue::Vector(v.map(|v| *v))),
+				_ => return Err(fail("type requires a native generated-value codec")),
+			};
+			Ok(converted.unwrap_or(QueryValue::Null))
+		})
+		.collect()
+}
+
+fn legacy_array(
+	ty: reinhardt_query::ArrayType,
+	values: Option<Vec<Value>>,
+	backend: &str,
+	index: usize,
+) -> Result<QueryValue> {
+	use super::types::array_query_value;
+	use reinhardt_query::ArrayType;
+	let fail = || {
+		error(
+			backend,
+			index,
+			"Array",
+			"array element does not match declared element type",
+		)
+	};
+	macro_rules! array {
+		($variant:ident, $convert:expr, $full:ident, $nullable:ident) => {{
+			let values = values
+				.map(|values| {
+					values
+						.into_iter()
+						.map(|value| match value {
+							Value::Int(None) => Ok(None),
+							Value::$variant(value) => Ok(value.map($convert)),
+							_ => Err(fail()),
+						})
+						.collect::<Result<Vec<_>>>()
+				})
+				.transpose()?;
+			Ok(array_query_value(
+				values,
+				QueryValue::$full,
+				QueryValue::$nullable,
+			))
+		}};
+	}
+	match ty {
+		ArrayType::String => array!(String, |value| *value, StringArray, NullableStringArray),
+		ArrayType::Int => array!(Int, |value| value, IntArray, NullableIntArray),
+		ArrayType::BigInt => array!(BigInt, |value| value, BigIntArray, NullableBigIntArray),
+		ArrayType::Bool => array!(Bool, |value| value, BoolArray, NullableBoolArray),
+		ArrayType::Float => array!(Float, |value| value, FloatArray, NullableFloatArray),
+		ArrayType::Double => array!(Double, |value| value, DoubleArray, NullableDoubleArray),
+		ArrayType::Uuid => array!(Uuid, |value| *value, UuidArray, NullableUuidArray),
+		_ => Err(error(
+			backend,
+			index,
+			"Array",
+			"type requires a native generated-value codec",
+		)),
+	}
+}
+
+pub(super) fn backend_name(backend: super::types::DatabaseType) -> &'static str {
+	match backend {
+		super::types::DatabaseType::Postgres => "postgres",
+		super::types::DatabaseType::Mysql => "mysql",
+		super::types::DatabaseType::Sqlite => "sqlite",
+	}
+}
+
+/// Check native numeric and temporal limits before SQLx encoding, including
+/// each element of a typed array. SQLx's encoders alone do not enforce every
+/// server precision limit.
+#[cfg(any(feature = "postgres", feature = "mysql"))]
+fn validate_value(value: &Value, backend: &str, index: usize) -> Result<()> {
+	if let Some(reason) = codec_loss(value, backend) {
+		return Err(error(backend, index, value_type(value), reason));
+	}
+	Ok(())
+}
+
+// PostgreSQL and MySQL temporal codecs store microseconds. Normalize at the
+// binding boundary so ORM-generated clocks and explicit timestamps share the
+// same contract. Keep leap seconds intact for validation instead of hiding them.
+#[cfg(any(feature = "postgres", feature = "mysql"))]
+fn normalize_temporal_precision(value: &mut Value) {
+	use chrono::Timelike;
+	macro_rules! truncate {
+		($value:expr) => {{
+			let nanos = $value.nanosecond();
+			if nanos < 1_000_000_000 {
+				**$value -= chrono::Duration::nanoseconds(i64::from(nanos % 1_000));
+			}
+		}};
+	}
+	match value {
+		Value::ChronoTime(Some(value)) => truncate!(value),
+		Value::ChronoDateTime(Some(value)) => truncate!(value),
+		Value::ChronoDateTimeUtc(Some(value)) => truncate!(value),
+		Value::ChronoDateTimeLocal(Some(value)) => truncate!(value),
+		Value::ChronoDateTimeWithTimeZone(Some(value)) => truncate!(value),
+		Value::Array(_, Some(values)) => {
+			for value in values.iter_mut() {
+				normalize_temporal_precision(value);
+			}
+		}
+		_ => {}
+	}
+}
+
+#[cfg(any(feature = "postgres", feature = "mysql"))]
+fn codec_loss(value: &Value, backend: &str) -> Option<&'static str> {
+	use chrono::Timelike;
+	let nanos = match value {
+		Value::ChronoTime(Some(v)) => v.nanosecond(),
+		Value::ChronoDateTime(Some(v)) => v.nanosecond(),
+		Value::ChronoDateTimeUtc(Some(v)) => v.nanosecond(),
+		Value::ChronoDateTimeLocal(Some(v)) => v.nanosecond(),
+		Value::ChronoDateTimeWithTimeZone(Some(v)) => v.nanosecond(),
+		Value::Array(_, Some(values)) => {
+			return values.iter().find_map(|value| codec_loss(value, backend));
+		}
+		Value::BigDecimal(Some(decimal)) => {
+			// Zero and redundant trailing digits do not enlarge the numeric value.
+			let decimal = decimal.normalized();
+			let scale = decimal.fractional_digit_count();
+			let fractional = u64::try_from(scale).unwrap_or(0);
+			let integer = if scale < 0 {
+				decimal.digits().saturating_add(scale.unsigned_abs())
+			} else {
+				decimal.digits().saturating_sub(fractional)
+			};
+			return match backend {
+				// PostgreSQL NUMERIC: 131072 integral and 16383 fractional digits.
+				"postgres" if integer > 131_072 || fractional > 16_383 => {
+					Some("decimal exceeds PostgreSQL numeric range")
+				}
+				// MySQL DECIMAL: at most 65 total digits and a scale of 30.
+				"mysql" if integer.saturating_add(fractional) > 65 || fractional > 30 => {
+					Some("decimal exceeds MySQL precision or scale")
+				}
+				_ => None,
+			};
+		}
+		Value::Float(Some(value)) if backend == "mysql" && !value.is_finite() => {
+			return Some("non-finite floats are unsupported");
+		}
+		Value::Double(Some(value)) if backend == "mysql" && !value.is_finite() => {
+			return Some("non-finite floats are unsupported");
+		}
+		_ => return None,
+	};
+	if nanos >= 1_000_000_000 {
+		Some("leap seconds are unsupported")
+	} else if nanos % 1_000 != 0 {
+		Some("sub-microsecond precision is unsupported")
+	} else {
+		None
+	}
+}
+
+#[cfg(test)]
+mod tests;
 
 fn compatibility_error(
 	backend: DatabaseType,
@@ -43,7 +306,14 @@ pub(crate) fn compatibility_arguments(
 			Value::Json(value) => QueryValue::Json(value),
 			#[cfg(feature = "pgvector")]
 			Value::Vector(value) => QueryValue::Vector(value.map(|value| *value)),
-			Value::Array(..) => return Err(unsupported("Array").into()),
+			Value::Array(element_type, values) => {
+				let backend = match backend {
+					DatabaseType::Postgres => "postgres/custom",
+					DatabaseType::Mysql => "mysql/custom",
+					DatabaseType::Sqlite => "sqlite/custom",
+				};
+				legacy_array(element_type, values.map(|values| *values), backend, index)?
+			}
 			Value::ChronoDate(..) => return Err(unsupported("ChronoDate").into()),
 			Value::ChronoTime(..) => return Err(unsupported("ChronoTime").into()),
 			Value::Decimal(..) => return Err(unsupported("Decimal").into()),
@@ -57,16 +327,7 @@ pub(crate) fn compatibility_arguments(
 			Value::TinyUnsigned(Some(value)) => QueryValue::Int(i64::from(value)),
 			Value::SmallUnsigned(Some(value)) => QueryValue::Int(i64::from(value)),
 			Value::Unsigned(Some(value)) => QueryValue::Int(i64::from(value)),
-			Value::BigUnsigned(Some(value)) => {
-				QueryValue::Int(i64::try_from(value).map_err(|_| {
-					compatibility_error(
-						backend,
-						index,
-						"BigUnsigned",
-						"unsigned integer exceeds signed 64-bit range",
-					)
-				})?)
-			}
+			Value::BigUnsigned(Some(value)) => QueryValue::Uint(value),
 			Value::Float(Some(value)) => QueryValue::Float(f64::from(value)),
 			Value::Double(Some(value)) => QueryValue::Float(value),
 			Value::Char(Some(value)) => QueryValue::String(value.to_string()),
@@ -88,10 +349,6 @@ pub(crate) fn compatibility_arguments(
 		arguments.push(argument);
 	}
 	Ok((sql, arguments))
-}
-
-pub(crate) fn binding_error(error: reinhardt_query_sqlx::BindError) -> DatabaseError {
-	DatabaseError::new(DatabaseErrorKind::Type, error.to_string()).with_source(error)
 }
 
 /// Build an unnamed query after removing potentially incompatible named statements.
@@ -117,7 +374,7 @@ pub(crate) async fn uncached_postgres_query<'q>(
 }
 
 #[cfg(test)]
-mod tests {
+mod compatibility_tests {
 	use super::*;
 	use crate::backends::backend::DatabaseBackend;
 	use crate::backends::types::{QueryResult, Row, RowStream, TransactionExecutor};
@@ -221,23 +478,227 @@ mod tests {
 	}
 
 	#[rstest]
+	#[case(0)]
+	#[case(i64::MAX as u64 + 1)]
+	#[case(u64::MAX)]
+	fn custom_backend_bridge_preserves_unsigned_values(#[case] value: u64) {
+		// Arrange
+		let built = (
+			"SELECT ?".to_owned(),
+			Values(vec![Value::BigUnsigned(Some(value))]),
+		);
+		// Act
+		let (sql, arguments) = compatibility_arguments(built, DatabaseType::Mysql).unwrap();
+		// Assert
+		assert_eq!(sql, "SELECT ?");
+		assert_eq!(arguments, vec![QueryValue::Uint(value)]);
+	}
+
+	fn compatibility_parameter_cases(arrays: bool) -> (Vec<Value>, Vec<QueryValue>) {
+		if !arrays {
+			return (
+				vec![
+					Value::Int(Some(7)),
+					Value::String(Some(Box::new("quoted' payload".to_owned()))),
+				],
+				vec![
+					QueryValue::Int32(7),
+					QueryValue::String("quoted' payload".to_owned()),
+				],
+			);
+		}
+		use reinhardt_query::ArrayType;
+		let mut values = Vec::new();
+		let mut expected = Vec::new();
+		values.extend([
+			Value::Array(
+				ArrayType::String,
+				Some(Box::new(vec![Value::String(Some(Box::new(
+					"quoted' payload".to_owned(),
+				)))])),
+			),
+			Value::Array(
+				ArrayType::String,
+				Some(Box::new(vec![
+					Value::String(Some(Box::new("quoted' payload".to_owned()))),
+					Value::String(None),
+					Value::Int(None),
+				])),
+			),
+			Value::Array(ArrayType::String, Some(Box::new(Vec::new()))),
+			Value::Array(ArrayType::String, None),
+		]);
+		expected.extend([
+			QueryValue::StringArray(vec!["quoted' payload".to_owned()]),
+			QueryValue::NullableStringArray(vec![Some("quoted' payload".to_owned()), None, None]),
+			QueryValue::StringArray(Vec::new()),
+			QueryValue::Null,
+		]);
+		values.extend([
+			Value::Array(ArrayType::Int, Some(Box::new(vec![Value::Int(Some(7))]))),
+			Value::Array(
+				ArrayType::Int,
+				Some(Box::new(vec![
+					Value::Int(Some(7)),
+					Value::Int(None),
+					Value::Int(None),
+				])),
+			),
+			Value::Array(ArrayType::Int, Some(Box::new(Vec::new()))),
+			Value::Array(ArrayType::Int, None),
+		]);
+		expected.extend([
+			QueryValue::IntArray(vec![7]),
+			QueryValue::NullableIntArray(vec![Some(7), None, None]),
+			QueryValue::IntArray(Vec::new()),
+			QueryValue::Null,
+		]);
+		values.extend([
+			Value::Array(
+				ArrayType::BigInt,
+				Some(Box::new(vec![Value::BigInt(Some(i64::MAX))])),
+			),
+			Value::Array(
+				ArrayType::BigInt,
+				Some(Box::new(vec![
+					Value::BigInt(Some(i64::MAX)),
+					Value::BigInt(None),
+					Value::Int(None),
+				])),
+			),
+			Value::Array(ArrayType::BigInt, Some(Box::new(Vec::new()))),
+			Value::Array(ArrayType::BigInt, None),
+		]);
+		expected.extend([
+			QueryValue::BigIntArray(vec![i64::MAX]),
+			QueryValue::NullableBigIntArray(vec![Some(i64::MAX), None, None]),
+			QueryValue::BigIntArray(Vec::new()),
+			QueryValue::Null,
+		]);
+		values.extend([
+			Value::Array(
+				ArrayType::Bool,
+				Some(Box::new(vec![Value::Bool(Some(true))])),
+			),
+			Value::Array(
+				ArrayType::Bool,
+				Some(Box::new(vec![
+					Value::Bool(Some(true)),
+					Value::Bool(None),
+					Value::Int(None),
+				])),
+			),
+			Value::Array(ArrayType::Bool, Some(Box::new(Vec::new()))),
+			Value::Array(ArrayType::Bool, None),
+		]);
+		expected.extend([
+			QueryValue::BoolArray(vec![true]),
+			QueryValue::NullableBoolArray(vec![Some(true), None, None]),
+			QueryValue::BoolArray(Vec::new()),
+			QueryValue::Null,
+		]);
+		values.extend([
+			Value::Array(
+				ArrayType::Float,
+				Some(Box::new(vec![Value::Float(Some(1.25))])),
+			),
+			Value::Array(
+				ArrayType::Float,
+				Some(Box::new(vec![
+					Value::Float(Some(1.25)),
+					Value::Float(None),
+					Value::Int(None),
+				])),
+			),
+			Value::Array(ArrayType::Float, Some(Box::new(Vec::new()))),
+			Value::Array(ArrayType::Float, None),
+		]);
+		expected.extend([
+			QueryValue::FloatArray(vec![1.25]),
+			QueryValue::NullableFloatArray(vec![Some(1.25), None, None]),
+			QueryValue::FloatArray(Vec::new()),
+			QueryValue::Null,
+		]);
+		values.extend([
+			Value::Array(
+				ArrayType::Double,
+				Some(Box::new(vec![Value::Double(Some(2.5))])),
+			),
+			Value::Array(
+				ArrayType::Double,
+				Some(Box::new(vec![
+					Value::Double(Some(2.5)),
+					Value::Double(None),
+					Value::Int(None),
+				])),
+			),
+			Value::Array(ArrayType::Double, Some(Box::new(Vec::new()))),
+			Value::Array(ArrayType::Double, None),
+		]);
+		expected.extend([
+			QueryValue::DoubleArray(vec![2.5]),
+			QueryValue::NullableDoubleArray(vec![Some(2.5), None, None]),
+			QueryValue::DoubleArray(Vec::new()),
+			QueryValue::Null,
+		]);
+		values.extend([
+			Value::Array(
+				ArrayType::Uuid,
+				Some(Box::new(vec![Value::Uuid(Some(Box::new(
+					uuid::Uuid::nil(),
+				)))])),
+			),
+			Value::Array(
+				ArrayType::Uuid,
+				Some(Box::new(vec![
+					Value::Uuid(Some(Box::new(uuid::Uuid::nil()))),
+					Value::Uuid(None),
+					Value::Int(None),
+				])),
+			),
+			Value::Array(ArrayType::Uuid, Some(Box::new(Vec::new()))),
+			Value::Array(ArrayType::Uuid, None),
+		]);
+		expected.extend([
+			QueryValue::UuidArray(vec![uuid::Uuid::nil()]),
+			QueryValue::NullableUuidArray(vec![Some(uuid::Uuid::nil()), None, None]),
+			QueryValue::UuidArray(Vec::new()),
+			QueryValue::Null,
+		]);
+		(values, expected)
+	}
+
+	fn compatibility_query(arrays: bool) -> ((String, Values), Vec<QueryValue>) {
+		use reinhardt_query::prelude::{Alias, Expr, PostgresQueryBuilder, Query};
+		let (values, expected) = compatibility_parameter_cases(arrays);
+		let mut statement = Query::select();
+		// Explicit placeholders retain typed NULL arguments instead of rendering
+		// them as SQL literals before the custom-provider bridge can observe them.
+		for index in 0..values.len() {
+			statement.expr_as(
+				Expr::cust(format!("${}", index + 1)),
+				Alias::new(format!("argument_{index}")),
+			);
+		}
+		let (sql, _) = PostgresQueryBuilder
+			.build_select_checked(&statement)
+			.unwrap();
+		((sql, Values(values)), expected)
+	}
+
+	#[rstest]
 	#[tokio::test]
-	async fn existing_custom_backend_works_without_implementing_new_generated_methods() {
+	async fn existing_custom_backend_works_without_implementing_new_generated_methods(
+		#[values(false, true)] arrays: bool,
+	) {
 		// Arrange: this provider implements only the pre-existing required raw methods.
 		let calls: CapturedCalls = Arc::new(Mutex::new(Vec::new()));
 		let connection = crate::backends::DatabaseConnection::new(Arc::new(CustomBackend {
 			calls: calls.clone(),
 		}));
-		let sql = "SELECT $1 AS id, $2 AS name";
-		let built = || {
-			(
-				sql.to_owned(),
-				Values(vec![
-					Value::Int(Some(7)),
-					Value::String(Some(Box::new("quoted' payload".to_owned()))),
-				]),
-			)
-		};
+		let (pair, expected) = compatibility_query(arrays);
+		let sql = pair.0.clone();
+		let built = || pair.clone();
 		// Act
 		let result = connection.execute_generated(built(), None).await.unwrap();
 		let one = connection.fetch_one_generated(built(), None).await.unwrap();
@@ -250,7 +711,7 @@ mod tests {
 			.execute_generated(
 				(
 					"private SQL".to_owned(),
-					Values(vec![Value::BigUnsigned(Some(u64::MAX))]),
+					Values(vec![Value::ChronoDate(None)]),
 				),
 				None,
 			)
@@ -265,31 +726,22 @@ mod tests {
 			failed.unwrap_err().database_kind(),
 			Some(DatabaseErrorKind::Type)
 		);
-		assert_eq!(
-			*calls.lock().unwrap(),
-			vec![
-				(
-					sql.to_owned(),
-					vec![
-						QueryValue::Int32(7),
-						QueryValue::String("quoted' payload".to_owned())
-					]
-				);
-				4
-			]
-		);
+		assert_eq!(*calls.lock().unwrap(), vec![(sql.to_owned(), expected); 4]);
 	}
 
 	#[rstest]
 	#[tokio::test]
-	async fn existing_custom_transaction_and_stream_defaults_preserve_raw_parameters() {
+	async fn existing_custom_transaction_and_stream_defaults_preserve_raw_parameters(
+		#[values(false, true)] arrays: bool,
+	) {
 		// Arrange: no generated methods are implemented by this legacy provider.
 		let calls: CapturedCalls = Arc::new(Mutex::new(Vec::new()));
 		let connection = crate::backends::DatabaseConnection::new(Arc::new(CustomBackend {
 			calls: calls.clone(),
 		}));
-		let sql = "SELECT $1 AS id";
-		let built = || (sql.to_owned(), Values(vec![Value::Int(Some(7))]));
+		let (pair, expected) = compatibility_query(arrays);
+		let sql = pair.0.clone();
+		let built = || pair.clone();
 		let mut transaction = connection.begin().await.unwrap();
 		// Act
 		let result = transaction.execute_generated(built(), None).await.unwrap();
@@ -322,7 +774,7 @@ mod tests {
 			.execute_generated(
 				(
 					"private SQL".to_owned(),
-					Values(vec![Value::BigUnsigned(Some(u64::MAX))]),
+					Values(vec![Value::ChronoDate(None)]),
 				),
 				None,
 			)
@@ -346,14 +798,11 @@ mod tests {
 		assert_eq!(result.rows_affected, 1);
 		assert_eq!(result.last_insert_id, Some(7));
 		assert_eq!(error.database_kind(), Some(DatabaseErrorKind::Type));
-		assert_eq!(
-			*calls.lock().unwrap(),
-			vec![(sql.to_owned(), vec![QueryValue::Int32(7)]); 6]
-		);
+		assert_eq!(*calls.lock().unwrap(), vec![(sql.to_owned(), expected); 6]);
 	}
 
 	#[rstest]
-	fn custom_bridge_preserves_pair_order_and_rejects_unsigned_overflow() {
+	fn custom_bridge_preserves_pair_order_and_unsigned_values() {
 		// Arrange
 		let sql = "SELECT ? AS amount, ? AS name";
 		let built = (
@@ -374,7 +823,7 @@ mod tests {
 				QueryValue::String("quoted' payload".to_owned())
 			]
 		);
-		let error = compatibility_arguments(
+		let unsigned = compatibility_arguments(
 			(
 				"private SQL".to_owned(),
 				Values(vec![
@@ -384,11 +833,17 @@ mod tests {
 			),
 			DatabaseType::Mysql,
 		)
-		.unwrap_err();
-		let message = error.to_string();
-		assert!(message.contains("BigUnsigned argument 2 for mysql/custom"));
-		assert!(!message.contains("private"));
-		assert!(!message.contains(&u64::MAX.to_string()));
+		.unwrap();
+		assert_eq!(
+			unsigned,
+			(
+				"private SQL".into(),
+				vec![
+					QueryValue::String("private payload".into()),
+					QueryValue::Uint(u64::MAX)
+				]
+			)
+		);
 	}
 
 	#[rstest]
@@ -396,7 +851,7 @@ mod tests {
 		Value::Decimal(Some(Box::new(rust_decimal::Decimal::new(12345, 4)))),
 		"Decimal"
 	)]
-	#[case(Value::Array(reinhardt_query::ArrayType::Int, Some(Box::new(vec![Value::Int(Some(1))]))), "Array")]
+	#[case(Value::Array(reinhardt_query::ArrayType::Int, Some(Box::new(vec![Value::String(Some(Box::new("wrong element type".into())))]))), "Array")]
 	fn custom_bridge_rejects_unrepresentable_types_without_stringifying(
 		#[case] value: Value,
 		#[case] kind: &str,

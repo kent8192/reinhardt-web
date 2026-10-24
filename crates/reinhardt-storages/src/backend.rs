@@ -3,6 +3,7 @@
 use crate::{Result, StorageError};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+#[cfg(any(test, feature = "s3", feature = "gcs", feature = "azure"))]
 use std::future::Future;
 use std::sync::Arc;
 
@@ -18,6 +19,7 @@ pub trait StoredObjectAdoption: Send + Sync {
 }
 
 /// Run a cloud exclusive save independently of caller cancellation.
+#[cfg(any(test, feature = "s3", feature = "gcs", feature = "azure"))]
 pub(crate) async fn save_if_absent_with_adoption_task<F>(
 	save: F,
 	adoption: Arc<dyn StoredObjectAdoption>,

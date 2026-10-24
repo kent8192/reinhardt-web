@@ -161,6 +161,61 @@ use once_cell::sync::Lazy;
 /// Global content type registry.
 pub static CONTENT_TYPE_REGISTRY: Lazy<ContentTypeRegistry> = Lazy::new(ContentTypeRegistry::new);
 
+// Keep each registry test isolated and restore its previous state on unwind.
+// Callers must hold #[serial(content_type_registry)] for the guard's lifetime.
+#[cfg(test)]
+pub(super) struct ContentTypeRegistryGuard {
+	types: HashMap<(String, String), ContentType>,
+	by_id: HashMap<i64, ContentType>,
+	next_id: i64,
+}
+
+#[cfg(test)]
+impl ContentTypeRegistryGuard {
+	pub(super) fn new() -> Self {
+		assert!(
+			serial_test::is_locked_serially(Some("content_type_registry")),
+			"registry tests must hold the content_type_registry serial lock"
+		);
+		let mut types = CONTENT_TYPE_REGISTRY
+			.types
+			.write()
+			.unwrap_or_else(|e| e.into_inner());
+		let mut by_id = CONTENT_TYPE_REGISTRY
+			.by_id
+			.write()
+			.unwrap_or_else(|e| e.into_inner());
+		let mut next_id = CONTENT_TYPE_REGISTRY
+			.next_id
+			.write()
+			.unwrap_or_else(|e| e.into_inner());
+
+		Self {
+			types: std::mem::take(&mut *types),
+			by_id: std::mem::take(&mut *by_id),
+			next_id: std::mem::replace(&mut *next_id, 1),
+		}
+	}
+}
+
+#[cfg(test)]
+impl Drop for ContentTypeRegistryGuard {
+	fn drop(&mut self) {
+		*CONTENT_TYPE_REGISTRY
+			.types
+			.write()
+			.unwrap_or_else(|e| e.into_inner()) = std::mem::take(&mut self.types);
+		*CONTENT_TYPE_REGISTRY
+			.by_id
+			.write()
+			.unwrap_or_else(|e| e.into_inner()) = std::mem::take(&mut self.by_id);
+		*CONTENT_TYPE_REGISTRY
+			.next_id
+			.write()
+			.unwrap_or_else(|e| e.into_inner()) = self.next_id;
+	}
+}
+
 /// Generic foreign key field
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GenericForeignKey {
@@ -257,6 +312,8 @@ impl GenericRelationQuery {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
+	use serial_test::serial;
 
 	#[test]
 	fn test_content_type_creation() {
@@ -342,16 +399,59 @@ mod tests {
 		assert!(!gfk.is_set());
 	}
 
-	#[test]
+	#[rstest]
+	#[serial(content_type_registry)]
 	fn test_generic_foreign_key_get_content_type() {
+		// Arrange
+		let _registry_guard = ContentTypeRegistryGuard::new();
 		let ct = CONTENT_TYPE_REGISTRY.register(ContentType::new("blog", "Comment"));
 
 		let mut gfk = GenericForeignKey::new();
 		gfk.set(&ct, 100);
 
+		// Act
 		let retrieved_ct = gfk.get_content_type();
-		assert!(retrieved_ct.is_some());
-		assert_eq!(retrieved_ct.unwrap().model, "Comment");
+
+		// Assert
+		assert_eq!(retrieved_ct, Some(ct));
+	}
+
+	#[rstest]
+	#[case::normal_return(false)]
+	#[case::panic(true)]
+	#[serial(content_type_registry)]
+	fn test_content_type_registry_guard_restores_state(#[case] panics: bool) {
+		// Arrange
+		let _registry_guard = ContentTypeRegistryGuard::new();
+		let first = CONTENT_TYPE_REGISTRY.register(ContentType::new("original", "First"));
+		let second = CONTENT_TYPE_REGISTRY.register(ContentType::new("original", "Second"));
+
+		// Act
+		let result = std::panic::catch_unwind(|| {
+			let _nested_guard = ContentTypeRegistryGuard::new();
+			assert_eq!(CONTENT_TYPE_REGISTRY.all().len(), 0);
+			assert_eq!(CONTENT_TYPE_REGISTRY.get_by_id(first.id.unwrap()), None);
+			let temporary = CONTENT_TYPE_REGISTRY.register(ContentType::new("temporary", "Model"));
+			assert_eq!(temporary.id, Some(1));
+			assert!(!panics, "simulated content type registry test failure");
+		});
+
+		// Assert
+		assert_eq!(result.is_err(), panics);
+		assert_eq!(CONTENT_TYPE_REGISTRY.all().len(), 2);
+		for original in [first, second] {
+			assert_eq!(
+				CONTENT_TYPE_REGISTRY.get(&original.app_label, &original.model),
+				Some(original.clone())
+			);
+			assert_eq!(
+				CONTENT_TYPE_REGISTRY.get_by_id(original.id.unwrap()),
+				Some(original)
+			);
+		}
+		assert_eq!(CONTENT_TYPE_REGISTRY.get("temporary", "Model"), None);
+		let next = CONTENT_TYPE_REGISTRY.register(ContentType::new("original", "Next"));
+		assert_eq!(next.id, Some(3));
 	}
 
 	#[test]
@@ -474,6 +574,8 @@ impl GenericForeignKey {
 #[cfg(test)]
 mod typed_tests {
 	use super::*;
+	use rstest::rstest;
+	use serial_test::serial;
 
 	// Test model types
 	struct UserModel;
@@ -532,11 +634,11 @@ mod typed_tests {
 		assert_eq!(ct1.id, ct2.id);
 	}
 
-	#[test]
+	#[rstest]
+	#[serial(content_type_registry)]
 	fn test_typed_generic_foreign_key() {
-		// Clean up global registry first
-		CONTENT_TYPE_REGISTRY.clear();
-
+		// Arrange
+		let _registry_guard = ContentTypeRegistryGuard::new();
 		let registry = ContentTypeRegistry::new();
 		let mut gfk = GenericForeignKey::new();
 
@@ -546,15 +648,14 @@ mod typed_tests {
 		assert_eq!(gfk.object_id, Some(42));
 
 		// Note: get_content_type uses global registry, so we need to register there too
-		CONTENT_TYPE_REGISTRY
+		let registered = CONTENT_TYPE_REGISTRY
 			.register(ContentType::new("blog", "Post").with_id(gfk.content_type_id.unwrap()));
 
+		// Act
 		let ct = gfk.get_content_type();
-		assert!(ct.is_some());
-		assert_eq!(ct.unwrap().model, "Post");
 
-		// Clean up
-		CONTENT_TYPE_REGISTRY.clear();
+		// Assert
+		assert_eq!(ct, Some(registered));
 	}
 
 	#[test]

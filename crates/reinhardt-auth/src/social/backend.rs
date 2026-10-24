@@ -21,11 +21,16 @@ pub struct AuthorizationResult {
 }
 
 /// Result of handling an authorization callback
+///
+/// A callback only succeeds once the provider has identified the user, so
+/// `claims` is always present. A failed ID token validation or UserInfo
+/// request fails the whole callback instead of yielding a token response
+/// without an identity.
 pub struct CallbackResult {
 	/// The token response from the provider
 	pub token_response: TokenResponse,
-	/// The user's claims (from ID token or UserInfo endpoint)
-	pub claims: Option<StandardClaims>,
+	/// The user's claims, from the validated ID token or the UserInfo endpoint
+	pub claims: StandardClaims,
 }
 
 /// Result of handling a contextual authorization callback.
@@ -89,6 +94,9 @@ impl SocialAuthBackend {
 	}
 
 	/// Begin an authorization flow with browser or session binding and opaque context.
+	///
+	/// Returns [`SocialAuthError::StateValidation`] when `binding` is empty.
+	/// Nothing has been stored at that point, so no state is left behind.
 	pub async fn begin_auth_with_context(
 		&self,
 		provider_name: &str,
@@ -124,7 +132,12 @@ impl SocialAuthBackend {
 		})?;
 
 		// Generate state for CSRF protection
-		let state = generate_random_string(32);
+		let state = format!(
+			"{}:{}:{}",
+			provider_name.len(),
+			provider_name,
+			generate_random_string(32)
+		);
 
 		// Generate nonce for OIDC providers
 		let nonce = if provider.is_oidc() {
@@ -152,6 +165,14 @@ impl SocialAuthBackend {
 	}
 
 	/// Handle an authorization callback
+	///
+	/// # Errors
+	///
+	/// Returns an error when the state is invalid, the code exchange fails,
+	/// ID token validation fails, or the user's claims cannot be retrieved.
+	/// For OAuth2-only providers and OIDC providers that return no ID token,
+	/// a failed UserInfo request is returned as the provider's error
+	/// (typically [`SocialAuthError::UserInfoError`]).
 	pub async fn handle_callback(
 		&self,
 		provider_name: &str,
@@ -161,6 +182,10 @@ impl SocialAuthBackend {
 		let provider = self.providers.get(provider_name).ok_or_else(|| {
 			SocialAuthError::Provider(format!("Provider not registered: {}", provider_name))
 		})?;
+		let expected_prefix = format!("{}:{}:", provider_name.len(), provider_name);
+		if !state.starts_with(&expected_prefix) {
+			return Err(SocialAuthError::InvalidState);
+		}
 
 		let state_data = self.state_store.consume(state).await?;
 		self.complete_callback(provider.as_ref(), provider_name, code, &state_data)
@@ -168,6 +193,26 @@ impl SocialAuthBackend {
 	}
 
 	/// Handle a contextual authorization callback with binding verification.
+	///
+	/// Once `provider_name` resolves to a registered provider, the single-use
+	/// state is consumed before the callback data is validated, so a callback
+	/// that fails validation can never be retried with the same state.
+	///
+	/// # Errors
+	///
+	/// - [`SocialAuthError::Provider`] when `provider_name` is not registered.
+	///   The state is not touched in that case.
+	/// - [`SocialAuthError::Storage`] when the state store does not support
+	///   contextual state.
+	/// - [`SocialAuthError::InvalidState`] when the state is unknown, already
+	///   consumed, or expired, when it was issued for a different provider, or
+	///   when `binding` does not match the one recorded by
+	///   [`begin_auth_with_context`](Self::begin_auth_with_context). The state
+	///   is removed from the store whenever it existed. An empty `binding`
+	///   never matches, so a callback that carries no browser binding is
+	///   treated exactly like one with a wrong binding.
+	/// - Any error returned by the provider while exchanging the code or
+	///   retrieving claims. The state has already been consumed by then.
 	pub async fn handle_callback_with_context(
 		&self,
 		provider_name: &str,
@@ -175,12 +220,6 @@ impl SocialAuthBackend {
 		state: &str,
 		binding: &[u8],
 	) -> Result<ContextualCallbackResult, SocialAuthError> {
-		if binding.is_empty() {
-			return Err(SocialAuthError::StateValidation(
-				"OAuth state binding must not be empty".to_string(),
-			));
-		}
-
 		let provider = self.providers.get(provider_name).ok_or_else(|| {
 			SocialAuthError::Provider(format!("Provider not registered: {}", provider_name))
 		})?;
@@ -212,44 +251,27 @@ impl SocialAuthBackend {
 			.exchange_code(code, state_data.code_verifier.as_deref())
 			.await?;
 
-		// Try to get user claims
-		let claims = if provider.is_oidc() {
-			// For OIDC providers, validate ID token if present
-			if let Some(id_token_str) = &token_response.id_token {
+		// Resolve the user's identity. A callback without claims is not a
+		// completed sign-in, so every retrieval failure is propagated.
+		let claims = match &token_response.id_token {
+			Some(id_token_str) if provider.is_oidc() => {
 				let id_token = provider
 					.validate_id_token(id_token_str, state_data.nonce.as_deref())
 					.await?;
-				Some(StandardClaims::from(id_token))
-			} else {
-				// Fall back to UserInfo endpoint. UserInfo failures are non-fatal:
-				// log them so operators can diagnose silent claim losses (issue #4001).
-				provider
-					.get_user_info(&token_response.access_token)
-					.await
-					.inspect_err(|e| {
-						tracing::warn!(
-							provider = %provider_name,
-							error = %e,
-							"Failed to fetch user info from OIDC UserInfo fallback; claims will be None",
-						)
-					})
-					.ok()
+				StandardClaims::from(id_token)
 			}
-		} else {
-			// For OAuth2-only providers, use UserInfo endpoint. UserInfo failures
-			// are non-fatal: log them so operators can diagnose silent claim
-			// losses (issue #4001).
-			provider
+			// OAuth2-only providers, and OIDC providers that omitted the ID
+			// token, identify the user through the UserInfo endpoint.
+			_ => provider
 				.get_user_info(&token_response.access_token)
 				.await
 				.inspect_err(|e| {
 					tracing::warn!(
 						provider = %provider_name,
 						error = %e,
-						"Failed to fetch user info from OAuth2 provider; claims will be None",
+						"Failed to fetch user info; rejecting social auth callback",
 					)
-				})
-				.ok()
+				})?,
 		};
 
 		Ok(CallbackResult {
@@ -278,6 +300,130 @@ fn generate_random_string(length: usize) -> String {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use async_trait::async_trait;
+	use rstest::rstest;
+
+	/// Provider whose token exchange succeeds without an ID token and whose
+	/// UserInfo request returns `userinfo`.
+	struct StubProvider {
+		oidc: bool,
+		userinfo: Result<StandardClaims, SocialAuthError>,
+	}
+
+	#[async_trait]
+	impl OAuthProvider for StubProvider {
+		fn name(&self) -> &str {
+			"stub"
+		}
+
+		fn is_oidc(&self) -> bool {
+			self.oidc
+		}
+
+		async fn authorization_url(
+			&self,
+			state: &str,
+			_nonce: Option<&str>,
+			_code_challenge: Option<&str>,
+		) -> Result<String, SocialAuthError> {
+			Ok(format!("https://provider.example/authorize?state={state}"))
+		}
+
+		async fn exchange_code(
+			&self,
+			_code: &str,
+			_code_verifier: Option<&str>,
+		) -> Result<TokenResponse, SocialAuthError> {
+			Ok(TokenResponse {
+				access_token: "access-token".to_string(),
+				token_type: "Bearer".to_string(),
+				expires_in: Some(3600),
+				refresh_token: None,
+				refresh_token_expires_in: None,
+				scope: None,
+				id_token: None,
+			})
+		}
+
+		async fn refresh_token(
+			&self,
+			_refresh_token: &str,
+		) -> Result<TokenResponse, SocialAuthError> {
+			Err(SocialAuthError::NotSupported("refresh".to_string()))
+		}
+
+		async fn get_user_info(
+			&self,
+			_access_token: &str,
+		) -> Result<StandardClaims, SocialAuthError> {
+			self.userinfo.clone()
+		}
+	}
+
+	fn claims_for(sub: &str) -> StandardClaims {
+		StandardClaims {
+			sub: sub.to_string(),
+			email: None,
+			email_verified: None,
+			name: None,
+			given_name: None,
+			family_name: None,
+			picture: None,
+			locale: None,
+			additional_claims: HashMap::new(),
+		}
+	}
+
+	async fn backend_with(provider: StubProvider) -> (SocialAuthBackend, String) {
+		let mut backend = SocialAuthBackend::new();
+		backend.register_provider(Arc::new(provider));
+		let authorization = backend.begin_auth("stub", None, None).await.unwrap();
+		(backend, authorization.state)
+	}
+
+	#[rstest]
+	#[case::oauth2_provider(false)]
+	#[case::oidc_provider_without_id_token(true)]
+	#[tokio::test]
+	async fn callback_returns_userinfo_claims(#[case] oidc: bool) {
+		// Arrange
+		let (backend, state) = backend_with(StubProvider {
+			oidc,
+			userinfo: Ok(claims_for("user-42")),
+		})
+		.await;
+
+		// Act
+		let callback = backend
+			.handle_callback("stub", "code", &state)
+			.await
+			.unwrap();
+
+		// Assert
+		assert_eq!(callback.claims.sub, "user-42");
+		assert_eq!(callback.token_response.access_token, "access-token");
+	}
+
+	#[rstest]
+	#[case::oauth2_provider(false)]
+	#[case::oidc_provider_without_id_token(true)]
+	#[tokio::test]
+	async fn callback_fails_when_userinfo_fails(#[case] oidc: bool) {
+		// Arrange
+		let userinfo_error =
+			SocialAuthError::UserInfoError("UserInfo request failed (401 Unauthorized)".into());
+		let (backend, state) = backend_with(StubProvider {
+			oidc,
+			userinfo: Err(userinfo_error.clone()),
+		})
+		.await;
+
+		// Act
+		let result = backend.handle_callback("stub", "code", &state).await;
+
+		// Assert
+		assert_eq!(result.err(), Some(userinfo_error));
+	}
 
 	#[test]
 	fn test_backend_creation() {

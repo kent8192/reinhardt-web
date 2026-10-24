@@ -88,6 +88,13 @@ impl AdminBatchMutation {
 pub(crate) enum AdminBatchAtomicError {
 	#[error("row {row_index} with object ID '{object_id}' was not found")]
 	ZeroAffected { row_index: usize, object_id: String },
+	/// The per-row callback rejected a locked row before it was written.
+	#[error("row {row_index} with object ID '{object_id}' was rejected: {error}")]
+	RowRejected {
+		row_index: usize,
+		object_id: String,
+		error: AdminError,
+	},
 	#[error(transparent)]
 	Admin(#[from] AdminError),
 	#[error(transparent)]
@@ -168,9 +175,7 @@ fn json_to_array_element(
 	value: serde_json::Value,
 ) -> AdminResult<Value> {
 	if value.is_null() {
-		return Err(AdminError::ValidationError(format!(
-			"Field '{field_name}' does not support NULL array elements"
-		)));
+		return Ok(Value::Int(None));
 	}
 
 	let invalid = || {
@@ -602,10 +607,18 @@ fn json_to_sea_value(
 ) -> AdminResult<Value> {
 	if let Some(field_meta) =
 		crate::server::type_inference::get_field_metadata(table_name, field_name)
-		&& let Some(value) =
-			json_to_structured_value(field_name, &field_meta.field_type, value.clone())
 	{
-		return value;
+		if crate::server::type_inference::requires_unavailable_admin_feature(&field_meta.field_type)
+		{
+			return Err(AdminError::ValidationError(format!(
+				"Field '{field_name}' requires an enabled admin feature before it can be edited"
+			)));
+		}
+		if let Some(value) =
+			json_to_structured_value(field_name, &field_meta.field_type, value.clone())
+		{
+			return value;
+		}
 	}
 
 	#[cfg(server)]
@@ -1156,78 +1169,32 @@ fn postgres_parameter_cast(
 }
 
 fn convert_admin_array(array_type: ArrayType, values: Option<Vec<Value>>) -> QueryValue {
-	let Some(values) = values else {
-		return QueryValue::Null;
+	// Normalize the admin's scalar aliases, then share ORM conversion so NULL
+	// elements retain their positions and native binding types.
+	let array_type = match array_type {
+		ArrayType::Char => ArrayType::String,
+		ArrayType::TinyInt | ArrayType::SmallInt => ArrayType::Int,
+		array_type => array_type,
 	};
-	match array_type {
-		ArrayType::String | ArrayType::Char => QueryValue::StringArray(
+	let values = values.map(|values| {
+		Box::new(
 			values
 				.into_iter()
-				.filter_map(|value| match value {
-					Value::String(Some(value)) => Some(*value),
-					Value::Char(Some(value)) => Some(value.to_string()),
-					_ => None,
+				.map(|value| match value {
+					Value::Char(value) => {
+						Value::String(value.map(|value| Box::new(value.to_string())))
+					}
+					Value::TinyInt(value) => Value::Int(value.map(i32::from)),
+					Value::SmallInt(value) => Value::Int(value.map(i32::from)),
+					value => value,
 				})
 				.collect(),
-		),
-		ArrayType::TinyInt | ArrayType::SmallInt | ArrayType::Int => QueryValue::IntArray(
-			values
-				.into_iter()
-				.filter_map(|value| match value {
-					Value::TinyInt(Some(value)) => Some(i32::from(value)),
-					Value::SmallInt(Some(value)) => Some(i32::from(value)),
-					Value::Int(Some(value)) => Some(value),
-					_ => None,
-				})
-				.collect(),
-		),
-		ArrayType::BigInt => QueryValue::BigIntArray(
-			values
-				.into_iter()
-				.filter_map(|value| match value {
-					Value::BigInt(Some(value)) => Some(value),
-					_ => None,
-				})
-				.collect(),
-		),
-		ArrayType::Bool => QueryValue::BoolArray(
-			values
-				.into_iter()
-				.filter_map(|value| match value {
-					Value::Bool(Some(value)) => Some(value),
-					_ => None,
-				})
-				.collect(),
-		),
-		ArrayType::Float => QueryValue::FloatArray(
-			values
-				.into_iter()
-				.filter_map(|value| match value {
-					Value::Float(Some(value)) => Some(value),
-					_ => None,
-				})
-				.collect(),
-		),
-		ArrayType::Double => QueryValue::DoubleArray(
-			values
-				.into_iter()
-				.filter_map(|value| match value {
-					Value::Double(Some(value)) => Some(value),
-					_ => None,
-				})
-				.collect(),
-		),
-		ArrayType::Uuid => QueryValue::UuidArray(
-			values
-				.into_iter()
-				.filter_map(|value| match value {
-					Value::Uuid(Some(value)) => Some(*value),
-					_ => None,
-				})
-				.collect(),
-		),
-		_ => unreachable!("unsupported admin array type: {array_type:?}"),
-	}
+		)
+	});
+	convert_values(Values(vec![Value::Array(array_type, values)]))
+		.into_iter()
+		.next()
+		.expect("one admin array produces one backend parameter")
 }
 
 fn convert_admin_value(value: Value) -> QueryValue {
@@ -2959,19 +2926,35 @@ impl AdminDatabase {
 			) -> AdminResult<()>,
 	{
 		let admin_query = AdminQuery::new(table_name);
-		self.update_admin_query_batch_with(&admin_query, pk_field, mutations, after_updates)
-			.await
+		self.update_admin_query_batch_with(
+			&admin_query,
+			pk_field,
+			mutations,
+			|_, _| async { Ok(()) },
+			after_updates,
+		)
+		.await
+		.map(|(affected, _)| affected)
 	}
 
 	/// Updates a scoped batch and runs follow-up work inside the same transaction.
-	pub(crate) async fn update_admin_query_batch_with<F>(
+	///
+	/// `before_row_update` runs for every row after the row is locked and
+	/// loaded and before it is written. It receives the row index and the
+	/// stored row with physical column names; an error rejects the row and
+	/// rolls back the batch. Its results are returned in row order together
+	/// with the affected row count.
+	pub(crate) async fn update_admin_query_batch_with<B, Fut, T, F>(
 		&self,
 		admin_query: &AdminQuery,
 		pk_field: &str,
 		mutations: Vec<AdminBatchMutation>,
+		mut before_row_update: B,
 		after_updates: F,
-	) -> Result<u64, AdminBatchAtomicError>
+	) -> Result<(u64, Vec<T>), AdminBatchAtomicError>
 	where
+		B: FnMut(usize, HashMap<String, serde_json::Value>) -> Fut,
+		Fut: Future<Output = AdminResult<T>>,
 		F: for<'transaction> std::ops::AsyncFnOnce(
 				&'transaction mut AtomicTransaction,
 			) -> AdminResult<()>,
@@ -3008,10 +2991,11 @@ impl AdminDatabase {
 		self.connection
 			.atomic(async move |transaction| {
 				let mut affected = 0;
+				let mut row_results = Vec::with_capacity(mutations.len());
 				for (row_index, ((sql, params), mutation)) in
 					statements.into_iter().zip(&mutations).enumerate()
 				{
-					if self
+					let Some(stored) = self
 						.get_admin_query_with_executor_for_update(
 							transaction,
 							&admin_query,
@@ -3019,13 +3003,21 @@ impl AdminDatabase {
 							mutation.object_id(),
 						)
 						.await?
-						.is_none()
-					{
+					else {
 						return Err(AdminBatchAtomicError::ZeroAffected {
 							row_index,
 							object_id: mutation.object_id().to_string(),
 						});
-					}
+					};
+					let row_result =
+						before_row_update(row_index, stored)
+							.await
+							.map_err(|error| AdminBatchAtomicError::RowRejected {
+								row_index,
+								object_id: mutation.object_id().to_string(),
+								error,
+							})?;
+					row_results.push(row_result);
 					let result = OrmExecutor::execute(transaction, &sql, params).await?;
 					if result.rows_affected == 0 {
 						if backend == DatabaseBackend::MySql {
@@ -3052,7 +3044,7 @@ impl AdminDatabase {
 				}
 
 				after_updates(transaction).await?;
-				Ok(affected)
+				Ok((affected, row_results))
 			})
 			.await
 	}
@@ -4247,7 +4239,13 @@ mod tests {
 
 		// Act
 		let result = db
-			.update_admin_query_batch_with(&query, "id", mutations, async |_| Ok(()))
+			.update_admin_query_batch_with(
+				&query,
+				"id",
+				mutations,
+				|_, _| async { Ok(()) },
+				async |_| Ok(()),
+			)
 			.await;
 
 		// Assert
@@ -4262,6 +4260,118 @@ mod tests {
 		assert_eq!(rows.len(), 2);
 		assert_eq!(rows[0].data.get("status"), Some(&serde_json::Value::Null));
 		assert_eq!(rows[1].data.get("status"), Some(&serde_json::Value::Null));
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn batch_row_callback_sees_stored_rows_before_each_write() {
+		// Arrange
+		let (_lease, connection, db) =
+			batch_sqlite_database(&[(1, "first before"), (2, "second before")]).await;
+		let query = AdminQuery::new("batch_records");
+		let mutations = vec![
+			AdminBatchMutation::new(
+				"1".to_owned(),
+				HashMap::from([("name".to_owned(), serde_json::json!("first after"))]),
+			),
+			AdminBatchMutation::new(
+				"2".to_owned(),
+				HashMap::from([("name".to_owned(), serde_json::json!("second after"))]),
+			),
+		];
+
+		// Act
+		let (updated, stored_names) = db
+			.update_admin_query_batch_with(
+				&query,
+				"id",
+				mutations,
+				|row_index, stored| async move { Ok((row_index, stored.get("name").cloned())) },
+				async |_| Ok(()),
+			)
+			.await
+			.expect("commit batch with row callback");
+
+		// Assert
+		assert_eq!(updated, 2);
+		assert_eq!(
+			stored_names,
+			vec![
+				(0, Some(serde_json::json!("first before"))),
+				(1, Some(serde_json::json!("second before"))),
+			]
+		);
+		let rows = connection
+			.query("SELECT name FROM batch_records ORDER BY id", Vec::new())
+			.await
+			.expect("read records after committed batch");
+		assert_eq!(
+			rows[0].data.get("name"),
+			Some(&serde_json::json!("first after"))
+		);
+		assert_eq!(
+			rows[1].data.get("name"),
+			Some(&serde_json::json!("second after"))
+		);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn batch_row_callback_rejection_rolls_back_earlier_rows() {
+		// Arrange
+		let (_lease, connection, db) =
+			batch_sqlite_database(&[(1, "first before"), (2, "second before")]).await;
+		let query = AdminQuery::new("batch_records");
+		let mutations = vec![
+			AdminBatchMutation::new(
+				"1".to_owned(),
+				HashMap::from([("name".to_owned(), serde_json::json!("first after"))]),
+			),
+			AdminBatchMutation::new(
+				"2".to_owned(),
+				HashMap::from([("name".to_owned(), serde_json::json!("second after"))]),
+			),
+		];
+
+		// Act
+		let result = db
+			.update_admin_query_batch_with(
+				&query,
+				"id",
+				mutations,
+				|row_index, _stored| async move {
+					if row_index == 1 {
+						return Err(AdminError::ValidationError(
+							"second row rejected".to_owned(),
+						));
+					}
+					Ok(())
+				},
+				async |_| Ok(()),
+			)
+			.await;
+
+		// Assert
+		assert!(matches!(
+			result,
+			Err(AdminBatchAtomicError::RowRejected {
+				row_index: 1,
+				ref object_id,
+				error: AdminError::ValidationError(ref message),
+			}) if object_id == "2" && message == "second row rejected"
+		));
+		let rows = connection
+			.query("SELECT name FROM batch_records ORDER BY id", Vec::new())
+			.await
+			.expect("read records after rejected batch");
+		assert_eq!(
+			rows[0].data.get("name"),
+			Some(&serde_json::json!("first before"))
+		);
+		assert_eq!(
+			rows[1].data.get("name"),
+			Some(&serde_json::json!("second before"))
+		);
 	}
 
 	#[rstest]
@@ -6545,8 +6655,8 @@ mod tests {
 			params,
 			vec![
 				reinhardt_db::backends::types::QueryValue::String("2024-01-01".to_string()),
-				reinhardt_db::backends::types::QueryValue::Int(25),
-				reinhardt_db::backends::types::QueryValue::Int(0),
+				reinhardt_db::backends::types::QueryValue::Uint(25),
+				reinhardt_db::backends::types::QueryValue::Uint(0),
 			]
 		);
 	}
@@ -6636,8 +6746,8 @@ mod tests {
 			vec![
 				reinhardt_db::backends::types::QueryValue::String("10000-01-01".to_string()),
 				reinhardt_db::backends::types::QueryValue::String("0001-01-01 BC".to_string()),
-				reinhardt_db::backends::types::QueryValue::Int(25),
-				reinhardt_db::backends::types::QueryValue::Int(0),
+				reinhardt_db::backends::types::QueryValue::Uint(25),
+				reinhardt_db::backends::types::QueryValue::Uint(0),
 			]
 		);
 	}

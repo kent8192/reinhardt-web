@@ -12,7 +12,7 @@ use crate::value::Value;
 /// Escapes `\` -> `\\`, `%` -> `\%`, and `_` -> `\_` so that user-supplied
 /// strings are treated as literal text in LIKE patterns.
 ///
-/// This escaping relies on the `ESCAPE '\'` clause being present in the
+/// This escaping relies on an explicit backslash `ESCAPE` clause in the
 /// generated SQL. The helper functions [`ExprTrait::starts_with`],
 /// [`ExprTrait::ends_with`], and [`ExprTrait::contains`] automatically
 /// include this clause.
@@ -34,7 +34,8 @@ fn escape_like_pattern(input: &str) -> String {
 /// The explicit ESCAPE clause ensures that backslash escaping works
 /// consistently across all SQL backends, including those that do not treat
 /// `\` as a LIKE escape character by default (e.g., SQLite). Its literal is
-/// rendered by the backend: MySQL uses a hex literal for SQL-mode independence.
+/// rendered by the backend: MySQL uses `0x5C`, which is independent of its
+/// string-literal backslash mode, while PostgreSQL and SQLite use `'\'`.
 fn like_with_escape(expr: SimpleExpr, pattern: String) -> SimpleExpr {
 	SimpleExpr::LikeWithEscape(
 		Box::new(expr),
@@ -67,6 +68,27 @@ fn like_with_escape(expr: SimpleExpr, pattern: String) -> SimpleExpr {
 pub trait ExprTrait: Sized {
 	/// Build the final SimpleExpr.
 	fn into_simple_expr(self) -> SimpleExpr;
+
+	/// Preserve explicit parentheses around this expression on every backend.
+	///
+	/// Grouping is structural; nested parameters keep their renderer order and
+	/// validators inspect the inner expression. This supports native/WASM
+	/// behavioral parity (P2).
+	///
+	/// # Example
+	///
+	/// ```
+	/// use reinhardt_query::{Expr, ExprTrait, MySqlQueryBuilder, Query};
+	/// let statement = Query::select()
+	///     .expr(Expr::val(3_i64).add(5_i64).grouped().mul(2_i64))
+	///     .to_owned();
+	/// let (sql, values) = MySqlQueryBuilder.build_select_checked(&statement).unwrap();
+	/// assert_eq!(sql, "SELECT (? + ?) * ?");
+	/// assert_eq!(values.0, vec![3_i64.into(), 5_i64.into(), 2_i64.into()]);
+	/// ```
+	fn grouped(self) -> SimpleExpr {
+		SimpleExpr::Grouped(Box::new(self.into_simple_expr()))
+	}
 
 	// =========================================================================
 	// Comparison operations
@@ -309,6 +331,39 @@ pub trait ExprTrait: Sized {
 		)
 	}
 
+	/// Portable case-insensitive LIKE with a fixed backslash escape character.
+	///
+	/// The supplied pattern is already escaped: `%` and `_` remain wildcards
+	/// unless preceded by a backslash, and a literal backslash must be doubled. Ordinary
+	/// values are bound by the renderer. PostgreSQL/CockroachDB use ILIKE;
+	/// MySQL/SQLite use LOWER on both operands with LIKE. Case folding follows
+	/// each backend's locale/collation and LOWER behavior; SQLite's built-in
+	/// LOWER only folds ASCII. MySQL renders the escape as a hex literal, which
+	/// is independent of NO_BACKSLASH_ESCAPES. Native/WASM behavioral parity (P2).
+	///
+	/// # Example
+	///
+	/// ```rust
+	/// use reinhardt_query::{Expr, ExprTrait, PostgresQueryBuilder, Query, QueryStatementBuilder};
+	/// let statement = Query::select()
+	///     .column("name")
+	///     .from("users")
+	///     .and_where(Expr::col("name").ilike_with_escape("%Alice\\_%"))
+	///     .to_owned();
+	/// let (sql, values) = statement.build(PostgresQueryBuilder);
+	/// assert_eq!(sql, "SELECT \"name\" FROM \"users\" WHERE (\"name\" ILIKE $1 ESCAPE '\\')");
+	/// assert_eq!(values.0, vec!["%Alice\\_%".into()]);
+	/// ```
+	fn ilike_with_escape<V>(self, pattern: V) -> SimpleExpr
+	where
+		V: Into<SimpleExpr>,
+	{
+		SimpleExpr::InsensitiveLikeWithEscape(
+			Box::new(self.into_simple_expr()),
+			Box::new(pattern.into()),
+		)
+	}
+
 	/// NOT ILIKE (PostgreSQL).
 	fn not_ilike<V>(self, pattern: V) -> SimpleExpr
 	where
@@ -325,9 +380,10 @@ pub trait ExprTrait: Sized {
 	///
 	/// SQL wildcard characters (`%`, `_`) and the escape character (`\`) in
 	/// user input are escaped before constructing the pattern. The generated
-	/// SQL includes an explicit `ESCAPE '\'` clause so that the backslash
+	/// SQL includes an explicit backslash `ESCAPE` clause so that the
 	/// escaping is portable across all backends (including SQLite, which does
-	/// not treat `\` as an escape character by default).
+	/// not treat `\` as an escape character by default). MySQL renders the
+	/// escape character as `0x5C`; PostgreSQL and SQLite render it as `'\'`.
 	fn starts_with<S>(self, prefix: S) -> SimpleExpr
 	where
 		S: Into<String>,
@@ -341,7 +397,7 @@ pub trait ExprTrait: Sized {
 	///
 	/// SQL wildcard characters (`%`, `_`) and the escape character (`\`) in
 	/// user input are escaped before constructing the pattern. The generated
-	/// SQL includes an explicit `ESCAPE '\'` clause for cross-backend
+	/// SQL includes an explicit backslash `ESCAPE` clause for cross-backend
 	/// portability.
 	fn ends_with<S>(self, suffix: S) -> SimpleExpr
 	where
@@ -356,7 +412,7 @@ pub trait ExprTrait: Sized {
 	///
 	/// SQL wildcard characters (`%`, `_`) and the escape character (`\`) in
 	/// user input are escaped before constructing the pattern. The generated
-	/// SQL includes an explicit `ESCAPE '\'` clause for cross-backend
+	/// SQL includes an explicit backslash `ESCAPE` clause for cross-backend
 	/// portability.
 	fn contains<S>(self, substring: S) -> SimpleExpr
 	where
@@ -563,6 +619,30 @@ pub trait ExprTrait: Sized {
 		T: crate::types::IntoIden,
 	{
 		SimpleExpr::Cast(Box::new(self.into_simple_expr()), type_name.into_iden())
+	}
+
+	/// Cast to the selected backend's text type (P2 native/WASM parity).
+	///
+	/// Uses the closed built-in type grammar rather than an escaped user type
+	/// identifier. MySQL renders `CHAR`; PostgreSQL and SQLite render `TEXT`.
+	///
+	/// ```
+	/// use reinhardt_query::{Expr, ExprTrait, MySqlQueryBuilder, Query};
+	/// let statement = Query::select().expr(Expr::val(7_i64).cast_as_text()).to_owned();
+	/// let (sql, values) = MySqlQueryBuilder.build_select_checked(&statement).unwrap();
+	/// assert_eq!(sql, "SELECT CAST(? AS CHAR)");
+	/// assert_eq!(values.0, vec![7_i64.into()]);
+	/// ```
+	fn cast_as_text(self) -> SimpleExpr {
+		SimpleExpr::TextCast(Box::new(self.into_simple_expr()))
+	}
+
+	/// Cast to the selected backend's signed integer type (P2).
+	///
+	/// PostgreSQL renders `BIGINT`, MySQL `SIGNED`, and SQLite `INTEGER`.
+	/// The database determines conversion and overflow behavior for the source.
+	fn cast_as_signed_integer(self) -> SimpleExpr {
+		SimpleExpr::SignedIntegerCast(Box::new(self.into_simple_expr()))
 	}
 
 	/// AS ENUM expression (PostgreSQL).

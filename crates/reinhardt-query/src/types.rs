@@ -55,7 +55,7 @@ pub use order::{NullOrdering, Order, OrderExpr, OrderExprKind};
 pub use procedure::{ProcedureDef, ProcedureOperation, ProcedureParameter};
 pub use schema::SchemaDef;
 pub use schema_expr::{GeneratedColumn, GeneratedStorage, SchemaBinOper, SchemaExpr, SchemaFunc};
-pub use sequence::{OwnedBy, SequenceDef, SequenceOption};
+pub use sequence::{OwnedBy, SequenceDef, SequenceOption, SequenceType};
 pub use table_ref::{IntoTableRef, TableRef};
 pub use trigger::*;
 pub use type_def::{TypeDef, TypeKind, TypeOperation};
@@ -64,3 +64,6 @@ pub use zone::ZoneConfig;
 
 #[cfg(test)]
 mod tests;
+
+mod identity;
+pub use identity::{IdentityDef, IdentityGeneration};

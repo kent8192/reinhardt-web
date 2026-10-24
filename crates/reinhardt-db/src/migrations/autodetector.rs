@@ -127,10 +127,26 @@ pub struct ForeignKeyInfo {
 	pub on_delete: ForeignKeyAction,
 	/// ON UPDATE action (Cascade, SetNull, Restrict, NoAction, SetDefault)
 	pub on_update: ForeignKeyAction,
+	/// Columns that lead the key, as `(local, referenced)` pairs, before the
+	/// field's own column and [`Self::referenced_column`]. Empty for a
+	/// single-column key.
+	pub shared_columns: Vec<(String, String)>,
+	/// Constraint name to use instead of the generated
+	/// [`foreign_key_constraint_name`].
+	pub constraint_name: Option<String>,
 }
 
 /// Field state for migration detection
+///
+/// # Construction
+///
+/// This struct is `#[non_exhaustive]`, so code outside `reinhardt-db` cannot
+/// build it with a struct literal (struct update syntax does not bypass this).
+/// Use [`FieldState::new`] (or [`FieldState::with_foreign_key`]) and the chained
+/// `with_*` builders; public fields stay readable and assignable after
+/// construction.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct FieldState {
 	/// The name.
 	pub name: String,
@@ -149,6 +165,23 @@ pub struct FieldState {
 }
 
 impl FieldState {
+	/// Declares a typed identity definition in migration state.
+	pub fn with_identity(mut self, identity: super::IdentityDefinition) -> Self {
+		self.params.insert(
+			"identity".into(),
+			serde_json::to_string(&identity).expect("serializable identity"),
+		);
+		self
+	}
+	/// Declares a typed nextval default in migration state.
+	pub fn with_sequence_default(mut self, default: super::SequenceDefault) -> Self {
+		self.params.insert(
+			"sequence_default".into(),
+			serde_json::to_string(&default).expect("serializable sequence default"),
+		);
+		self
+	}
+
 	/// Creates a new instance.
 	pub fn new(name: impl Into<String>, field_type: super::FieldType, nullable: bool) -> Self {
 		Self {
@@ -185,12 +218,78 @@ impl FieldState {
 		self.domain = Some(domain.canonicalized());
 		self
 	}
+
+	/// Sets optional structured database value domain metadata, including an
+	/// explicit `None`.
+	pub fn with_domain_opt(mut self, domain: Option<crate::field_domain::FieldDomain>) -> Self {
+		self.domain = domain.map(crate::field_domain::FieldDomain::canonicalized);
+		self
+	}
+
+	/// Sets a field parameter (for example `primary_key`, `unique`, or
+	/// `default`) and returns self for chaining.
+	///
+	/// # Examples
+	///
+	/// ```rust
+	/// use reinhardt_db::migrations::{FieldState, FieldType};
+	///
+	/// let field = FieldState::new("id", FieldType::BigInteger, false)
+	///     .with_param("primary_key", "true")
+	///     .with_param("auto_increment", "true");
+	///
+	/// assert_eq!(field.params.get("primary_key").map(String::as_str), Some("true"));
+	/// assert_eq!(field.params.len(), 2);
+	/// ```
+	pub fn with_param(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+		self.params.insert(key.into(), value.into());
+		self
+	}
+
+	/// Inserts every parameter from `params`, replacing existing keys, and
+	/// returns self for chaining.
+	pub fn with_params<K, V>(mut self, params: impl IntoIterator<Item = (K, V)>) -> Self
+	where
+		K: Into<String>,
+		V: Into<String>,
+	{
+		self.params.extend(
+			params
+				.into_iter()
+				.map(|(key, value)| (key.into(), value.into())),
+		);
+		self
+	}
+
+	/// Sets generated-column metadata, including an explicit `None`.
+	pub fn with_generated(mut self, generated: Option<super::GeneratedColumnDefinition>) -> Self {
+		self.generated = generated;
+		self
+	}
+
+	/// Sets foreign-key reference metadata, including an explicit `None`.
+	///
+	/// Use this builder on a field created with [`FieldState::new`]; the
+	/// [`FieldState::with_foreign_key`] associated function remains available
+	/// for constructing a foreign-key field in one call.
+	pub fn with_foreign_key_info(mut self, foreign_key: Option<ForeignKeyInfo>) -> Self {
+		self.foreign_key = foreign_key;
+		self
+	}
 }
 
 /// Model state for migration detection
 ///
 /// Django equivalent: `ModelState` in django/db/migrations/state.py
+///
+/// # Construction
+///
+/// This struct is `#[non_exhaustive]`, so code outside `reinhardt-db` cannot
+/// build it with a struct literal (struct update syntax does not bypass this).
+/// Use [`ModelState::new`] and the chained `with_*` builders; public fields stay
+/// readable and assignable after construction.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct ModelState {
 	/// Application label (e.g., "auth", "blog")
 	pub app_label: String,
@@ -841,19 +940,112 @@ impl ModelState {
 		self.constraints.push(constraint);
 	}
 
+	/// Adds an index definition to this model.
+	pub fn add_index(&mut self, index: IndexDefinition) {
+		self.indexes.push(index);
+	}
+
+	/// Adds a many-to-many relationship to this model.
+	pub fn add_many_to_many(&mut self, many_to_many: ManyToManyMetadata) {
+		self.many_to_many_fields.push(many_to_many);
+	}
+
+	/// Overrides the physical table name derived by [`ModelState::new`] and
+	/// returns self for chaining.
+	///
+	/// # Examples
+	///
+	/// ```rust
+	/// use reinhardt_db::migrations::{FieldState, FieldType, IndexDefinition, ModelState};
+	///
+	/// let model = ModelState::new("blog", "Post")
+	///     .with_table_name("posts")
+	///     .with_field(FieldState::new("id", FieldType::BigInteger, false))
+	///     .with_field(FieldState::new("slug", FieldType::VarChar(64), false))
+	///     .with_option("ordering", "-id")
+	///     .with_index(IndexDefinition::new("posts_slug_idx", vec!["slug".to_string()], true));
+	///
+	/// assert_eq!(model.table_name, "posts");
+	/// assert_eq!(model.fields.len(), 2);
+	/// assert_eq!(model.options.get("ordering").map(String::as_str), Some("-id"));
+	/// assert_eq!(model.indexes.len(), 1);
+	/// ```
+	pub fn with_table_name(mut self, table_name: impl Into<String>) -> Self {
+		self.table_name = table_name.into();
+		self
+	}
+
+	/// Adds a field (keyed by [`FieldState::name`]) and returns self for chaining.
+	pub fn with_field(mut self, field: FieldState) -> Self {
+		self.add_field(field);
+		self
+	}
+
+	/// Sets a model option (for example `db_table` or `ordering`) and returns
+	/// self for chaining.
+	pub fn with_option(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+		self.options.insert(key.into(), value.into());
+		self
+	}
+
+	/// Sets the inheritance base model, including an explicit `None`.
+	pub fn with_base_model(mut self, base_model: Option<String>) -> Self {
+		self.base_model = base_model;
+		self
+	}
+
+	/// Sets the inheritance type (`single_table` or `joined_table`), including
+	/// an explicit `None`.
+	pub fn with_inheritance_type(mut self, inheritance_type: Option<String>) -> Self {
+		self.inheritance_type = inheritance_type;
+		self
+	}
+
+	/// Sets the single-table-inheritance discriminator column, including an
+	/// explicit `None`.
+	pub fn with_discriminator_column(mut self, discriminator_column: Option<String>) -> Self {
+		self.discriminator_column = discriminator_column;
+		self
+	}
+
+	/// Adds an index definition and returns self for chaining.
+	pub fn with_index(mut self, index: IndexDefinition) -> Self {
+		self.add_index(index);
+		self
+	}
+
+	/// Adds a constraint definition and returns self for chaining.
+	pub fn with_constraint(mut self, constraint: ConstraintDefinition) -> Self {
+		self.add_constraint(constraint);
+		self
+	}
+
+	/// Adds a many-to-many relationship and returns self for chaining.
+	pub fn with_many_to_many(mut self, many_to_many: ManyToManyMetadata) -> Self {
+		self.add_many_to_many(many_to_many);
+		self
+	}
+
 	/// Add a ForeignKey constraint from field information
 	pub fn add_foreign_key_constraint_from_field(&mut self, field_name: &str) {
 		if let Some(field) = self.fields.get(field_name)
 			&& let Some(ref fk_info) = field.foreign_key
 		{
+			let (mut fields, mut referenced_columns): (Vec<_>, Vec<_>) =
+				fk_info.shared_columns.iter().cloned().unzip();
+			fields.push(field_name.to_string());
+			referenced_columns.push(fk_info.referenced_column.clone());
 			let constraint = ConstraintDefinition {
-				name: foreign_key_constraint_name(&self.table_name, field_name),
+				name: fk_info
+					.constraint_name
+					.clone()
+					.unwrap_or_else(|| foreign_key_constraint_name(&self.table_name, field_name)),
 				constraint_type: "foreign_key".to_string(),
-				fields: vec![field_name.to_string()],
+				fields,
 				expression: None,
 				foreign_key_info: Some(ForeignKeyConstraintInfo {
 					referenced_table: fk_info.referenced_table.clone(),
-					referenced_columns: vec![fk_info.referenced_column.clone()],
+					referenced_columns,
 					on_delete: fk_info.on_delete,
 					on_update: fk_info.on_update,
 				}),
@@ -879,13 +1071,25 @@ impl ModelState {
 ///
 /// assert!(state.get_model("myapp", "User").is_some());
 /// ```
+///
+/// # Construction
+///
+/// This struct is `#[non_exhaustive]`, so code outside `reinhardt-db` cannot
+/// build it with a struct literal (struct update syntax does not bypass this).
+/// Use [`ProjectState::new`] and the chained `with_*` builders; public fields
+/// stay readable and assignable after construction.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct ProjectState {
 	/// Models: (app_label, model_name) -> ModelState
 	pub models: std::collections::BTreeMap<(String, String), ModelState>,
 
 	/// Whether prior migrations contain opaque SQL that this state cannot model.
 	pub has_opaque_schema_operations: bool,
+	/// Independent app-scoped sequence declarations.
+	pub sequences: BTreeMap<super::SequenceKey, super::SequenceDefinition>,
+	/// Optional app selection; other sequences remain read-only dependency context.
+	pub sequence_scope: Option<String>,
 }
 
 impl Default for ProjectState {
@@ -961,6 +1165,13 @@ impl ProjectState {
 						primary_key,
 						auto_increment,
 						generated: field_state.generated.clone(),
+						identity: super::sequences::identity_from_params(&field_state.params)
+							.expect("validated identity metadata"),
+						sequence_default: super::sequences::sequence_default_from_params(
+							&field_state.params,
+						)
+						.expect("validated sequence default metadata"),
+						observed_sequence_default: None,
 					},
 				);
 			}
@@ -1003,7 +1214,12 @@ impl ProjectState {
 			);
 		}
 
-		super::schema_diff::DatabaseSchema { tables }
+		super::schema_diff::DatabaseSchema {
+			tables,
+			sequences: self.sequences.clone(),
+			observed_sequences: Vec::new(),
+			default_schema: None,
+		}
 	}
 
 	/// Convert ProjectState to DatabaseSchema for a specific app
@@ -1053,6 +1269,13 @@ impl ProjectState {
 							primary_key,
 							auto_increment,
 							generated: field_state.generated.clone(),
+							identity: super::sequences::identity_from_params(&field_state.params)
+								.expect("validated identity metadata"),
+							sequence_default: super::sequences::sequence_default_from_params(
+								&field_state.params,
+							)
+							.expect("validated sequence default metadata"),
+							observed_sequence_default: None,
 						},
 					);
 				}
@@ -1097,7 +1320,17 @@ impl ProjectState {
 			}
 		}
 
-		super::schema_diff::DatabaseSchema { tables }
+		super::schema_diff::DatabaseSchema {
+			tables,
+			sequences: self
+				.sequences
+				.iter()
+				.filter(|(key, _)| key.app_label == app_label)
+				.map(|(key, definition)| (key.clone(), definition.clone()))
+				.collect(),
+			observed_sequences: Vec::new(),
+			default_schema: None,
+		}
 	}
 
 	/// Create a new empty ProjectState
@@ -1114,6 +1347,8 @@ impl ProjectState {
 		Self {
 			models: std::collections::BTreeMap::new(),
 			has_opaque_schema_operations: false,
+			sequences: BTreeMap::new(),
+			sequence_scope: None,
 		}
 	}
 
@@ -1134,6 +1369,36 @@ impl ProjectState {
 	pub fn add_model(&mut self, model: ModelState) {
 		let key = (model.app_label.clone(), model.name.clone());
 		self.models.insert(key, model);
+	}
+
+	/// Adds or replaces a model, keyed by its app label and model name, and
+	/// returns self for chaining.
+	///
+	/// # Examples
+	///
+	/// ```rust
+	/// use reinhardt_db::migrations::{FieldState, FieldType, ModelState, ProjectState};
+	///
+	/// let state = ProjectState::new()
+	///     .with_model(
+	///         ModelState::new("blog", "Post")
+	///             .with_field(FieldState::new("id", FieldType::BigInteger, false)),
+	///     )
+	///     .with_model(ModelState::new("blog", "Comment"));
+	///
+	/// assert_eq!(state.models.len(), 2);
+	/// assert!(state.get_model("blog", "Post").is_some());
+	/// ```
+	pub fn with_model(mut self, model: ModelState) -> Self {
+		self.add_model(model);
+		self
+	}
+
+	/// Restricts sequence planning to one app, including an explicit `None`
+	/// for every app, and returns self for chaining.
+	pub fn with_sequence_scope(mut self, sequence_scope: Option<String>) -> Self {
+		self.sequence_scope = sequence_scope;
+		self
 	}
 
 	/// Get a model by app_label and model_name
@@ -1305,6 +1570,9 @@ impl ProjectState {
 				filtered.add_model(model_state.clone());
 			}
 		}
+		filtered.sequences = self.sequences.clone();
+		filtered.sequence_scope = Some(app_label.into());
+		filtered.has_opaque_schema_operations = self.has_opaque_schema_operations;
 		filtered
 	}
 
@@ -1389,6 +1657,7 @@ impl ProjectState {
 			model.table_name = new_table_name.to_string();
 		}
 
+		super::sequences::rename_owned_table(self, old_table_name, new_table_name);
 		self.update_foreign_key_table_references_in_app(app_label, old_table_name, new_table_name);
 	}
 
@@ -1455,15 +1724,15 @@ impl ProjectState {
 	/// // state will contain all models registered in the global registry
 	/// ```
 	pub fn from_global_registry() -> Self {
-		use super::model_registry::global_registry;
-
-		Self::from_model_metadata(global_registry().get_models())
+		Self::try_from_global_registry().expect("global metadata registry must be available")
 	}
 
 	/// Load ProjectState from the global model registry, reporting a poisoned lock.
 	pub fn try_from_global_registry() -> super::Result<Self> {
 		let models = super::model_registry::global_registry().try_get_models()?;
-		Ok(Self::from_model_metadata(models))
+		let mut state = Self::from_model_metadata(models);
+		state.sequences = super::model_registry::global_registry().try_get_sequences()?;
+		Ok(state)
 	}
 
 	fn from_model_metadata(models_metadata: Vec<super::model_registry::ModelMetadata>) -> Self {
@@ -1592,6 +1861,8 @@ impl ProjectState {
 			referenced_column: "id".to_string(),
 			on_delete: ForeignKeyAction::Cascade,
 			on_update: ForeignKeyAction::Cascade,
+			shared_columns: Vec::new(),
+			constraint_name: None,
 		});
 		model_state.add_field(from_field);
 
@@ -1605,6 +1876,8 @@ impl ProjectState {
 			referenced_column: "id".to_string(),
 			on_delete: ForeignKeyAction::Cascade,
 			on_update: ForeignKeyAction::Cascade,
+			shared_columns: Vec::new(),
+			constraint_name: None,
 		});
 		model_state.add_field(to_field);
 
@@ -1701,6 +1974,8 @@ impl ProjectState {
 
 		for op in operations {
 			match op {
+				Operation::Sequence { operation } => operation.state_forwards(self),
+				Operation::Identity { operation } => operation.state_forwards(self),
 				Operation::RunSQL { .. } => {
 					self.has_opaque_schema_operations = true;
 				}
@@ -1890,6 +2165,7 @@ impl ProjectState {
 					}
 				}
 				Operation::DropTable { name } => {
+					super::sequences::remove_owned_sequences(self, name, None);
 					// Find and remove the model with this table name
 					let keys_to_remove: Vec<_> = self
 						.models
@@ -1910,6 +2186,7 @@ impl ProjectState {
 					}
 				}
 				Operation::DropColumn { table, column, .. } => {
+					super::sequences::remove_owned_sequences(self, table, Some(column));
 					// Find the model and remove the field
 					if let Some(model) = self.find_model_by_table_mut(table) {
 						let removed_names: Vec<_> = model
@@ -2105,6 +2382,7 @@ impl ProjectState {
 							}
 						}
 					}
+					super::sequences::rename_owned_column(self, table, old_name, new_name);
 				}
 				Operation::AddConstraint {
 					table,
@@ -2574,6 +2852,8 @@ impl ProjectState {
 		if let Some(default) = default {
 			params.insert("default".to_string(), default);
 		}
+
+		super::sequences::write_column_params(col, &mut params);
 
 		FieldState {
 			name: col.name.to_string(),
@@ -5095,6 +5375,9 @@ impl MigrationAutodetector {
 	/// instead of silently generating destructive add/drop operations.
 	pub fn try_detect_changes(&self) -> super::Result<DetectedChanges> {
 		self.to_state.validate_physical_index_names()?;
+		self.from_state.validate_sequences()?;
+		self.to_state.validate_sequences()?;
+		super::sequences::validate_state_transition(&self.from_state, &self.to_state)?;
 		self.detect_changes_internal(true)
 	}
 
@@ -6504,6 +6787,14 @@ impl MigrationAutodetector {
 		to_def.name = "__renamed_field__".to_string();
 		from_def.unique = from_unique;
 		to_def.unique = to_unique;
+		// A stable declaration key identifies the same default through a physical
+		// sequence rename; PostgreSQL retains that dependency by object OID.
+		if let (Some(from_default), Some(to_default)) =
+			(&mut from_def.sequence_default, &to_def.sequence_default)
+			&& from_default.key == to_default.key
+		{
+			from_default.name = to_default.name.clone();
+		}
 		from_def == to_def
 	}
 
@@ -7325,6 +7616,8 @@ impl MigrationAutodetector {
 				default: None,
 				generated: None,
 				domain: None,
+				identity: None,
+				sequence_default: None,
 			},
 			// source_id column
 			super::ColumnDefinition {
@@ -7337,6 +7630,8 @@ impl MigrationAutodetector {
 				default: None,
 				generated: None,
 				domain: None,
+				identity: None,
+				sequence_default: None,
 			},
 			// target_id column
 			super::ColumnDefinition {
@@ -7349,6 +7644,8 @@ impl MigrationAutodetector {
 				default: None,
 				generated: None,
 				domain: None,
+				identity: None,
+				sequence_default: None,
 			},
 		];
 
@@ -7503,6 +7800,7 @@ impl MigrationAutodetector {
 		sorted.extend(Self::topological_sort_create_tables(create_tables));
 		sorted.extend(operations);
 
+		super::sequences::order_operations(&mut sorted);
 		sorted
 	}
 
@@ -7941,6 +8239,7 @@ impl MigrationAutodetector {
 		// cases where the column is being added in the same migration with
 		// `column.unique = true` *and* a peer `AddConstraint` is emitted for
 		// it. See reinhardt-web#4448.
+		super::sequences::augment_operations(&self.from_state, &self.to_state, &mut by_app);
 		Self::dedup_redundant_unique_add_constraints(&mut by_app);
 		for operations in by_app.values_mut() {
 			Self::order_renamed_column_operations(operations);
@@ -8839,8 +9138,31 @@ impl MigrationAutodetector {
 	/// Generate migrations and warnings, failing on ambiguous rename-like changes.
 	pub fn try_generate_migrations_with_warnings(&self) -> super::Result<GeneratedMigrations> {
 		let changes = self.try_detect_changes()?;
+		let migrations = self.generate_migrations_from_changes(&changes);
+		if migrations
+			.iter()
+			.flat_map(|migration| &migration.operations)
+			.any(|operation| {
+				matches!(
+					operation,
+					super::Operation::Sequence { .. } | super::Operation::Identity { .. }
+				)
+			}) {
+			let mut graph = super::MigrationGraph::new();
+			for migration in &migrations {
+				graph.add_migration(
+					super::MigrationKey::new(&migration.app_label, &migration.name),
+					migration
+						.dependencies
+						.iter()
+						.map(|(app, name)| super::MigrationKey::new(app, name))
+						.collect(),
+				);
+			}
+			graph.resolve_execution_order_with_replaces()?;
+		}
 		Ok(GeneratedMigrations {
-			migrations: self.generate_migrations_from_changes(&changes),
+			migrations,
 			warnings: changes.warnings,
 		})
 	}
@@ -8937,6 +9259,8 @@ impl MigrationAutodetector {
 					default: None,
 					generated: None,
 					domain: None,
+					identity: None,
+					sequence_default: None,
 				},
 				super::ColumnDefinition {
 					name: source_column.clone(),
@@ -8948,6 +9272,8 @@ impl MigrationAutodetector {
 					default: None,
 					generated: None,
 					domain: None,
+					identity: None,
+					sequence_default: None,
 				},
 				super::ColumnDefinition {
 					name: target_column.clone(),
@@ -8959,6 +9285,8 @@ impl MigrationAutodetector {
 					default: None,
 					generated: None,
 					domain: None,
+					identity: None,
+					sequence_default: None,
 				},
 			];
 
@@ -9205,28 +9533,20 @@ impl MigrationAutodetector {
 		// cases where the column is being added in the same migration with
 		// `column.unique = true` *and* a peer `AddConstraint` is emitted for
 		// it. See reinhardt-web#4448.
+		super::sequences::augment_operations(
+			&self.from_state,
+			&self.to_state,
+			&mut migrations_by_app,
+		);
 		Self::dedup_redundant_unique_add_constraints(&mut migrations_by_app);
 		for operations in migrations_by_app.values_mut() {
 			Self::order_create_tables_by_foreign_keys(operations);
 			Self::order_renamed_table_operations(operations);
 			Self::order_renamed_column_operations(operations);
+			super::sequences::order_operations(operations);
 		}
 
-		// Create Migration objects for each app
-		let mut migrations = Vec::new();
-		for (app_label, operations) in migrations_by_app {
-			// Placeholder name; the final migration name is generated by
-			// MakeMigrationsCommand using MigrationNamer::generate_name().
-			let migration_name = "autodetected".to_string();
-
-			let mut migration = super::Migration::new(&migration_name, &app_label);
-			for operation in operations {
-				migration = migration.add_operation(operation);
-			}
-			migrations.push(migration);
-		}
-
-		migrations
+		super::sequences::staged_migrations(&self.to_state, migrations_by_app)
 	}
 
 	fn remove_many_to_many_column_replacement_operations(
@@ -9923,6 +10243,28 @@ impl MigrationAutodetector {
 					apps.insert(model.app_label.clone());
 				}
 			}
+			let columns: Vec<_> = match operation {
+				super::Operation::CreateTable { columns, .. } => columns.iter().collect(),
+				super::Operation::AddColumn { column, .. } => vec![column],
+				super::Operation::AlterColumn { new_definition, .. } => vec![new_definition],
+				_ => Vec::new(),
+			};
+			for column in columns {
+				if let Some(default) = &column.sequence_default
+					&& default.key.app_label != current_app
+				{
+					apps.insert(default.key.app_label.clone());
+				}
+			}
+			if let super::Operation::Sequence {
+				operation: super::SequenceOperation::Ownership {
+					new: Some(owner), ..
+				},
+			} = operation && let Some(model) = to_state.find_model_by_table(&owner.table.name)
+				&& model.app_label != current_app
+			{
+				apps.insert(model.app_label.clone());
+			}
 			if let super::Operation::MoveModel { from_app, .. } = operation
 				&& from_app != current_app
 			{
@@ -10237,6 +10579,8 @@ mod tests {
 		}
 	}
 
+	// With `pgvector`, `create_operation_with_state` always emits
+	// `CreateNamedIndex`, so only the default build uses `CreateIndex` here.
 	#[cfg(not(feature = "pgvector"))]
 	#[test]
 	fn ordinary_index_addition_uses_legacy_create_index_operation() {
@@ -10278,7 +10622,6 @@ mod tests {
 		);
 	}
 
-	#[cfg(not(feature = "pgvector"))]
 	#[test]
 	fn partial_index_addition_preserves_where_clause() {
 		let key = ("auth".to_string(), "Token".to_string());
@@ -10316,9 +10659,10 @@ mod tests {
 		);
 	}
 
-	#[cfg(not(feature = "pgvector"))]
-	#[test]
-	fn apply_migration_operations_replays_legacy_partial_index_lifecycle() {
+	/// Replays a partial index on `auth_token.user_id` and returns the state,
+	/// the replayed `CreateIndex`, and the hashed definition it produced.
+	fn replay_partial_auth_token_index() -> (ProjectState, super::super::Operation, IndexDefinition)
+	{
 		let create_table = super::super::Operation::CreateTable {
 			name: "auth_token".to_string(),
 			columns: Vec::new(),
@@ -10338,23 +10682,42 @@ mod tests {
 			mysql_options: None,
 			operator_class: None,
 		};
-		let drop_index = super::super::Operation::DropIndex {
-			table: "auth_token".to_string(),
-			columns: vec!["user_id".to_string()],
-		};
-		let mut state = ProjectState::new();
-
-		state.apply_migration_operations(&[create_table, create_index], "auth");
-		let model = state
-			.find_model_by_table("auth_token")
-			.expect("legacy index replay should create the model index");
-		assert_eq!(model.indexes.len(), 1);
-		assert_eq!(
-			model.indexes[0].where_clause.as_deref(),
-			Some("consumed_at IS NULL")
+		let mut expected_index = IndexDefinition::new(
+			super::super::operations::generated_index_name(
+				"auth_token",
+				&["user_id".to_string()],
+				None,
+				Some("consumed_at IS NULL"),
+			),
+			vec!["user_id".to_string()],
+			false,
 		);
+		expected_index.where_clause = Some("consumed_at IS NULL".to_string());
+		let mut state = ProjectState::new();
+		state.apply_migration_operations(&[create_table, create_index.clone()], "auth");
+		assert_eq!(
+			state
+				.find_model_by_table("auth_token")
+				.expect("partial index replay should create the model")
+				.indexes,
+			vec![expected_index.clone()]
+		);
+		(state, create_index, expected_index)
+	}
 
+	#[test]
+	fn apply_migration_operations_replays_partial_index_lifecycle() {
+		// Arrange
+		let (mut state, create_index, _) = replay_partial_auth_token_index();
+		let drop_index = create_index
+			.to_reverse_operation(&state)
+			.expect("partial index creation should be reversible")
+			.expect("partial index creation should produce a drop operation");
+
+		// Act
 		state.apply_migration_operations(&[drop_index], "auth");
+
+		// Assert
 		assert!(
 			state
 				.find_model_by_table("auth_token")
@@ -10364,7 +10727,30 @@ mod tests {
 		);
 	}
 
-	#[cfg(not(feature = "pgvector"))]
+	#[test]
+	fn apply_migration_operations_drop_index_keeps_hashed_partial_index() {
+		// Arrange
+		let (mut state, _, expected_index) = replay_partial_auth_token_index();
+		let drop_index = super::super::Operation::DropIndex {
+			table: "auth_token".to_string(),
+			columns: vec!["user_id".to_string()],
+		};
+
+		// Act
+		state.apply_migration_operations(&[drop_index], "auth");
+
+		// Assert
+		// A column-addressed `DropIndex` names only the unhashed physical index
+		// (#6443), so the hashed partial index must survive the replay.
+		assert_eq!(
+			state
+				.find_model_by_table("auth_token")
+				.expect("model should remain after replaying DropIndex")
+				.indexes,
+			vec![expected_index]
+		);
+	}
+
 	#[test]
 	fn replay_drop_index_removes_only_the_legacy_physical_index() {
 		// Arrange
@@ -10402,45 +10788,6 @@ mod tests {
 		assert_eq!(names, vec!["author_id_custom_idx"]);
 	}
 
-	#[cfg(feature = "pgvector")]
-	#[test]
-	fn partial_index_addition_preserves_where_clause_with_pgvector_enabled() {
-		let key = ("auth".to_string(), "Token".to_string());
-		let source = build_project_state(vec![(
-			key.clone(),
-			build_model_state("auth", "Token", Vec::new(), Vec::new(), Vec::new()),
-		)]);
-		let mut index = IndexDefinition::new(
-			"auth_tokens_user_id_idx",
-			vec!["user_id".to_string()],
-			false,
-		);
-		index.where_clause = Some("consumed_at IS NULL".to_string());
-		let target = build_project_state(vec![(
-			key,
-			build_model_state("auth", "Token", Vec::new(), vec![index], Vec::new()),
-		)]);
-
-		let operations = MigrationAutodetector::new(source, target).generate_operations();
-
-		assert_eq!(
-			operations,
-			vec![super::super::Operation::CreateNamedIndex {
-				table: "auth_token".to_string(),
-				name: "auth_tokens_user_id_idx".to_string(),
-				columns: vec!["user_id".to_string()],
-				unique: false,
-				index_type: None,
-				where_clause: Some("consumed_at IS NULL".to_string()),
-				concurrently: false,
-				expressions: None,
-				mysql_options: None,
-				operator_class: None,
-			}]
-		);
-	}
-
-	#[cfg(not(feature = "pgvector"))]
 	#[test]
 	fn ordinary_index_removal_preserves_definition_for_rollback() {
 		let key = ("catalog".to_string(), "Product".to_string());
@@ -11154,6 +11501,8 @@ mod tests {
 					default: None,
 					generated: None,
 					domain: None,
+					identity: None,
+					sequence_default: None,
 				},
 				super::super::ColumnDefinition {
 					name: "user_id".to_string(),
@@ -11165,6 +11514,8 @@ mod tests {
 					default: None,
 					generated: None,
 					domain: None,
+					identity: None,
+					sequence_default: None,
 				},
 			],
 			constraints: vec![],
@@ -11327,7 +11678,6 @@ mod tests {
 		);
 	}
 
-	#[cfg(not(feature = "pgvector"))]
 	#[test]
 	fn create_index_replay_preserves_concurrently_through_reverse_sql() {
 		// Arrange
@@ -11373,7 +11723,7 @@ mod tests {
 		));
 		assert!(matches!(
 			&reverse,
-			super::super::Operation::CreateIndexRepair {
+			super::super::Operation::CreateNamedIndex {
 				concurrently: true,
 				..
 			}
@@ -11385,7 +11735,6 @@ mod tests {
 		);
 	}
 
-	#[cfg(not(feature = "pgvector"))]
 	#[test]
 	fn create_index_repair_replay_preserves_mysql_options_through_reverse_sql() {
 		// Arrange
@@ -11435,7 +11784,7 @@ mod tests {
 		));
 		assert!(matches!(
 			&reverse,
-			super::super::Operation::CreateIndexRepair {
+			super::super::Operation::CreateNamedIndex {
 				mysql_options: Some(options),
 				..
 			} if *options == mysql_options
@@ -11952,6 +12301,8 @@ mod tests {
 					default: None,
 					generated: None,
 					domain: None,
+					identity: None,
+					sequence_default: None,
 				},
 				super::super::ColumnDefinition {
 					name: "user_id".to_string(),
@@ -11963,6 +12314,8 @@ mod tests {
 					default: None,
 					generated: None,
 					domain: None,
+					identity: None,
+					sequence_default: None,
 				},
 			],
 			constraints: vec![],
@@ -12008,6 +12361,8 @@ mod tests {
 					default: None,
 					generated: None,
 					domain: None,
+					identity: None,
+					sequence_default: None,
 				},
 				super::super::ColumnDefinition {
 					name: "user_id".to_string(),
@@ -12019,6 +12374,8 @@ mod tests {
 					default: None,
 					generated: None,
 					domain: None,
+					identity: None,
+					sequence_default: None,
 				},
 			],
 			constraints: vec![],
@@ -13266,6 +13623,8 @@ mod tests {
 			referenced_column: "id".to_string(),
 			on_delete: ForeignKeyAction::Cascade,
 			on_update: ForeignKeyAction::Cascade,
+			shared_columns: Vec::new(),
+			constraint_name: None,
 		});
 		field
 	}
@@ -17287,6 +17646,8 @@ mod tests {
 					default: None,
 					generated: None,
 					domain: None,
+					identity: None,
+					sequence_default: None,
 				},
 				super::super::ColumnDefinition {
 					name: "name".to_string(),
@@ -17298,6 +17659,8 @@ mod tests {
 					default: None,
 					generated: None,
 					domain: None,
+					identity: None,
+					sequence_default: None,
 				},
 			],
 			constraints: vec![],
@@ -17396,6 +17759,8 @@ mod tests {
 					default: None,
 					generated: None,
 					domain: None,
+					identity: None,
+					sequence_default: None,
 				},
 				super::super::ColumnDefinition {
 					name: "target_id".to_string(),
@@ -17407,6 +17772,8 @@ mod tests {
 					default: None,
 					generated: None,
 					domain: None,
+					identity: None,
+					sequence_default: None,
 				},
 			],
 			constraints: vec![],
@@ -17490,6 +17857,8 @@ mod tests {
 					default: None,
 					generated: None,
 					domain: None,
+					identity: None,
+					sequence_default: None,
 				},
 				super::super::ColumnDefinition {
 					name: "username".to_string(),
@@ -17501,6 +17870,8 @@ mod tests {
 					default: None,
 					generated: None,
 					domain: None,
+					identity: None,
+					sequence_default: None,
 				},
 				super::super::ColumnDefinition {
 					name: "email".to_string(),
@@ -17512,6 +17883,8 @@ mod tests {
 					default: None,
 					generated: None,
 					domain: None,
+					identity: None,
+					sequence_default: None,
 				},
 				super::super::ColumnDefinition {
 					name: "first_name".to_string(),
@@ -17523,6 +17896,8 @@ mod tests {
 					default: Some("''".to_string()),
 					generated: None,
 					domain: None,
+					identity: None,
+					sequence_default: None,
 				},
 				super::super::ColumnDefinition {
 					name: "last_name".to_string(),
@@ -17534,6 +17909,8 @@ mod tests {
 					default: Some("''".to_string()),
 					generated: None,
 					domain: None,
+					identity: None,
+					sequence_default: None,
 				},
 				super::super::ColumnDefinition {
 					name: "is_active".to_string(),
@@ -17545,6 +17922,8 @@ mod tests {
 					default: Some("true".to_string()),
 					generated: None,
 					domain: None,
+					identity: None,
+					sequence_default: None,
 				},
 				super::super::ColumnDefinition {
 					name: "is_staff".to_string(),
@@ -17556,6 +17935,8 @@ mod tests {
 					default: Some("false".to_string()),
 					generated: None,
 					domain: None,
+					identity: None,
+					sequence_default: None,
 				},
 				super::super::ColumnDefinition {
 					name: "is_superuser".to_string(),
@@ -17567,6 +17948,8 @@ mod tests {
 					default: Some("false".to_string()),
 					generated: None,
 					domain: None,
+					identity: None,
+					sequence_default: None,
 				},
 			],
 			constraints: vec![super::super::operations::Constraint::Unique {
@@ -17594,6 +17977,8 @@ mod tests {
 					default: None,
 					generated: None,
 					domain: None,
+					identity: None,
+					sequence_default: None,
 				},
 				super::super::ColumnDefinition {
 					name: "name".to_string(),
@@ -17605,6 +17990,8 @@ mod tests {
 					default: None,
 					generated: None,
 					domain: None,
+					identity: None,
+					sequence_default: None,
 				},
 			],
 			constraints: vec![],
@@ -17976,7 +18363,7 @@ mod tests {
 		// generate_migrations() output.
 		for op in &ops {
 			assert!(
-				mig_ops.iter().any(|m| *m == op),
+				mig_ops.contains(&op),
 				"generate_operations() produced {:?} but generate_migrations() did not",
 				op
 			);
@@ -18409,6 +18796,8 @@ mod tests {
 					default: None,
 					generated: None,
 					domain: None,
+					identity: None,
+					sequence_default: None,
 				},
 				mysql_options: None,
 			},
@@ -18639,6 +19028,8 @@ mod tests {
 				referenced_column: "id".to_string(),
 				on_delete: ForeignKeyAction::Cascade,
 				on_update: ForeignKeyAction::Cascade,
+				shared_columns: Vec::new(),
+				constraint_name: None,
 			},
 		)
 	}
@@ -18913,5 +19304,195 @@ mod tests {
 		let tables = create_table_names(cycle_migration);
 		assert!(tables.contains(&"cycles_alpha".to_string()));
 		assert!(tables.contains(&"cycles_beta".to_string()));
+	}
+}
+
+#[cfg(test)]
+mod state_builder_tests {
+	use super::*;
+	use crate::field_domain::{FieldDomain, ModelEnumRepr, ModelEnumValue};
+	use crate::migrations::{FieldType, GeneratedColumnDefinition, GeneratedStorage};
+	use rstest::rstest;
+
+	fn string_domain(values: &[&str]) -> FieldDomain {
+		FieldDomain::Enum {
+			repr: ModelEnumRepr::String,
+			values: values
+				.iter()
+				.map(|value| ModelEnumValue::String((*value).to_string()))
+				.collect(),
+		}
+	}
+
+	fn foreign_key() -> ForeignKeyInfo {
+		ForeignKeyInfo {
+			referenced_table: "owners".to_string(),
+			referenced_column: "id".to_string(),
+			on_delete: ForeignKeyAction::Cascade,
+			on_update: ForeignKeyAction::NoAction,
+			shared_columns: Vec::new(),
+			constraint_name: None,
+		}
+	}
+
+	#[rstest]
+	fn foreign_key_constraint_leads_with_shared_columns_under_its_explicit_name() {
+		// Arrange
+		let mut model = ModelState::new("workspaces", "Artifact");
+		model.table_name = "artifacts".to_string();
+		model.add_field(FieldState::with_foreign_key(
+			"task_id",
+			FieldType::Uuid,
+			false,
+			ForeignKeyInfo {
+				referenced_table: "tasks".to_string(),
+				referenced_column: "id".to_string(),
+				on_delete: ForeignKeyAction::Cascade,
+				on_update: ForeignKeyAction::Restrict,
+				shared_columns: vec![("tenant".to_string(), "tenant".to_string())],
+				constraint_name: Some("artifacts_task_id_fkey".to_string()),
+			},
+		));
+
+		// Act
+		model.add_foreign_key_constraint_from_field("task_id");
+
+		// Assert
+		assert_eq!(
+			model.constraints,
+			vec![ConstraintDefinition {
+				name: "artifacts_task_id_fkey".to_string(),
+				constraint_type: "foreign_key".to_string(),
+				fields: vec!["tenant".to_string(), "task_id".to_string()],
+				expression: None,
+				foreign_key_info: Some(ForeignKeyConstraintInfo {
+					referenced_table: "tasks".to_string(),
+					referenced_columns: vec!["tenant".to_string(), "id".to_string()],
+					on_delete: ForeignKeyAction::Cascade,
+					on_update: ForeignKeyAction::Restrict,
+				}),
+			}]
+		);
+	}
+
+	#[rstest]
+	fn field_state_builders_set_every_optional_field() {
+		// Arrange
+		let generated =
+			GeneratedColumnDefinition::raw_sql("owner_id + 1", GeneratedStorage::Stored);
+		let domain = string_domain(&["published", "draft"]);
+
+		// Act
+		let field = FieldState::new("owner_id", FieldType::BigInteger, true)
+			.with_param("db_index", "true")
+			.with_params([("unique", "false"), ("db_index", "false")])
+			.with_generated(Some(generated.clone()))
+			.with_domain_opt(Some(domain.clone()))
+			.with_foreign_key_info(Some(foreign_key()));
+
+		// Assert
+		assert_eq!(
+			field,
+			FieldState {
+				name: "owner_id".to_string(),
+				field_type: FieldType::BigInteger,
+				nullable: true,
+				params: HashMap::from([
+					("db_index".to_string(), "false".to_string()),
+					("unique".to_string(), "false".to_string()),
+				]),
+				generated: Some(generated),
+				domain: Some(domain.canonicalized()),
+				foreign_key: Some(foreign_key()),
+			}
+		);
+	}
+
+	#[rstest]
+	fn field_state_option_builders_clear_values() {
+		// Arrange
+		let field =
+			FieldState::with_foreign_key("owner_id", FieldType::BigInteger, false, foreign_key())
+				.with_domain(string_domain(&["a"]));
+
+		// Act
+		let cleared = field
+			.with_foreign_key_info(None)
+			.with_domain_opt(None)
+			.with_generated(None);
+
+		// Assert
+		assert_eq!(
+			cleared,
+			FieldState::new("owner_id", FieldType::BigInteger, false)
+		);
+	}
+
+	#[rstest]
+	fn model_state_builders_set_every_field() {
+		// Arrange
+		let index = IndexDefinition::new("posts_slug_idx", vec!["slug".to_string()], true);
+		let constraint = ConstraintDefinition {
+			name: "posts_slug_check".to_string(),
+			constraint_type: "check".to_string(),
+			fields: vec!["slug".to_string()],
+			expression: Some("slug <> ''".to_string()),
+			foreign_key_info: None,
+		};
+		let many_to_many = ManyToManyMetadata::new("tags", "Tag");
+
+		// Act
+		let model = ModelState::new("blog", "Post")
+			.with_table_name("posts")
+			.with_field(FieldState::new("slug", FieldType::VarChar(64), false))
+			.with_option("ordering", "-id")
+			.with_base_model(Some("Content".to_string()))
+			.with_inheritance_type(Some("joined_table".to_string()))
+			.with_discriminator_column(Some("kind".to_string()))
+			.with_index(index.clone())
+			.with_constraint(constraint.clone())
+			.with_many_to_many(many_to_many.clone());
+
+		// Assert
+		assert_eq!(model.app_label, "blog");
+		assert_eq!(model.name, "Post");
+		assert_eq!(model.table_name, "posts");
+		assert_eq!(
+			model.fields,
+			BTreeMap::from([(
+				"slug".to_string(),
+				FieldState::new("slug", FieldType::VarChar(64), false)
+			)])
+		);
+		assert_eq!(
+			model.options,
+			HashMap::from([("ordering".to_string(), "-id".to_string())])
+		);
+		assert_eq!(model.base_model.as_deref(), Some("Content"));
+		assert_eq!(model.inheritance_type.as_deref(), Some("joined_table"));
+		assert_eq!(model.discriminator_column.as_deref(), Some("kind"));
+		assert_eq!(model.indexes, vec![index]);
+		assert_eq!(model.constraints, vec![constraint]);
+		assert_eq!(model.many_to_many_fields, vec![many_to_many]);
+	}
+
+	#[rstest]
+	fn project_state_builders_key_models_and_set_sequence_scope() {
+		// Act
+		let state = ProjectState::new()
+			.with_model(ModelState::new("blog", "Post"))
+			.with_model(ModelState::new("blog", "Post").with_table_name("posts"))
+			.with_sequence_scope(Some("blog".to_string()));
+
+		// Assert
+		assert_eq!(state.models.len(), 1);
+		assert_eq!(
+			state
+				.get_model("blog", "Post")
+				.map(|model| model.table_name.as_str()),
+			Some("posts")
+		);
+		assert_eq!(state.sequence_scope.as_deref(), Some("blog"));
+		assert!(!state.has_opaque_schema_operations);
 	}
 }

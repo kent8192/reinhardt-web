@@ -7,6 +7,69 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.22](https://github.com/kent8192/reinhardt-web/compare/reinhardt-query@v0.4.0-alpha.21...reinhardt-query@v0.4.0-alpha.22) - 2026-10-22
+
+### Documentation
+
+- update version references to v0.4.0
+- update version references to v0.3.25
+
+### Fixed
+
+- *(orm)* [**breaking**] prevent SQL structure injection from query inputs
+
+### Maintenance
+
+- *(release)* target 0.3.24 instead of 0.4.0
+- *(sync)* merge main into develop/0.4.0
+
+### Other
+
+- resolve conflicts with origin/main
+
+## [0.4.0-alpha.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-query@v0.4.0-alpha.20...reinhardt-query@v0.4.0-alpha.21) - 2026-10-18
+
+### Added
+
+- feat!(query): make sequence definition types non-exhaustive
+
+### Fixed
+
+- *(query)* preserve MySQL and SQLite boolean grouping
+
+### Maintenance
+
+- *(sync)* merge main into develop/0.4.0
+
+### Breaking Changes
+
+- `SequenceOption` and `OwnedBy` are now `#[non_exhaustive]` (#6511). Existing variants remain constructible, but downstream `match` expressions must add a wildcard arm; interpreters should return an explicit unsupported-option error from that arm instead of skipping the value. `SequenceDef` is also marked `#[non_exhaustive]`; its fields were already crate-private, so construction through `SequenceDef::new` and its builder methods is unchanged.
+
+## [0.4.0-alpha.20](https://github.com/kent8192/reinhardt-web/compare/reinhardt-query@v0.4.0-alpha.19...reinhardt-query@v0.4.0-alpha.20) - 2026-10-06
+
+### Added
+
+- *(query)* add typed MySQL index column prefixes
+
+### Fixed
+
+- *(orm)* preserve MySQL bulk row semantics
+- *(query)* preserve MySQL and SQLite arithmetic grouping
+- *(query)* terminate line comments in arithmetic groups
+- *(query)* terminate MySQL hash comments in arithmetic groups
+
+### Maintenance
+
+- *(sync)* merge main into develop/0.4.0
+
+### Added
+
+- PostgreSQL sequence options, literal schema identifiers, and structured identity definitions (#6506).
+
+### Breaking Changes
+
+- `SequenceOption` gains `AsType`/`StartWith`; `OwnedBy` gains `SchemaColumn`. Exhaustive downstream matches need corresponding arms.
+
 ## [0.4.0-alpha.19](https://github.com/kent8192/reinhardt-web/compare/reinhardt-query@v0.4.0-alpha.18...reinhardt-query@v0.4.0-alpha.19) - 2026-10-03
 
 ### Fixed
@@ -21,6 +84,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - *(query)* integrate main rendering fixes
 - merge main into custom predicate fix
 - *(sync)* merge main into develop/0.4.0
+
+## [0.3.25](https://github.com/kent8192/reinhardt-web/compare/reinhardt-query@v0.3.24...reinhardt-query@v0.3.25) - 2026-10-20
+
+### Other
+
+- resolve conflicts with origin/main
+
+## [0.3.24](https://github.com/kent8192/reinhardt-web/compare/reinhardt-query@v0.3.23...reinhardt-query@v0.3.24) - 2026-10-14
+
+### Fixed
+
+- *(orm)* [**breaking**] prevent SQL structure injection from query inputs
+
+
+## [0.3.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-query@v0.3.20...reinhardt-query@v0.3.21) - 2026-10-05
+
+### Added
+
+- *(query)* add typed MySQL index column prefixes
+
+### Documentation
+
+- *(query)* split database and maintenance support rows
+- *(query)* correct database DDL backend support
+
+### Fixed
+
+- *(query)* preserve quoted SQL during parameter inlining
+- *(query)* apply MySQL line comment rules during inlining
+- *(query)* preserve build overrides when inlining values
+- *(query)* respect backend syntax during parameter inlining
+- *(query)* preserve postgres backtick operators
+- *(query)* preserve PostgreSQL expression grouping
+- *(query)* preserve custom predicate grouping
+- *(query)* terminate line comments before predicate parentheses
+- *(query)* preserve standalone current of predicates
+- *(orm)* preserve MySQL bulk row semantics
+- *(query)* preserve MySQL and SQLite arithmetic grouping
+- *(query)* terminate line comments in arithmetic groups
+- *(query)* terminate MySQL hash comments in arithmetic groups
+
+### Maintenance
+
+- *(query)* integrate main rendering fixes
+- merge main into custom predicate fix
 
 ### Added
 

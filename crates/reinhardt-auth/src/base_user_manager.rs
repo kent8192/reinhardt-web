@@ -20,11 +20,13 @@ use std::collections::HashMap;
 ///
 /// # Examples
 ///
-/// Implementing a simple in-memory user manager:
+/// Implementing a simple in-memory user manager (requires the `argon2-hasher` feature):
 ///
 /// ```no_run
 /// # #[tokio::main]
 /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// # #[cfg(feature = "argon2-hasher")]
+/// # {
 /// use reinhardt_auth::{BaseUser, BaseUserManager, Argon2Hasher};
 /// use reinhardt_core::exception::Result;
 /// use async_trait::async_trait;
@@ -98,6 +100,7 @@ use std::collections::HashMap;
 ///         Ok(user)
 ///     }
 /// }
+/// # }
 /// # Ok(())
 /// # }
 /// ```

@@ -124,7 +124,9 @@ async fn test_independent_client_rate_limits() {
 	// Client 1: Use up its limit (2 requests)
 	for i in 1..=2 {
 		let response = client1
-			.get_with_headers("/test", &[("X-Forwarded-For", "192.168.1.100")])
+			.request(http::Method::GET, "/test")
+			.header("X-Forwarded-For", "192.168.1.100")
+			.send()
 			.await
 			.expect("Failed to send request");
 
@@ -138,7 +140,9 @@ async fn test_independent_client_rate_limits() {
 
 	// Client 1: 3rd request should be rate limited
 	let response = client1
-		.get_with_headers("/test", &[("X-Forwarded-For", "192.168.1.100")])
+		.request(http::Method::GET, "/test")
+		.header("X-Forwarded-For", "192.168.1.100")
+		.send()
 		.await
 		.expect("Failed to send request");
 
@@ -150,7 +154,9 @@ async fn test_independent_client_rate_limits() {
 
 	// Client 2: Should still be able to make requests (independent limit)
 	let response = client2
-		.get_with_headers("/test", &[("X-Forwarded-For", "192.168.1.200")])
+		.request(http::Method::GET, "/test")
+		.header("X-Forwarded-For", "192.168.1.200")
+		.send()
 		.await
 		.expect("Failed to send request");
 

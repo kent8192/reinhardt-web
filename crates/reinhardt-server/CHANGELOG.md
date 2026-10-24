@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.22](https://github.com/kent8192/reinhardt-web/compare/reinhardt-server@v0.4.0-alpha.21...reinhardt-server@v0.4.0-alpha.22) - 2026-10-22
+
+### Documentation
+
+- update version references to v0.4.0
+- update version references to v0.3.25
+
+### Maintenance
+
+- *(release)* target 0.3.24 instead of 0.4.0
+- *(sync)* merge main into develop/0.4.0
+
+### Security
+
+- *(server)* keep the accepted peer address on HTTP/2 requests
+
+## [0.4.0-alpha.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-server@v0.4.0-alpha.20...reinhardt-server@v0.4.0-alpha.21) - 2026-10-18
+
+### Added
+
+- *(server)* admit requests before body collection
+
+### Changed
+
+- *(server)* bundle HTTP/1.1 connection services into one value
+
+### Maintenance
+
+- *(sync)* merge main into develop/0.4.0
+
+### Security
+
+- *(server)* pass the accepted peer address to HTTP/2 requests
+
+### Added
+
+- Optional HTTP/1.1 and HTTP/2 request admission before body collection, with per-request size and receive-time limits and an owned guard.
+
 ## [0.4.0-alpha.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-server@v0.4.0-alpha.17...reinhardt-server@v0.4.0-alpha.18) - 2026-09-27
 
 ### Documentation
@@ -75,6 +113,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Maintenance
 
 - merge main into develop/0.4.0
+
+## [0.3.25](https://github.com/kent8192/reinhardt-web/compare/reinhardt-server@v0.3.24...reinhardt-server@v0.3.25) - 2026-10-20
+
+### Security
+
+- *(server)* keep the accepted peer address on HTTP/2 requests
+
+
+## [0.3.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-server@v0.3.20...reinhardt-server@v0.3.21) - 2026-10-05
+
+### Fixed
+
+- *(http)* serve streaming bodies through native endpoints
 
 ## [0.3.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-server@v0.3.17...reinhardt-server@v0.3.18) - 2026-09-16
 

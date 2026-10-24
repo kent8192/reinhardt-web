@@ -41,6 +41,30 @@ pub struct CreateSequenceStatement {
 }
 
 impl CreateSequenceStatement {
+	/// Set a separately quoted schema identifier.
+	pub fn schema<S: IntoIden>(&mut self, schema: S) -> &mut Self {
+		self.sequence_def.schema = Some(schema.into_iden());
+		self
+	}
+	/// Set the sequence integer width.
+	pub fn as_type(&mut self, data_type: crate::types::sequence::SequenceType) -> &mut Self {
+		self.sequence_def.data_type = Some(data_type);
+		self
+	}
+	/// Associate the sequence with a qualified physical column.
+	pub fn owned_by_schema_column<S: IntoIden, T: IntoIden, C: IntoIden>(
+		&mut self,
+		schema: S,
+		table: T,
+		column: C,
+	) -> &mut Self {
+		self.sequence_def = self
+			.sequence_def
+			.clone()
+			.owned_by_schema_column(schema, table, column);
+		self
+	}
+
 	/// Create a new CREATE SEQUENCE statement
 	///
 	/// # Examples

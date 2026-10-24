@@ -55,14 +55,14 @@ Add `reinhardt` to your `Cargo.toml`:
 <!-- reinhardt-version-sync:4 -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.4.0-alpha.19", features = ["urls"] }
+reinhardt = { version = "0.4.0-alpha.22", features = ["urls"] }
 
 # For specific sub-features:
-# reinhardt = { version = "0.4.0-alpha.19", features = ["urls-routers", "urls-proxy"] }
+# reinhardt = { version = "0.4.0-alpha.22", features = ["urls-routers", "urls-proxy"] }
 
 # Or use a preset:
-# reinhardt = { version = "0.4.0-alpha.19", features = ["standard"] }  # Recommended
-# reinhardt = { version = "0.4.0-alpha.19", features = ["full"] }      # All features
+# reinhardt = { version = "0.4.0-alpha.22", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.4.0-alpha.22", features = ["full"] }      # All features
 ```
 
 Then import URLs features:
@@ -183,6 +183,20 @@ impl SyncHandler for HealthHandler {
 
 let router = ServerRouter::new().handler_sync("/health", HealthHandler);
 ```
+
+### Raw Handler and View Methods
+
+`ServerRouter::handler`, `handler_arc`, and class-based view registrations
+forward requests to their handlers for every HTTP method, including `HEAD`,
+`OPTIONS`, and extension methods such as `PROPFIND`. The request method is
+preserved so the handler can enforce its own method policy. In particular,
+mounted routers can serve their existing HEAD endpoints; handlers remain
+responsible for returning HEAD responses with headers and no body.
+
+An explicitly registered `HEAD` or `OPTIONS` endpoint takes precedence over
+a raw handler or view with the same path pattern. These overrides validate
+successfully regardless of registration order; duplicate explicit endpoints
+and other route conflicts still produce validation errors.
 
 ### Catch-All Endpoint Paths
 

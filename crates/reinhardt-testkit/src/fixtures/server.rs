@@ -146,13 +146,17 @@ impl Drop for TestServerGuard {
 	}
 }
 
-/// Create a test server guard with the given router.
+/// Create a test server fixture with automatic connection cleanup.
 ///
-/// This is a helper function (not an rstest fixture) that creates a test server
-/// with automatic connection cleanup. Use it directly in your tests.
+/// By default, the fixture uses an empty [`Router`]. Override the router with
+/// rstest's `#[with(...)]` attribute, or pass it directly when calling the function.
+/// A downstream fixture named `router` is not resolved implicitly: rstest resolves
+/// fixture dependencies at the definition site.
 /// See [`TestServerGuard`] for the cancellation behavior on drop.
 ///
 /// # Examples
+///
+/// Call the function directly with a custom router:
 ///
 /// ```no_run
 /// use reinhardt_testkit::fixtures::*;
@@ -160,7 +164,7 @@ impl Drop for TestServerGuard {
 ///
 /// #[tokio::test]
 /// async fn test_server() {
-///     let router = Router::new();
+///     let router = Router::new().handler("/hello", BasicHandler);
 ///     let server = test_server_guard(router).await;
 ///     let response = reqwest::get(&format!("{}/hello", server.url))
 ///         .await
@@ -169,7 +173,42 @@ impl Drop for TestServerGuard {
 ///     // Automatic cleanup on drop
 /// }
 /// ```
-pub async fn test_server_guard(router: Router) -> TestServerGuard {
+///
+/// Use the default fixture or override its router with `#[with(...)]`:
+///
+/// ```no_run
+/// use reinhardt_testkit::fixtures::{test_server_guard, BasicHandler, TestServerGuard};
+/// use reinhardt_urls::routers::ServerRouter;
+/// use rstest::*;
+///
+/// fn my_router() -> ServerRouter {
+///     ServerRouter::new().handler("/hello", BasicHandler)
+/// }
+///
+/// #[rstest]
+/// #[tokio::test]
+/// async fn test_default_server(#[future] test_server_guard: TestServerGuard) {
+///     let server = test_server_guard.await;
+///     let response = reqwest::get(format!("{}/unregistered", server.url)).await.unwrap();
+///     assert_eq!(response.status(), 404);
+/// }
+///
+/// #[rstest]
+/// #[tokio::test]
+/// async fn test_custom_server(
+///     #[future]
+///     #[from(test_server_guard)]
+///     #[with(my_router())]
+///     server: TestServerGuard,
+/// ) {
+///     let server = server.await;
+///     let response = reqwest::get(format!("{}/hello", server.url)).await.unwrap();
+///     assert_eq!(response.status(), 200);
+///     assert_eq!(response.text().await.unwrap(), "OK");
+/// }
+/// ```
+#[fixture]
+pub async fn test_server_guard(#[default(Router::new())] router: Router) -> TestServerGuard {
 	TestServerGuard::new(router).await
 }
 
@@ -194,7 +233,27 @@ impl Handler for BasicHandler {
 
 /// HTTP client fixture for testing HTTP requests
 ///
+/// The `timeout` parameter is a **total request deadline**: reqwest applies it
+/// from the start of the request until the response body has been read to the
+/// end. A response body that is still being streamed when the deadline expires
+/// fails mid-stream, which is why this client is unsuitable for Server-Sent
+/// Events (SSE), long-poll, or other streaming tests that stay open longer than
+/// the timeout. Use [`streaming_http_client`] for those, or override the
+/// timeout as shown below.
+///
+/// The default is `Some(Duration::from_secs(10))`. Override it with rstest's
+/// `#[with(..)]`:
+///
+/// - `#[with(None)]` disables the total deadline entirely.
+/// - `#[with(Some(Duration::from_secs(60)))]` sets a longer deadline.
+///
+/// To call the fixture outside of an rstest injection, use
+/// `http_client::default()` for the default timeout, or pass the timeout
+/// explicitly with `http_client(timeout)`.
+///
 /// # Examples
+///
+/// Default 10 second total timeout:
 ///
 /// ```no_run
 /// use reinhardt_testkit::fixtures::*;
@@ -211,13 +270,147 @@ impl Handler for BasicHandler {
 ///     assert_eq!(response.status(), 200);
 /// }
 /// ```
+///
+/// Custom total timeout, or no total timeout at all:
+///
+/// ```no_run
+/// use reinhardt_testkit::fixtures::*;
+/// use rstest::*;
+/// use std::time::Duration;
+///
+/// #[rstest]
+/// #[tokio::test]
+/// async fn test_with_longer_timeout(
+///     #[with(Some(Duration::from_secs(60)))] http_client: reqwest::Client,
+/// ) {
+///     let response = http_client
+///         .get("http://localhost:8080/api/slow")
+///         .send()
+///         .await
+///         .unwrap();
+///     assert_eq!(response.status(), 200);
+/// }
+///
+/// #[rstest]
+/// #[tokio::test]
+/// async fn test_without_total_timeout(#[with(None)] http_client: reqwest::Client) {
+///     let response = http_client
+///         .get("http://localhost:8080/api/slow")
+///         .send()
+///         .await
+///         .unwrap();
+///     assert_eq!(response.status(), 200);
+/// }
+/// ```
 #[fixture]
-pub fn http_client() -> reqwest::Client {
-	reqwest::Client::builder()
-		.timeout(Duration::from_secs(10))
-		.build()
-		.expect("Failed to create HTTP client")
+pub fn http_client(
+	#[default(Some(Duration::from_secs(10)))] timeout: Option<Duration>,
+) -> reqwest::Client {
+	let mut builder = reqwest::Client::builder();
+	if let Some(timeout) = timeout {
+		builder = builder.timeout(timeout);
+	}
+	builder.build().expect("Failed to create HTTP client")
 }
+
+/// HTTP client fixture for streaming responses (SSE, long-poll, chunked bodies)
+///
+/// Unlike [`http_client`], this client sets **no total request deadline**.
+/// It bounds connection setup and idle time instead:
+///
+/// - `connect_timeout` limits establishing the connection.
+/// - `read_timeout` is an *idle* limit. It applies while waiting for the
+///   response headers (time to first byte) and to each subsequent read of the
+///   response body, and it restarts every time data arrives. A stream that
+///   keeps emitting events can therefore stay open indefinitely, while a
+///   stalled stream still fails after `read_timeout` of silence instead of
+///   hanging the test.
+///
+/// The defaults are a 10 second connect timeout and a 30 second read timeout.
+/// Override them with rstest's `#[with(connect_timeout, read_timeout)]`.
+///
+/// Because `read_timeout` also covers the wait for the response headers, an
+/// endpoint that holds the request open without sending anything for longer
+/// than `read_timeout` (a long-poll that answers only once an event happens)
+/// fails with a timeout error. Raise `read_timeout` above the longest expected
+/// silence for such tests, as shown in the long-poll example below.
+///
+/// # Examples
+///
+/// ```no_run
+/// use reinhardt_testkit::fixtures::*;
+/// use rstest::*;
+///
+/// #[rstest]
+/// #[tokio::test]
+/// async fn test_sse_stream(streaming_http_client: reqwest::Client) {
+///     let mut response = streaming_http_client
+///         .get("http://localhost:8080/events")
+///         .send()
+///         .await
+///         .unwrap();
+///     while let Some(chunk) = response.chunk().await.unwrap() {
+///         assert!(!chunk.is_empty());
+///     }
+/// }
+/// ```
+///
+/// Custom phase timeouts for a stream with long silent gaps:
+///
+/// ```no_run
+/// use reinhardt_testkit::fixtures::*;
+/// use rstest::*;
+/// use std::time::Duration;
+///
+/// #[rstest]
+/// #[tokio::test]
+/// async fn test_sparse_stream(
+///     #[with(Duration::from_secs(5), Duration::from_secs(120))]
+///     streaming_http_client: reqwest::Client,
+/// ) {
+///     let response = streaming_http_client
+///         .get("http://localhost:8080/events")
+///         .send()
+///         .await
+///         .unwrap();
+///     assert_eq!(response.status(), 200);
+/// }
+/// ```
+///
+/// A long-poll endpoint that may hold the request for up to a minute before
+/// sending the response headers needs a `read_timeout` above that wait:
+///
+/// ```no_run
+/// use reinhardt_testkit::fixtures::*;
+/// use rstest::*;
+/// use std::time::Duration;
+///
+/// #[rstest]
+/// #[tokio::test]
+/// async fn test_long_poll(
+///     #[with(Duration::from_secs(10), Duration::from_secs(120))]
+///     streaming_http_client: reqwest::Client,
+/// ) {
+///     let response = streaming_http_client
+///         .get("http://localhost:8080/poll")
+///         .send()
+///         .await
+///         .unwrap();
+///     assert_eq!(response.status(), 200);
+/// }
+/// ```
+#[fixture]
+pub fn streaming_http_client(
+	#[default(Duration::from_secs(10))] connect_timeout: Duration,
+	#[default(Duration::from_secs(30))] read_timeout: Duration,
+) -> reqwest::Client {
+	reqwest::Client::builder()
+		.connect_timeout(connect_timeout)
+		.read_timeout(read_timeout)
+		.build()
+		.expect("Failed to create streaming HTTP client")
+}
+
 // ============================================================================
 // HTTP/1.1 Server Fixtures
 // ============================================================================
@@ -762,6 +955,168 @@ async fn wait_for_server_ready(addr: SocketAddr) -> Result<(), std::io::Error> {
 mod tests {
 	use super::*;
 	use rstest::*;
+	use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+	#[fixture]
+	fn hello_router() -> Router {
+		Router::new().handler("/hello", BasicHandler)
+	}
+
+	#[fixture]
+	async fn hello_scenario(
+		#[future]
+		#[from(test_server_guard)]
+		#[with(hello_router())]
+		server: TestServerGuard,
+	) -> TestServerGuard {
+		server.await
+	}
+
+	/// Chunks emitted by [`TrickleServer`], in order.
+	const TRICKLE_CHUNKS: [&str; 4] = ["chunk0", "chunk1", "chunk2", "chunk3"];
+
+	/// Body that [`TrickleServer`] produces once every chunk has been sent.
+	const TRICKLE_BODY: &str = "chunk0chunk1chunk2chunk3";
+
+	/// Raw TCP endpoint that sends the response headers immediately and then
+	/// trickles a chunked body, one chunk per `interval`.
+	///
+	/// The total body time is `interval * TRICKLE_CHUNKS.len()`, while the gap
+	/// between two chunks is only `interval`. This separates a total request
+	/// deadline from an idle per-read deadline. The accept task, and with it
+	/// every per-connection task, is aborted when the value is dropped.
+	struct TrickleServer {
+		url: String,
+		accept_task: JoinHandle<()>,
+	}
+
+	impl Drop for TrickleServer {
+		fn drop(&mut self) {
+			self.accept_task.abort();
+		}
+	}
+
+	#[fixture]
+	async fn trickle_server(
+		#[default(Duration::from_millis(100))] interval: Duration,
+	) -> TrickleServer {
+		let listener = TcpListener::bind("127.0.0.1:0")
+			.await
+			.expect("Failed to bind trickle server");
+		let addr = listener.local_addr().expect("Failed to read local address");
+		let accept_task = tokio::spawn(async move {
+			// Dropping the JoinSet aborts the per-connection tasks when the
+			// accept task is aborted.
+			let mut connections = JoinSet::new();
+			while let Ok((mut stream, _)) = listener.accept().await {
+				connections.spawn(async move {
+					let mut request = Vec::new();
+					let mut buf = [0u8; 1024];
+					while !request.windows(4).any(|w| w == b"\r\n\r\n") {
+						match stream.read(&mut buf).await {
+							Ok(0) | Err(_) => return,
+							Ok(n) => request.extend_from_slice(&buf[..n]),
+						}
+					}
+					let headers = "HTTP/1.1 200 OK\r\n\
+						Content-Type: text/plain\r\n\
+						Transfer-Encoding: chunked\r\n\
+						Connection: close\r\n\r\n";
+					if stream.write_all(headers.as_bytes()).await.is_err() {
+						return;
+					}
+					for chunk in TRICKLE_CHUNKS {
+						tokio::time::sleep(interval).await;
+						let frame = format!("{:x}\r\n{chunk}\r\n", chunk.len());
+						if stream.write_all(frame.as_bytes()).await.is_err() {
+							return;
+						}
+					}
+					let _ = stream.write_all(b"0\r\n\r\n").await;
+				});
+			}
+		});
+
+		TrickleServer {
+			url: format!("http://{addr}"),
+			accept_task,
+		}
+	}
+
+	/// Sends a GET request and reads the whole response body, so that errors
+	/// raised either before or after the headers surface to the caller.
+	async fn fetch_body(client: &reqwest::Client, url: &str) -> Result<String, reqwest::Error> {
+		client.get(url).send().await?.text().await
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_server_guard_fixture_default_router(
+		#[future] test_server_guard: TestServerGuard,
+	) {
+		// Arrange
+		let server = test_server_guard.await;
+		let client = http_client::default();
+
+		// Act
+		let response = client
+			.get(format!("{}/unregistered", server.url))
+			.send()
+			.await
+			.expect("Failed to request unregistered route");
+
+		// Assert
+		assert_eq!(response.status(), reqwest::StatusCode::NOT_FOUND);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_server_guard_fixture_router_override(
+		#[future]
+		#[from(test_server_guard)]
+		#[with(hello_router())]
+		server: TestServerGuard,
+	) {
+		// Arrange
+		let server = server.await;
+		let client = http_client::default();
+
+		// Act
+		let response = client
+			.get(format!("{}/hello", server.url))
+			.send()
+			.await
+			.expect("Failed to request overridden router");
+
+		// Assert
+		assert_eq!(response.status(), reqwest::StatusCode::OK);
+		assert_eq!(
+			response.text().await.expect("Failed to read response"),
+			"OK"
+		);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_server_guard_fixture_composition(#[future] hello_scenario: TestServerGuard) {
+		// Arrange
+		let server = hello_scenario.await;
+		let client = http_client::default();
+
+		// Act
+		let response = client
+			.get(format!("{}/hello", server.url))
+			.send()
+			.await
+			.expect("Failed to request composed server fixture");
+
+		// Assert
+		assert_eq!(response.status(), reqwest::StatusCode::OK);
+		assert_eq!(
+			response.text().await.expect("Failed to read response"),
+			"OK"
+		);
+	}
 
 	#[rstest]
 	#[tokio::test]
@@ -866,11 +1221,127 @@ mod tests {
 	#[rstest]
 	fn test_http_client_fixture() {
 		// Arrange & Act
-		let client = http_client();
+		let client = http_client::default();
 
 		// Assert
 		// Verify client was created successfully by making a type assertion
 		let _: &reqwest::Client = &client;
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_http_client_default_reads_streaming_body(
+		http_client: reqwest::Client,
+		#[future] trickle_server: TrickleServer,
+	) {
+		// Arrange
+		let server = trickle_server.await;
+
+		// Act
+		let body = fetch_body(&http_client, &server.url).await;
+
+		// Assert
+		assert_eq!(
+			body.expect("Default timeout must cover a 400ms body"),
+			TRICKLE_BODY
+		);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_http_client_total_timeout_covers_body_streaming(
+		#[with(Some(Duration::from_millis(50)))] http_client: reqwest::Client,
+		#[future] trickle_server: TrickleServer,
+	) {
+		// Arrange
+		let server = trickle_server.await;
+
+		// Act
+		let error = fetch_body(&http_client, &server.url)
+			.await
+			.expect_err("A 50ms total deadline must abort a 400ms body");
+
+		// Assert
+		assert!(error.is_timeout(), "Expected a timeout error, got: {error}");
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_http_client_without_timeout_reads_streaming_body(
+		#[with(None)] http_client: reqwest::Client,
+		#[future] trickle_server: TrickleServer,
+	) {
+		// Arrange
+		let server = trickle_server.await;
+
+		// Act
+		let body = fetch_body(&http_client, &server.url).await;
+
+		// Assert
+		assert_eq!(
+			body.expect("Disabling the total timeout must not abort the body"),
+			TRICKLE_BODY
+		);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_streaming_http_client_has_no_total_timeout(
+		// The idle limit (250ms) is shorter than the whole body (400ms) but
+		// longer than the gap between chunks (100ms).
+		#[with(Duration::from_secs(10), Duration::from_millis(250))]
+		streaming_http_client: reqwest::Client,
+		#[future] trickle_server: TrickleServer,
+	) {
+		// Arrange
+		let server = trickle_server.await;
+
+		// Act
+		let body = fetch_body(&streaming_http_client, &server.url).await;
+
+		// Assert
+		assert_eq!(
+			body.expect("Idle read timeout must not act as a total deadline"),
+			TRICKLE_BODY
+		);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_streaming_http_client_default_reads_streaming_body(
+		streaming_http_client: reqwest::Client,
+		#[future] trickle_server: TrickleServer,
+	) {
+		// Arrange
+		let server = trickle_server.await;
+
+		// Act
+		let body = fetch_body(&streaming_http_client, &server.url).await;
+
+		// Assert
+		assert_eq!(
+			body.expect("Default streaming client must read the body"),
+			TRICKLE_BODY
+		);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_streaming_http_client_read_timeout_aborts_stalled_stream(
+		#[with(Duration::from_secs(10), Duration::from_millis(50))]
+		streaming_http_client: reqwest::Client,
+		#[future] trickle_server: TrickleServer,
+	) {
+		// Arrange
+		let server = trickle_server.await;
+
+		// Act
+		let error = fetch_body(&streaming_http_client, &server.url)
+			.await
+			.expect_err("A 50ms idle limit must abort a stream that pauses for 100ms");
+
+		// Assert
+		assert!(error.is_timeout(), "Expected a timeout error, got: {error}");
 	}
 
 	#[rstest]

@@ -20,6 +20,9 @@
 //!
 //! Each HTTP method has its own matchit router for optimal performance:
 //! - `GET`, `POST`, `PUT`, `DELETE`, `PATCH`, `HEAD`, `OPTIONS`
+//! - Other methods have separate tables when registered by an endpoint.
+//! - Raw handlers and views accept every method, including extension methods.
+//! - HEAD uses GET routing when no HEAD route matches, retaining the HEAD method.
 //! - Routes are compiled lazily on first access into an immutable route table
 //! - Parameters are extracted directly from matchit's Params
 //!

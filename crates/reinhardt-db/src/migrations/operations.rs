@@ -229,8 +229,21 @@ pub(super) fn named_index_has_target(columns: &[String], expressions: Option<&[S
 /// // GIN is best for containment operators (arrays, JSONB)
 /// let gin = IndexType::Gin;
 /// ```
+///
+/// # Extensibility
+///
+/// This enum is `#[non_exhaustive]`: new index methods may be added in a minor
+/// release. Existing variants remain directly constructible, but code outside
+/// `reinhardt-db` that matches on `IndexType` must include a wildcard arm.
+/// Interpreters should return an explicit unsupported-index-method error from that
+/// arm instead of silently ignoring the value.
+///
+/// The variant set already depends on Cargo features (`Hnsw` and `Ivfflat`
+/// exist only with `pgvector`), so feature unification alone can add variants
+/// to a downstream build.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
+#[non_exhaustive]
 pub enum IndexType {
 	/// B-tree index (default)
 	///
@@ -718,8 +731,17 @@ impl std::fmt::Display for DeferrableOption {
 }
 
 /// Constraint definition for tables
+///
+/// # Extensibility
+///
+/// This enum is `#[non_exhaustive]`: new constraint kinds may be added in a minor
+/// release. Existing variants remain directly constructible, but code outside
+/// `reinhardt-db` that matches on `Constraint` must include a wildcard arm.
+/// Interpreters should return an explicit unsupported-constraint error from that
+/// arm instead of silently ignoring the value.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(tag = "type")]
+#[non_exhaustive]
 pub enum Constraint {
 	/// PrimaryKey constraint
 	///
@@ -1276,11 +1298,40 @@ impl BulkLoadOptions {
 /// This enum is maintained for backward compatibility with existing code.
 /// New code should use the specific operation types from the `models`, `fields`,
 /// and `special` modules instead.
+///
+/// # Extensibility
+///
+/// This enum is `#[non_exhaustive]`: new operations may be added in a minor
+/// release. Existing variants remain directly constructible, but code outside
+/// `reinhardt-db` that matches on `Operation` must include a wildcard arm.
+/// Interpreters should return an explicit unsupported-operation error from that
+/// arm instead of silently ignoring the value.
+///
+/// Only the enum is non-exhaustive; individual variants are not, so migration
+/// source files can keep constructing known variants with struct-variant syntax.
+///
+/// ```rust
+/// use reinhardt_db::migrations::Operation;
+///
+/// fn describe(operation: &Operation) -> Result<String, String> {
+///     match operation {
+///         Operation::CreateTable { name, .. } => Ok(format!("create {name}")),
+///         Operation::DropTable { name } => Ok(format!("drop {name}")),
+///         // Required outside `reinhardt-db`: fail explicitly on operations this
+///         // caller does not interpret, including ones added in later releases.
+///         other => Err(format!("unsupported migration operation: {other:?}")),
+///     }
+/// }
+///
+/// let drop = Operation::DropTable { name: "legacy".to_string() };
+/// assert_eq!(describe(&drop).unwrap(), "drop legacy");
+/// ```
 // The legacy public variants embed ColumnDefinition by value, so boxing them would break
 // migration source compatibility. Structured field domains intentionally preserve that shape.
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type")]
+#[non_exhaustive]
 pub enum Operation {
 	/// CreateTable variant.
 	CreateTable {
@@ -1337,6 +1388,13 @@ pub enum Operation {
 		/// Original column definition (before alteration).
 		/// This is required for generating accurate rollback SQL.
 		/// If None, rollback will attempt to reconstruct from ProjectState.
+		///
+		/// On PostgreSQL and CockroachDB, forward SQL compares its nullability
+		/// with `new_definition` and emits `SET NOT NULL` / `DROP NOT NULL` only
+		/// when they differ. If None, the nullability of `new_definition` is
+		/// always applied. Primary key columns are always treated as NOT NULL,
+		/// and a column that stops being a primary key keeps NOT NULL because
+		/// this operation does not drop the primary key constraint.
 		#[serde(default, skip_serializing_if = "Option::is_none")]
 		old_definition: Option<ColumnDefinition>,
 		/// The new definition.
@@ -1711,6 +1769,9 @@ pub enum Operation {
 	///
 	/// Creates a PostgreSQL extension like PostGIS, uuid-ossp, etc.
 	/// This operation is only executed on PostgreSQL databases.
+	/// With `if_not_exists: false`, reversal drops the extension without CASCADE.
+	/// With `if_not_exists: true`, automatic reversal fails because migration
+	/// history cannot distinguish an existing extension from one it created.
 	CreateExtension {
 		/// Name of the extension to create
 		name: String,
@@ -1814,6 +1875,31 @@ pub enum Operation {
 		/// when `None`.
 		#[serde(default, skip_serializing_if = "Option::is_none")]
 		constraint_name: Option<String>,
+	},
+	/// Independent PostgreSQL sequence schema or explicit position operation.
+	Sequence {
+		/// Structured operation.
+		operation: super::SequenceOperation,
+	},
+	/// Column-owned PostgreSQL identity transition.
+	Identity {
+		/// Structured operation.
+		operation: super::IdentityOperation,
+	},
+	/// Drop a PostgreSQL extension without implicitly deleting dependent objects.
+	///
+	/// This native-only operation has P0 target parity. It is irreversible because
+	/// the extension's schema and version are not captured. Use `cascade` only
+	/// when dependent objects are also intended to be removed.
+	DropExtension {
+		/// Name of the extension to drop.
+		name: String,
+		/// Whether to tolerate a missing extension.
+		#[serde(default = "default_true")]
+		if_exists: bool,
+		/// Whether to remove dependent objects as well.
+		#[serde(default)]
+		cascade: bool,
 	},
 }
 
@@ -2154,6 +2240,8 @@ impl Operation {
 	/// Apply this operation to the project state (forward)
 	pub fn state_forwards(&self, app_label: &str, state: &mut ProjectState) {
 		match self {
+			Operation::Sequence { operation } => operation.state_forwards(state),
+			Operation::Identity { operation } => operation.state_forwards(state),
 			Operation::CreateTable {
 				name,
 				columns,
@@ -2183,6 +2271,7 @@ impl Operation {
 				state.add_model(model);
 			}
 			Operation::DropTable { name } => {
+				super::sequences::remove_owned_sequences(state, name, None);
 				state.remove_model_by_table_name(app_label, name);
 			}
 			Operation::AddColumn { table, column, .. } => {
@@ -2191,6 +2280,7 @@ impl Operation {
 				}
 			}
 			Operation::DropColumn { table, column, .. } => {
+				super::sequences::remove_owned_sequences(state, table, Some(column));
 				if let Some(model) = state.get_model_by_table_mut(app_label, table) {
 					model.remove_field(column);
 				}
@@ -2216,6 +2306,7 @@ impl Operation {
 				if let Some(model) = state.get_model_by_table_mut(app_label, table) {
 					model.rename_field(old_name, new_name.to_string());
 				}
+				super::sequences::rename_owned_column(state, table, old_name, new_name);
 			}
 			Operation::CreateInheritedTable {
 				name,
@@ -2495,7 +2586,8 @@ impl Operation {
 			// Schema operations don't affect ProjectState (models/fields only)
 			Operation::CreateSchema { .. }
 			| Operation::DropSchema { .. }
-			| Operation::CreateExtension { .. } => {
+			| Operation::CreateExtension { .. }
+			| Operation::DropExtension { .. } => {
 				// No state changes for schema/extension operations
 			}
 			// BulkLoad is a data operation that doesn't affect model structure
@@ -2941,7 +3033,10 @@ impl Operation {
 		parts.push(quote_identifier(&col.name));
 
 		// Column type (with auto_increment handling for PostgreSQL)
-		if col.auto_increment {
+		if let Some(identity) = &col.identity {
+			parts.push(col.type_definition.to_sql_for_dialect(dialect).into());
+			parts.push(identity.to_sql().into());
+		} else if col.auto_increment && col.sequence_default.is_none() {
 			match dialect {
 				SqlDialect::Postgres | SqlDialect::Cockroachdb => {
 					// PostgreSQL 10+ uses GENERATED BY DEFAULT AS IDENTITY
@@ -3068,6 +3163,9 @@ impl Operation {
 		if let Some(default) = effective_column_default(col.default.as_ref()) {
 			parts.push(format!("DEFAULT {default}").into());
 		}
+		if let Some(default) = &col.sequence_default {
+			parts.push(format!("DEFAULT {}", default.to_sql()).into());
+		}
 		parts.join(" ")
 	}
 
@@ -3112,6 +3210,8 @@ impl Operation {
 	/// Generate forward SQL
 	pub fn to_sql(&self, dialect: &SqlDialect) -> String {
 		match self {
+			Operation::Sequence { operation } => operation.to_sql(),
+			Operation::Identity { operation } => operation.to_sql(),
 			Operation::CreateTable {
 				name,
 				columns,
@@ -3256,6 +3356,7 @@ impl Operation {
 						let mut statements = Vec::new();
 						if old_definition.as_ref().is_some_and(|old_definition| {
 							effective_column_default(old_definition.default.as_ref()).is_some()
+								|| old_definition.sequence_default.is_some()
 						}) {
 							statements.push(format!(
 								"ALTER TABLE {} ALTER COLUMN {} DROP DEFAULT;",
@@ -3279,6 +3380,15 @@ impl Operation {
 								default
 							));
 						}
+						if let Some(default) = &new_definition.sequence_default {
+							statements.push(format!(
+								"ALTER TABLE {} ALTER COLUMN {} SET DEFAULT {};",
+								Self::quote_schema_identifier(table, dialect),
+								Self::quote_schema_identifier(column, dialect),
+								default.to_sql()
+							));
+						}
+
 						if matches!(dialect, SqlDialect::Postgres) {
 							let old_storage = old_definition.as_ref().and_then(|definition| {
 								decode_file_field_metadata(definition.default.as_deref())
@@ -3298,6 +3408,35 @@ impl Operation {
 									postgres_storage_keyword(storage)
 								));
 							}
+						}
+
+						// `ALTER COLUMN ... TYPE` keeps the existing NOT NULL flag, so a
+						// nullability change needs its own statement. Emit it as a
+						// separate payload (CockroachDB rejects the comma-combined form,
+						// see `to_reverse_sql`). When `old_definition` is unknown, follow
+						// `new_definition`: SET/DROP NOT NULL is idempotent on PostgreSQL
+						// and this matches MySQL `MODIFY COLUMN` and SQLite recreation,
+						// which both apply the full new definition. Primary key columns
+						// count as NOT NULL (see `ColumnDefinition::effective_not_null`).
+						let new_not_null = new_definition.effective_not_null();
+						let nullability_changed = match old_definition {
+							// PK demotion: the old column is NOT NULL as a primary key,
+							// and AlterColumn never drops the primary key constraint, so
+							// DROP NOT NULL would hit "column is in a primary key" and
+							// abort the migration. Keep NOT NULL until the constraint is
+							// gone. Remove this skip once a PK-constraint operation runs
+							// before AlterColumn.
+							Some(old) if old.primary_key && !new_definition.primary_key => false,
+							Some(old) => old.effective_not_null() != new_not_null,
+							None => true,
+						};
+						if nullability_changed {
+							statements.push(format!(
+								"ALTER TABLE {} ALTER COLUMN {} {} NOT NULL;",
+								Self::quote_schema_identifier(table, dialect),
+								Self::quote_schema_identifier(column, dialect),
+								if new_not_null { "SET" } else { "DROP" }
+							));
 						}
 						statements.join(" ")
 					}
@@ -3793,6 +3932,16 @@ impl Operation {
 					schema_clause
 				)
 			}
+			Operation::DropExtension {
+				name,
+				if_exists,
+				cascade,
+			} => format!(
+				"DROP EXTENSION{} {}{};",
+				if *if_exists { " IF EXISTS" } else { "" },
+				Self::quote_schema_identifier(name, dialect),
+				if *cascade { " CASCADE" } else { "" },
+			),
 			Operation::BulkLoad {
 				table,
 				source,
@@ -3982,6 +4131,36 @@ impl Operation {
 
 	/// Validates every field definition rendered by this operation.
 	pub fn validate_for_dialect(&self, dialect: &SqlDialect) -> super::Result<()> {
+		let generation_columns: Vec<&ColumnDefinition> = match self {
+			Self::CreateTable { columns, .. } | Self::CreateInheritedTable { columns, .. } => {
+				columns.iter().collect()
+			}
+			Self::AddColumn { column, .. }
+			| Self::AlterColumn {
+				new_definition: column,
+				..
+			} => vec![column],
+			_ => Vec::new(),
+		};
+		for column in generation_columns {
+			column.validate_generation()?;
+			if column.identity.is_some() || column.sequence_default.is_some() {
+				super::sequences::validate_backend(dialect)?;
+			}
+		}
+
+		match self {
+			Self::Sequence { operation } => {
+				super::sequences::validate_backend(dialect)?;
+				operation.validate()?;
+			}
+			Self::Identity { operation } => {
+				super::sequences::validate_backend(dialect)?;
+				operation.validate()?;
+			}
+			_ => {}
+		}
+
 		if let Self::CreateNamedIndex { name, .. } | Self::DropNamedIndex { name, .. } = self {
 			if name.is_empty() {
 				return Err(super::MigrationError::InvalidMigration(
@@ -4041,7 +4220,7 @@ impl Operation {
 					column.type_definition.try_to_sql_for_dialect(dialect)?;
 				}
 			}
-			Self::CreateExtension { .. } => {
+			Self::CreateExtension { .. } | Self::DropExtension { .. } => {
 				let backend = match dialect {
 					SqlDialect::Postgres => None,
 					SqlDialect::Mysql => Some("mysql"),
@@ -4427,8 +4606,9 @@ impl Operation {
 	///   one statement per payload). Operations that revert to a single payload (e.g.
 	///   `DropTable`, `AddColumn`) return a one-element `Vec`; operations that need
 	///   multiple payloads to round-trip cleanly (e.g. `AlterColumn` on PostgreSQL and
-	///   CockroachDB, which split type reversion and NOT NULL restoration into two
-	///   statements) return a multi-element `Vec`.
+	///   CockroachDB, which dispatch type, nullability, and changed defaults separately)
+	///   return a multi-element `Vec`. Changed defaults are dropped before reverting
+	///   the type, then the old default (if any) is restored.
 	/// * `Ok(None)` - Operation is not reversible (see Design Limitation below)
 	/// * `Err(_)` - Error generating reverse SQL
 	///
@@ -4449,6 +4629,38 @@ impl Operation {
 		project_state: &ProjectState,
 	) -> super::Result<Option<Vec<String>>> {
 		match self {
+			Operation::CreateExtension { .. } | Operation::DropExtension { .. } => {
+				self.try_to_sql(dialect)?;
+				self.to_reverse_operation(project_state)?
+					.map(|operation| operation.try_to_sql(dialect).map(|sql| vec![sql]))
+					.transpose()
+			}
+			Operation::Sequence { operation } => {
+				super::sequences::validate_backend(dialect)?;
+				let inverse = operation.reverse()?;
+				inverse.validate()?;
+				let mut statements = vec![inverse.to_sql()];
+				if let super::SequenceOperation::Drop { definition } = operation
+					&& definition.owned_by.is_some()
+				{
+					statements.push(
+						super::SequenceOperation::Ownership {
+							key: definition.key.clone(),
+							name: definition.name.clone(),
+							old: None,
+							new: definition.owned_by.clone(),
+						}
+						.to_sql(),
+					);
+				}
+				Ok(Some(statements))
+			}
+			Operation::Identity { operation } => {
+				super::sequences::validate_backend(dialect)?;
+				let inverse = operation.reverse();
+				inverse.validate()?;
+				Ok(Some(vec![inverse.to_sql()]))
+			}
 			Operation::CreateTable { name, .. } => Ok(Some(vec![format!(
 				"DROP TABLE {};",
 				Self::quote_schema_identifier(name, dialect)
@@ -4612,18 +4824,31 @@ impl Operation {
 					return Ok(None);
 				};
 
+				if let Some(default) = &old_def.sequence_default
+					&& !project_state.sequences.contains_key(&default.key)
+				{
+					return Err(super::MigrationError::IrreversibleError("typed sequence default rollback requires its historical sequence definition".into()));
+				}
 				let col_sql = Self::column_to_sql(&old_def, dialect);
-				Ok(Some(vec![format!(
+				let (mut statements, ownership) = super::sequences::owned_sequence_restore_sql(
+					project_state,
+					table,
+					Some(column),
+					dialect,
+				)?;
+				statements.push(format!(
 					"ALTER TABLE {} ADD COLUMN {};",
-					quote_identifier(table),
+					Self::quote_schema_identifier(table, dialect),
 					col_sql
-				)]))
+				));
+				statements.extend(ownership);
+				Ok(Some(statements))
 			}
 			Operation::AlterColumn {
 				table,
 				column,
 				old_definition,
-				new_definition: _,
+				new_definition,
 				..
 			} => {
 				// Resolve the original column definition to revert to.
@@ -4641,7 +4866,8 @@ impl Operation {
 				};
 
 				let type_sql = old_def.type_definition.to_sql_for_dialect(dialect);
-				let null_clause = if old_def.not_null { " NOT NULL" } else { "" };
+				let old_not_null = old_def.effective_not_null();
+				let null_clause = if old_not_null { " NOT NULL" } else { "" };
 
 				// Dispatch reverse SQL per dialect.
 				// SQLite is handled via the SQLite-recreation path before reaching
@@ -4649,7 +4875,7 @@ impl Operation {
 				// `Operation::reverse_requires_sqlite_recreation`). The placeholder
 				// comment below is a defensive fallback: emitting executable
 				// ALTER COLUMN syntax on SQLite would always error (#4582).
-				let stmts = match dialect {
+				let mut stmts = match dialect {
 					SqlDialect::Postgres | SqlDialect::Cockroachdb => {
 						// Emit type reversion and nullability restoration as two
 						// independent single-statement payloads. The executor
@@ -4665,12 +4891,23 @@ impl Operation {
 						// multi-statement path keeps the contract uniform and
 						// restores NOT NULL rollback fidelity on Cockroach.
 						// Refs #4630, #4640.
-						let nullability_clause = if old_def.not_null {
+						let nullability_clause = if old_not_null {
 							"SET NOT NULL"
 						} else {
 							"DROP NOT NULL"
 						};
-						vec![
+						let mut statements = Vec::new();
+						let default_changed = old_def.default != new_definition.default;
+						if default_changed {
+							// A default for the new type may not cast to the old type.
+							// Remove it before TYPE, including sequence dependencies.
+							statements.push(format!(
+								"ALTER TABLE {} ALTER COLUMN {} DROP DEFAULT;",
+								quote_identifier(table),
+								quote_identifier(column),
+							));
+						}
+						statements.extend([
 							format!(
 								"ALTER TABLE {table} ALTER COLUMN {column} TYPE {type_sql};",
 								table = quote_identifier(table),
@@ -4683,7 +4920,16 @@ impl Operation {
 								column = quote_identifier(column),
 								nullability_clause = nullability_clause,
 							),
-						]
+						]);
+						if default_changed && let Some(default) = &old_def.default {
+							statements.push(format!(
+								"ALTER TABLE {} ALTER COLUMN {} SET DEFAULT {};",
+								quote_identifier(table),
+								quote_identifier(column),
+								default,
+							));
+						}
+						statements
 					}
 					SqlDialect::Mysql => vec![format!(
 						"ALTER TABLE {} MODIFY COLUMN {} {}{};",
@@ -4697,6 +4943,21 @@ impl Operation {
 						quote_identifier(table)
 					)],
 				};
+				if old_def.sequence_default.is_some() || new_definition.sequence_default.is_some() {
+					super::sequences::validate_backend(dialect)?;
+					let clause = if let Some(default) = &old_def.sequence_default {
+						format!("SET DEFAULT {}", default.to_sql())
+					} else if let Some(default) = &old_def.default {
+						format!("SET DEFAULT {default}")
+					} else {
+						"DROP DEFAULT".into()
+					};
+					stmts.push(format!(
+						"ALTER TABLE {} ALTER COLUMN {} {clause};",
+						Self::quote_schema_identifier(table, dialect),
+						Self::quote_dialect_identifier(column, dialect)
+					));
+				}
 				Ok(Some(stmts))
 			}
 			Operation::DropIndex { table, columns } => {
@@ -4826,11 +5087,18 @@ impl Operation {
 						parts.push(format!("  {}", constraint.to_sql_for_dialect(dialect)));
 					}
 
-					let mut statements = vec![format!(
+					let (mut statements, ownership) = super::sequences::owned_sequence_restore_sql(
+						project_state,
+						name,
+						None,
+						dialect,
+					)?;
+					statements.push(format!(
 						"CREATE TABLE {} (\n{}\n);",
 						Self::quote_schema_identifier(name, dialect),
 						parts.join(",\n")
-					)];
+					));
+					statements.extend(ownership);
 					for index in &model.indexes {
 						let operation = Operation::CreateIndexRepair {
 							table: name.clone(),
@@ -4911,6 +5179,12 @@ impl Operation {
 	/// is applied to generate proper reverse SQL.
 	pub fn state_backwards(&self, app_label: &str, state: &mut ProjectState) {
 		match self {
+			Operation::Sequence { operation } => {
+				if let Ok(inverse) = operation.reverse() {
+					inverse.state_forwards(state);
+				}
+			}
+			Operation::Identity { operation } => operation.reverse().state_forwards(state),
 			Operation::CreateTable { name, .. } => {
 				// Reverse: Remove the model from state
 				state
@@ -5092,6 +5366,8 @@ pub(crate) fn field_state_from_column(column: &ColumnDefinition) -> FieldState {
 	if let Some(default) = default {
 		field.params.insert("default".to_string(), default);
 	}
+	super::sequences::write_column_params(column, &mut field.params);
+
 	field.generated = column.generated.clone();
 	field.domain = column.domain.clone();
 	field
@@ -5126,6 +5402,12 @@ pub struct ColumnDefinition {
 	/// Structured domain constraints for this column.
 	#[serde(default, skip_serializing_if = "Option::is_none")]
 	pub domain: Option<crate::field_domain::FieldDomain>,
+	/// Structured PostgreSQL identity declaration, overriding inferred auto-increment.
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub identity: Option<super::IdentityDefinition>,
+	/// Typed PostgreSQL nextval default and stable sequence dependency.
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub sequence_default: Option<super::SequenceDefault>,
 }
 
 impl ColumnDefinition {
@@ -5141,10 +5423,12 @@ impl ColumnDefinition {
 			default: None,
 			generated: None,
 			domain: None,
+			identity: None,
+			sequence_default: None,
 		}
 	}
 
-	/// Create a column definition from every persisted field.
+	/// Reconstructs the legacy column payload. Set identity and sequence defaults with their builders.
 	#[doc(hidden)]
 	// Persistence adapters must provide every stored field without silently dropping data.
 	#[allow(clippy::too_many_arguments)]
@@ -5169,7 +5453,43 @@ impl ColumnDefinition {
 			default,
 			generated,
 			domain,
+			identity: None,
+			sequence_default: None,
 		}
+	}
+
+	/// Sets or removes a structured identity definition.
+	pub fn with_identity(mut self, identity: Option<super::IdentityDefinition>) -> Self {
+		self.identity = identity;
+		self
+	}
+	/// Sets or removes a typed sequence default.
+	pub fn with_sequence_default(mut self, value: Option<super::SequenceDefault>) -> Self {
+		self.sequence_default = value;
+		self
+	}
+	/// Validates the structured identity/default contract.
+	pub fn validate_generation(&self) -> super::Result<()> {
+		if let Some(identity) = &self.identity {
+			identity.effective_options(&self.type_definition)?;
+			if !self.not_null
+				|| self.default.is_some()
+				|| self.sequence_default.is_some()
+				|| self.generated.is_some()
+			{
+				return Err(super::MigrationError::InvalidMigration("identity requires a nonnullable integer column without another default or generated expression".into()));
+			}
+		}
+		if let Some(default) = &self.sequence_default {
+			default.name.validate()?;
+			if self.default.is_some() || self.generated.is_some() {
+				return Err(super::MigrationError::InvalidMigration(
+					"typed sequence default conflicts with another default or generated expression"
+						.into(),
+				));
+			}
+		}
+		Ok(())
 	}
 
 	/// Set the NOT NULL flag.
@@ -5218,6 +5538,17 @@ impl ColumnDefinition {
 	pub fn with_domain_option(mut self, domain: Option<crate::field_domain::FieldDomain>) -> Self {
 		self.domain = domain.map(crate::field_domain::FieldDomain::canonicalized);
 		self
+	}
+
+	/// Return whether the column is NOT NULL in the database.
+	///
+	/// Primary key columns cannot hold NULL, so they count as NOT NULL even
+	/// when a hand-built definition leaves `not_null` false. Use this
+	/// instead of the raw `not_null` flag when generating nullability
+	/// changes, because PostgreSQL rejects `DROP NOT NULL` on a primary key
+	/// column.
+	pub(crate) fn effective_not_null(&self) -> bool {
+		self.not_null || self.primary_key
 	}
 
 	/// Create a ColumnDefinition from FieldState with attribute parsing
@@ -5304,6 +5635,10 @@ impl ColumnDefinition {
 			default,
 			generated,
 			domain: field_state.domain.clone(),
+			identity: super::sequences::identity_from_params(params)
+				.expect("validated identity metadata"),
+			sequence_default: super::sequences::sequence_default_from_params(params)
+				.expect("validated sequence default metadata"),
 		}
 	}
 }
@@ -6447,6 +6782,33 @@ impl Operation {
 		project_state: &ProjectState,
 	) -> super::Result<Option<Operation>> {
 		match self {
+			Operation::CreateExtension {
+				name,
+				if_not_exists: false,
+				..
+			} => Ok(Some(Operation::DropExtension {
+				name: name.clone(),
+				if_exists: false,
+				cascade: false,
+			})),
+			Operation::CreateExtension {
+				name,
+				if_not_exists: true,
+				..
+			} => Err(super::MigrationError::IrreversibleError(format!(
+				"Cannot automatically reverse CREATE EXTENSION IF NOT EXISTS {name}: ownership is unknown; use if_not_exists: false for a migration-owned extension"
+			))),
+			Operation::DropExtension { name, .. } => {
+				Err(super::MigrationError::IrreversibleError(format!(
+					"Cannot automatically reverse DROP EXTENSION {name}: the original schema and version are unknown"
+				)))
+			}
+			Operation::Sequence { operation } => Ok(Some(Operation::Sequence {
+				operation: operation.reverse()?,
+			})),
+			Operation::Identity { operation } => Ok(Some(Operation::Identity {
+				operation: operation.reverse(),
+			})),
 			Operation::CreateTable { name, .. } => {
 				Ok(Some(Operation::DropTable { name: name.clone() }))
 			}
@@ -6705,6 +7067,18 @@ impl Operation {
 pub use Operation::{AddColumn, AlterColumn, CreateTable, DropColumn};
 
 /// Operation statement types (reinhardt-query or sanitized raw SQL)
+///
+/// # Extensibility
+///
+/// This enum is `#[non_exhaustive]`: new statement kinds may be added in a minor
+/// release. Existing variants remain directly constructible, but code outside
+/// `reinhardt-db` that matches on `OperationStatement` must include a wildcard arm.
+/// Interpreters should return an explicit unsupported-statement error from that
+/// arm instead of silently ignoring the value.
+///
+/// Prefer [`OperationStatement::try_to_sql_string`] over matching on the
+/// variants when only the rendered SQL is needed.
+#[non_exhaustive]
 pub enum OperationStatement {
 	/// TableCreate variant.
 	TableCreate(CreateTableStatement),
@@ -6840,6 +7214,27 @@ impl Operation {
 	/// Convert Operation to reinhardt-query statement or sanitized raw SQL
 	pub fn to_statement(&self) -> OperationStatement {
 		match self {
+			Self::CreateTable { columns, .. } | Self::CreateInheritedTable { columns, .. }
+				if columns.iter().any(|column| {
+					column.identity.is_some() || column.sequence_default.is_some()
+				}) =>
+			{
+				return OperationStatement::DialectOperation(Box::new(self.clone()));
+			}
+			Self::AddColumn { column, .. }
+			| Self::AlterColumn {
+				new_definition: column,
+				..
+			} if column.identity.is_some() || column.sequence_default.is_some() => {
+				return OperationStatement::DialectOperation(Box::new(self.clone()));
+			}
+			_ => {}
+		}
+
+		match self {
+			Operation::Sequence { .. } | Operation::Identity { .. } => {
+				OperationStatement::DialectOperation(Box::new(self.clone()))
+			}
 			Operation::CreateTable {
 				name,
 				columns,
@@ -7148,6 +7543,9 @@ impl Operation {
 					schema_clause
 				);
 				OperationStatement::RawSql(sql)
+			}
+			Operation::DropExtension { .. } => {
+				OperationStatement::RawSql(self.to_sql(&SqlDialect::Postgres))
 			}
 			Operation::BulkLoad {
 				table,
@@ -7615,6 +8013,8 @@ use super::operation_trait::MigrationOperation;
 impl MigrationOperation for Operation {
 	fn migration_name_fragment(&self) -> Option<String> {
 		match self {
+			Operation::Sequence { .. } => Some("sequence".into()),
+			Operation::Identity { .. } => Some("identity".into()),
 			Operation::CreateTable { name, .. } => Some(name.to_lowercase()),
 			Operation::DropTable { name } => Some(format!("delete_{}", name.to_lowercase())),
 			Operation::AddColumn { table, column, .. } => Some(format!(
@@ -7722,6 +8122,9 @@ impl MigrationOperation for Operation {
 			Operation::CreateExtension { name, .. } => {
 				Some(format!("create_extension_{}", name.to_lowercase()))
 			}
+			Operation::DropExtension { name, .. } => {
+				Some(format!("drop_extension_{}", name.to_lowercase()))
+			}
 			Operation::BulkLoad { table, .. } => {
 				Some(format!("bulk_load_{}", table.to_lowercase()))
 			}
@@ -7738,6 +8141,8 @@ impl MigrationOperation for Operation {
 
 	fn describe(&self) -> String {
 		match self {
+			Operation::Sequence { operation } => format!("Sequence {operation:?}"),
+			Operation::Identity { operation } => format!("Identity {operation:?}"),
 			Operation::CreateTable { name, .. } => format!("Create table {}", name),
 			Operation::DropTable { name } => format!("Drop table {}", name),
 			Operation::AddColumn { table, column, .. } => {
@@ -7834,6 +8239,7 @@ impl MigrationOperation for Operation {
 			Operation::CreateSchema { name, .. } => format!("Create schema {}", name),
 			Operation::DropSchema { name, .. } => format!("Drop schema {}", name),
 			Operation::CreateExtension { name, .. } => format!("Create extension {}", name),
+			Operation::DropExtension { name, .. } => format!("Drop extension {}", name),
 			Operation::BulkLoad { table, source, .. } => {
 				let source_desc = match source {
 					BulkLoadSource::File(path) => format!("file '{}'", path),
@@ -8105,6 +8511,8 @@ mod tests {
 					default: None,
 					generated: None,
 					domain: None,
+					identity: None,
+					sequence_default: None,
 				},
 				ColumnDefinition {
 					name: "name".to_string(),
@@ -8116,6 +8524,8 @@ mod tests {
 					default: None,
 					generated: None,
 					domain: None,
+					identity: None,
+					sequence_default: None,
 				},
 			],
 			constraints: vec![],
@@ -8182,6 +8592,8 @@ mod tests {
 				default: Some("''".to_string()),
 				generated: None,
 				domain: None,
+				identity: None,
+				sequence_default: None,
 			},
 			mysql_options: None,
 		};
@@ -8258,6 +8670,8 @@ mod tests {
 				default: None,
 				generated: None,
 				domain: None,
+				identity: None,
+				sequence_default: None,
 			},
 			mysql_options: None,
 		};
@@ -8941,6 +9355,8 @@ mod tests {
 			default: Some("42".to_string()),
 			generated: None,
 			domain: None,
+			identity: None,
+			sequence_default: None,
 		};
 		let mut state = ProjectState::new();
 		let create_table = Operation::CreateTable {
@@ -9348,6 +9764,8 @@ mod tests {
 				default: Some("1".to_string()),
 				generated: None,
 				domain: None,
+				identity: None,
+				sequence_default: None,
 			}],
 			base_table: "users".to_string(),
 			join_column: "user_id".to_string(),
@@ -9420,6 +9838,8 @@ mod tests {
 					default: None,
 					generated: None,
 					domain: None,
+					identity: None,
+					sequence_default: None,
 				},
 				ColumnDefinition {
 					name: "name".to_string(),
@@ -9431,6 +9851,8 @@ mod tests {
 					default: None,
 					generated: None,
 					domain: None,
+					identity: None,
+					sequence_default: None,
 				},
 			],
 			constraints: vec![],
@@ -9752,6 +10174,8 @@ mod tests {
 				default: None,
 				generated: None,
 				domain: None,
+				identity: None,
+				sequence_default: None,
 			},
 			mysql_options: None,
 		};
@@ -9890,6 +10314,8 @@ mod tests {
 				referenced_column: "id".to_string(),
 				on_delete: ForeignKeyAction::Cascade,
 				on_update: ForeignKeyAction::Cascade,
+				shared_columns: Vec::new(),
+				constraint_name: None,
 			},
 		));
 		post.add_foreign_key_constraint_from_field("user_id");
@@ -9938,6 +10364,8 @@ mod tests {
 				referenced_column: "id".to_string(),
 				on_delete: ForeignKeyAction::Cascade,
 				on_update: ForeignKeyAction::Cascade,
+				shared_columns: Vec::new(),
+				constraint_name: None,
 			},
 		));
 		post.fields
@@ -10232,7 +10660,6 @@ mod tests {
 		);
 	}
 
-	#[cfg(not(feature = "pgvector"))]
 	#[test]
 	fn named_legacy_drop_index_reverse_preserves_definition_without_state() {
 		let operation = Operation::DropNamedIndex {
@@ -10260,7 +10687,6 @@ mod tests {
 		);
 	}
 
-	#[cfg(not(feature = "pgvector"))]
 	#[test]
 	fn named_legacy_drop_index_reverse_omits_mysql_predicate() {
 		let operation = Operation::DropNamedIndex {
@@ -10316,6 +10742,8 @@ mod tests {
 				default: None,
 				generated: None,
 				domain: None,
+				identity: None,
+				sequence_default: None,
 			},
 			mysql_options: None,
 		};
@@ -10357,6 +10785,8 @@ mod tests {
 				default: None,
 				generated: None,
 				domain: None,
+				identity: None,
+				sequence_default: None,
 			}),
 			new_definition: ColumnDefinition {
 				name: "name".to_string(),
@@ -10368,6 +10798,8 @@ mod tests {
 				default: None,
 				generated: None,
 				domain: None,
+				identity: None,
+				sequence_default: None,
 			},
 			mysql_options: None,
 		}
@@ -10466,6 +10898,84 @@ mod tests {
 	}
 
 	#[rstest]
+	#[case::added_sequence(None, Some("nextval('public.example_seq'::regclass)"), None)]
+	#[case::removed_literal(Some("42"), None, Some("42"))]
+	#[case::changed_literal(Some("42"), Some("7"), Some("42"))]
+	#[case::removed_sequence(
+		Some("nextval('public.example_seq'::regclass)"),
+		None,
+		Some("nextval('public.example_seq'::regclass)")
+	)]
+	#[case::replaced_sequence(
+		Some("nextval('public.example_seq'::regclass)"),
+		Some("42"),
+		Some("nextval('public.example_seq'::regclass)")
+	)]
+	fn test_reverse_alter_column_restores_default(
+		#[case] old_default: Option<&str>,
+		#[case] new_default: Option<&str>,
+		#[case] restored_default: Option<&str>,
+		#[values(SqlDialect::Postgres, SqlDialect::Cockroachdb)] dialect: SqlDialect,
+		#[values(false, true)] not_null: bool,
+		#[values(false, true)] use_snapshot: bool,
+	) {
+		// Arrange
+		let old_definition = ColumnDefinition {
+			name: "id".into(),
+			type_definition: FieldType::BigInteger,
+			not_null,
+			unique: false,
+			primary_key: false,
+			auto_increment: false,
+			default: old_default.map(str::to_owned),
+			generated: None,
+			domain: None,
+			identity: None,
+			sequence_default: None,
+		};
+		let mut state = ProjectState::default();
+		let mut model = ModelState::new("probe", "Example");
+		model.table_name = "example".into();
+		let mut field = FieldState::new("id", FieldType::BigInteger, !not_null);
+		if let Some(default) = old_default {
+			field.params.insert("default".into(), default.into());
+		}
+		model.add_field(field);
+		state.add_model(model);
+		let operation = Operation::AlterColumn {
+			table: "example".into(),
+			column: "id".into(),
+			old_definition: (!use_snapshot).then_some(old_definition.clone()),
+			new_definition: ColumnDefinition {
+				default: new_default.map(str::to_owned),
+				not_null: !not_null,
+				type_definition: FieldType::Integer,
+				..old_definition
+			},
+			mysql_options: None,
+		};
+		let mut expected = vec![
+			"ALTER TABLE example ALTER COLUMN id DROP DEFAULT;".to_owned(),
+			"ALTER TABLE example ALTER COLUMN id TYPE BIGINT;".to_owned(),
+			format!(
+				"ALTER TABLE example ALTER COLUMN id {} NOT NULL;",
+				if not_null { "SET" } else { "DROP" }
+			),
+		];
+		if let Some(default) = restored_default {
+			expected.push(format!(
+				"ALTER TABLE example ALTER COLUMN id SET DEFAULT {default};"
+			));
+		}
+
+		// Act
+		let statements = operation.to_reverse_sql(&dialect, &state).unwrap();
+
+		// Assert
+		assert_eq!(statements, Some(expected));
+	}
+
+	#[rstest]
 	#[case::postgres(SqlDialect::Postgres)]
 	#[case::cockroachdb(SqlDialect::Cockroachdb)]
 	fn test_to_sql_alter_column_sets_default_for_postgres_family(#[case] dialect: SqlDialect) {
@@ -10483,6 +10993,8 @@ mod tests {
 				default: None,
 				generated: None,
 				domain: None,
+				identity: None,
+				sequence_default: None,
 			}),
 			new_definition: ColumnDefinition {
 				name: "is_active".to_string(),
@@ -10494,6 +11006,8 @@ mod tests {
 				default: Some("true".to_string()),
 				generated: None,
 				domain: None,
+				identity: None,
+				sequence_default: None,
 			},
 			mysql_options: None,
 		};
@@ -10527,6 +11041,8 @@ mod tests {
 				default: Some("true".to_string()),
 				generated: None,
 				domain: None,
+				identity: None,
+				sequence_default: None,
 			}),
 			new_definition: ColumnDefinition {
 				name: "is_active".to_string(),
@@ -10538,6 +11054,8 @@ mod tests {
 				default: None,
 				generated: None,
 				domain: None,
+				identity: None,
+				sequence_default: None,
 			},
 			mysql_options: None,
 		};
@@ -10550,6 +11068,159 @@ mod tests {
 			sql.contains("ALTER COLUMN is_active DROP DEFAULT"),
 			"AlterColumn must remove dropped database defaults, got: {}",
 			sql
+		);
+	}
+
+	/// Forward `AlterColumn` SQL on the PostgreSQL family must change the
+	/// column nullability as a separate statement after `TYPE`, because
+	/// `ALTER COLUMN ... TYPE` alone keeps the existing NOT NULL flag
+	/// (reinhardt-web#6724). A known `old_definition` limits the statement to
+	/// real changes; an unknown one applies `new_definition`. Primary key
+	/// columns count as NOT NULL, and a demoted primary key keeps NOT NULL
+	/// because AlterColumn does not drop the primary key constraint.
+	#[rstest]
+	#[case::not_null_to_nullable(Some(true), false, false, false, Some("DROP"))]
+	#[case::nullable_to_not_null(Some(false), false, true, false, Some("SET"))]
+	#[case::unchanged_not_null(Some(true), false, true, false, None)]
+	#[case::unchanged_nullable(Some(false), false, false, false, None)]
+	#[case::unknown_old_to_nullable(None, false, false, false, Some("DROP"))]
+	#[case::unknown_old_to_not_null(None, false, true, false, Some("SET"))]
+	#[case::primary_key_keeps_not_null(Some(true), true, false, true, None)]
+	#[case::primary_key_unknown_old(None, false, false, true, Some("SET"))]
+	#[case::primary_key_promoted(Some(false), false, false, true, Some("SET"))]
+	#[case::primary_key_demoted_to_nullable(Some(true), true, false, false, None)]
+	fn test_to_sql_alter_column_changes_nullability_for_postgres_family(
+		#[case] old_not_null: Option<bool>,
+		#[case] old_primary_key: bool,
+		#[case] new_not_null: bool,
+		#[case] new_primary_key: bool,
+		#[case] expected_clause: Option<&str>,
+		#[values(SqlDialect::Postgres, SqlDialect::Cockroachdb)] dialect: SqlDialect,
+	) {
+		// Arrange
+		let new_definition = ColumnDefinition {
+			not_null: new_not_null,
+			primary_key: new_primary_key,
+			..ColumnDefinition::new("created_at", FieldType::TimestampTz)
+		};
+		let op = Operation::AlterColumn {
+			table: "events".to_string(),
+			column: "created_at".to_string(),
+			old_definition: old_not_null.map(|not_null| ColumnDefinition {
+				not_null,
+				primary_key: old_primary_key,
+				..new_definition.clone()
+			}),
+			new_definition,
+			mysql_options: None,
+		};
+		let mut expected =
+			vec!["ALTER TABLE events ALTER COLUMN created_at TYPE TIMESTAMPTZ;".to_string()];
+		if let Some(clause) = expected_clause {
+			expected.push(format!(
+				"ALTER TABLE events ALTER COLUMN created_at {clause} NOT NULL;"
+			));
+		}
+
+		// Act
+		let sql = op.to_sql(&dialect);
+
+		// Assert
+		assert_eq!(sql, expected.join(" "));
+	}
+
+	/// Reverse `AlterColumn` SQL must restore NOT NULL for a primary key
+	/// column even when a hand-built `old_definition` leaves `not_null`
+	/// false, because PostgreSQL rejects DROP NOT NULL on a primary key
+	/// column (reinhardt-web#6724).
+	#[rstest]
+	#[case::postgres(
+		SqlDialect::Postgres,
+		vec![
+			"ALTER TABLE example ALTER COLUMN id TYPE BIGINT;",
+			"ALTER TABLE example ALTER COLUMN id SET NOT NULL;",
+		]
+	)]
+	#[case::cockroachdb(
+		SqlDialect::Cockroachdb,
+		vec![
+			"ALTER TABLE example ALTER COLUMN id TYPE BIGINT;",
+			"ALTER TABLE example ALTER COLUMN id SET NOT NULL;",
+		]
+	)]
+	#[case::mysql(
+		SqlDialect::Mysql,
+		vec!["ALTER TABLE example MODIFY COLUMN id BIGINT NOT NULL;"]
+	)]
+	fn test_to_reverse_sql_alter_column_restores_not_null_for_primary_key(
+		#[case] dialect: SqlDialect,
+		#[case] expected: Vec<&str>,
+	) {
+		// Arrange
+		let old_definition = ColumnDefinition {
+			not_null: false,
+			primary_key: true,
+			..ColumnDefinition::new("id", FieldType::BigInteger)
+		};
+		let op = Operation::AlterColumn {
+			table: "example".to_string(),
+			column: "id".to_string(),
+			old_definition: Some(old_definition.clone()),
+			new_definition: ColumnDefinition {
+				type_definition: FieldType::Integer,
+				..old_definition
+			},
+			mysql_options: None,
+		};
+
+		// Act
+		let statements = op
+			.to_reverse_sql(&dialect, &ProjectState::default())
+			.unwrap();
+
+		// Assert
+		let expected: Vec<String> = expected.into_iter().map(str::to_owned).collect();
+		assert_eq!(statements, Some(expected));
+	}
+
+	/// The forward nullability statement must coexist with default changes
+	/// and come after them, each as its own statement (reinhardt-web#6724).
+	#[rstest]
+	#[case::postgres(SqlDialect::Postgres)]
+	#[case::cockroachdb(SqlDialect::Cockroachdb)]
+	fn test_to_sql_alter_column_changes_nullability_after_default_statements(
+		#[case] dialect: SqlDialect,
+	) {
+		// Arrange
+		let op = Operation::AlterColumn {
+			table: "events".to_string(),
+			column: "attempts".to_string(),
+			old_definition: Some(ColumnDefinition {
+				not_null: true,
+				default: Some("0".to_string()),
+				..ColumnDefinition::new("attempts", FieldType::Integer)
+			}),
+			new_definition: ColumnDefinition {
+				not_null: false,
+				default: Some("1".to_string()),
+				..ColumnDefinition::new("attempts", FieldType::BigInteger)
+			},
+			mysql_options: None,
+		};
+
+		// Act
+		let sql = op.to_sql(&dialect);
+
+		// Assert
+		assert_eq!(
+			sql,
+			[
+				"ALTER TABLE events ALTER COLUMN attempts DROP DEFAULT;",
+				"ALTER TABLE events ALTER COLUMN attempts TYPE BIGINT;",
+				"ALTER TABLE events ALTER COLUMN attempts SET DEFAULT 1;",
+				"ALTER TABLE events ALTER COLUMN attempts DROP NOT NULL;",
+			]
+			.join(" ")
 		);
 	}
 
@@ -10570,6 +11241,8 @@ mod tests {
 				default: Some("true".to_string()),
 				generated: None,
 				domain: None,
+				identity: None,
+				sequence_default: None,
 			},
 			mysql_options: None,
 		};
@@ -10758,6 +11431,8 @@ mod tests {
 				default: None,
 				generated: Some(generated.clone()),
 				domain: None,
+				identity: None,
+				sequence_default: None,
 			}),
 		};
 		let state = ProjectState::default();
@@ -10934,6 +11609,8 @@ mod tests {
 				default: None,
 				generated: Some(generated),
 				domain: None,
+				identity: None,
+				sequence_default: None,
 			}),
 		};
 
@@ -11031,6 +11708,8 @@ mod tests {
 					default: Some(raw.clone()),
 					generated: None,
 					domain: None,
+					identity: None,
+					sequence_default: None,
 				}],
 				constraints: Vec::new(),
 				without_rowid: None,
@@ -11075,6 +11754,8 @@ mod tests {
 				default: Some(raw),
 				generated: None,
 				domain: None,
+				identity: None,
+				sequence_default: None,
 			}],
 			constraints: Vec::new(),
 			without_rowid: None,
@@ -11148,6 +11829,8 @@ mod tests {
 			default: Some(raw),
 			generated: None,
 			domain: None,
+			identity: None,
+			sequence_default: None,
 		};
 
 		for sql in [
@@ -11941,7 +12624,7 @@ mod tests {
 		));
 	}
 
-	#[test]
+	#[rstest]
 	fn create_extension_migration_quotes_identifiers_and_does_not_auto_drop_on_reverse() {
 		let operation = Operation::CreateExtension {
 			name: "vector\"; DROP TABLE documents; --".to_string(),
@@ -11955,12 +12638,10 @@ mod tests {
 				.expect("PostgreSQL supports extension migrations"),
 			"CREATE EXTENSION IF NOT EXISTS \"vector\"\"; DROP TABLE documents; --\" SCHEMA \"extension\"\"schema\";"
 		);
-		assert_eq!(
-			operation
-				.to_reverse_sql(&SqlDialect::Postgres, &ProjectState::new())
-				.expect("reverse SQL generation should succeed"),
-			None
-		);
+		assert!(matches!(
+			operation.to_reverse_sql(&SqlDialect::Postgres, &ProjectState::new()),
+			Err(super::super::MigrationError::IrreversibleError(_))
+		));
 	}
 
 	#[cfg(feature = "pgvector")]
@@ -12420,6 +13101,8 @@ mod tests {
 				default: None,
 				generated: None,
 				domain: None,
+				identity: None,
+				sequence_default: None,
 			},
 			mysql_options: None,
 		};
@@ -12450,6 +13133,8 @@ mod tests {
 				default: Some("1".to_string()),
 				generated: None,
 				domain: None,
+				identity: None,
+				sequence_default: None,
 			}],
 			base_table: "users".to_string(),
 			join_column: "user_id".to_string(),
@@ -12614,6 +13299,8 @@ mod tests {
 				default: None,
 				generated: None,
 				domain: None,
+				identity: None,
+				sequence_default: None,
 			},
 			mysql_options: None,
 		};

@@ -4,6 +4,7 @@
 
 use crate::core::admin_form::AdminForm;
 use crate::core::admin_query::{AdminQuery, AdminRequestContext};
+use crate::core::save_hooks::{AdminChange, AdminSaveContext};
 use crate::core::{AdminActionTransaction, InlineModelAdmin};
 use crate::types::{
 	AdminAction, AdminActionOutcome, AdminError, AdminResult, Fieldset, FormFieldOverride,
@@ -272,6 +273,144 @@ pub trait ModelAdmin: Send + Sync {
 			"Invalid action: {action}"
 		)))
 	}
+
+	/// Run application logic before a record saved through the admin is written.
+	///
+	/// The admin server calls this hook once per saved record from
+	/// `create_record`, `update_record`, the multipart create and update
+	/// endpoints, `import_data`, and `update_inline_edits` (once per changelist
+	/// row). It runs after form validation and permission checks, inside the
+	/// write transaction, and before any row, relation, or inline write of the
+	/// save. On update, the stored record is locked and loaded first, so
+	/// `ctx.stored()` and the old values in `change` reflect the record the
+	/// write will replace.
+	///
+	/// `change` holds only the submitted fields; use
+	/// [`AdminChange::transition`] to react to a field changing value.
+	///
+	/// # Errors
+	///
+	/// Returning `Err` aborts the save and rolls back its transaction.
+	/// [`AdminError::ValidationError`] and [`AdminError::InvalidAction`] are
+	/// reported as a form-wide validation error (HTTP 422 with the `_all`
+	/// field) on form saves and as a row error on changelist edits; an
+	/// imported record is counted as failed. Other variants use the admin's
+	/// usual error mapping, which hides database and template details.
+	///
+	/// Side effects performed by the hook are not rolled back, including when
+	/// a later step of the same save fails, such as relation validation or
+	/// the hook of a later changelist row.
+	///
+	/// # Coverage
+	///
+	/// Bulk actions run through [`Self::execute_action`], deletions, inline
+	/// child rows, and many-to-many selections do not call this hook.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use async_trait::async_trait;
+	/// use reinhardt_admin::core::{
+	///     AdminChange, AdminError, AdminFormMode, AdminResult, AdminSaveContext, AdminUser,
+	///     ModelAdmin,
+	/// };
+	/// use serde_json::json;
+	/// use std::collections::HashMap;
+	///
+	/// struct UserAdmin;
+	///
+	/// #[async_trait]
+	/// impl ModelAdmin for UserAdmin {
+	///     fn model_name(&self) -> &str {
+	///         "User"
+	///     }
+	///
+	///     async fn before_save(
+	///         &self,
+	///         ctx: &AdminSaveContext<'_>,
+	///         change: &AdminChange,
+	///     ) -> AdminResult<()> {
+	///         if change.transition::<bool>("is_active") == Some((false, true)) {
+	///             // End the sessions of `ctx.pk()` here before reactivation.
+	///             return Err(AdminError::ValidationError(format!(
+	///                 "sessions of user {} could not be ended",
+	///                 ctx.pk().unwrap_or("?")
+	///             )));
+	///         }
+	///         Ok(())
+	///     }
+	/// }
+	///
+	/// struct Staff;
+	///
+	/// impl AdminUser for Staff {
+	///     fn is_active(&self) -> bool { true }
+	///     fn is_staff(&self) -> bool { true }
+	///     fn is_superuser(&self) -> bool { false }
+	///     fn get_username(&self) -> &str { "staff" }
+	/// }
+	///
+	/// let stored = HashMap::from([("is_active".to_owned(), json!(false))]);
+	/// let submitted = HashMap::from([("is_active".to_owned(), json!(true))]);
+	/// let ctx = AdminSaveContext::new(&Staff, AdminFormMode::Update)
+	///     .with_pk("42")
+	///     .with_stored(&stored);
+	/// let change = AdminChange::new(Some(&stored), &submitted);
+	///
+	/// let result = futures::executor::block_on(UserAdmin.before_save(&ctx, &change));
+	///
+	/// assert!(matches!(
+	///     result,
+	///     Err(AdminError::ValidationError(message))
+	///         if message == "sessions of user 42 could not be ended"
+	/// ));
+	/// ```
+	async fn before_save(
+		&self,
+		_ctx: &AdminSaveContext<'_>,
+		_change: &AdminChange,
+	) -> AdminResult<()> {
+		Ok(())
+	}
+
+	/// Run application logic after a record saved through the admin is committed.
+	///
+	/// Called on the same paths as [`Self::before_save`], with the same
+	/// stored record and change, once the write transaction has committed. On
+	/// create, `ctx.pk()` holds the new record's primary key. For changelist
+	/// edits, the hook runs for every row after the whole batch commits.
+	///
+	/// The change is already committed, so the hook cannot fail the request;
+	/// handle and log errors inside the hook.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use async_trait::async_trait;
+	/// use reinhardt_admin::core::{AdminChange, AdminSaveContext, ModelAdmin};
+	/// use std::sync::Mutex;
+	///
+	/// #[derive(Default)]
+	/// struct AuditedAdmin {
+	///     saved: Mutex<Vec<String>>,
+	/// }
+	///
+	/// #[async_trait]
+	/// impl ModelAdmin for AuditedAdmin {
+	///     fn model_name(&self) -> &str {
+	///         "Article"
+	///     }
+	///
+	///     async fn after_save(&self, ctx: &AdminSaveContext<'_>, change: &AdminChange) {
+	///         let fields = change.changed_fields().collect::<Vec<_>>().join(",");
+	///         self.saved
+	///             .lock()
+	///             .unwrap_or_else(std::sync::PoisonError::into_inner)
+	///             .push(format!("{}:{fields}", ctx.pk().unwrap_or("new")));
+	///     }
+	/// }
+	/// ```
+	async fn after_save(&self, _ctx: &AdminSaveContext<'_>, _change: &AdminChange) {}
 
 	/// Check if user has permission to view this model
 	///

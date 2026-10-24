@@ -717,7 +717,7 @@ mod tests {
 				Value::String(Some(Box::new(quote_bearing_slug.to_owned()))),
 			]
 		);
-		assert_eq!(compiled.sql.contains(quote_bearing_slug), false);
+		assert!(!compiled.sql.contains(quote_bearing_slug));
 	}
 
 	#[rstest]
@@ -818,7 +818,7 @@ mod tests {
 				Value::BigInt(Some(9)),
 			]
 		);
-		assert_eq!(compiled.sql.contains(quote_bearing_headline), false);
+		assert!(!compiled.sql.contains(quote_bearing_headline));
 	}
 
 	#[test]

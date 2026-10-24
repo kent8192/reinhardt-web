@@ -92,7 +92,6 @@ impl AwsSecretsProvider {
 	#[cfg(feature = "aws-secrets")]
 	pub async fn with_endpoint(endpoint_url: String, prefix: Option<String>) -> SecretResult<Self> {
 		use aws_sdk_secretsmanager::config::{Credentials, Region};
-		use aws_smithy_runtime::client::http::hyper_014::HyperClientBuilder;
 
 		// Create static credentials for testing
 		let credentials = Credentials::new(
@@ -103,16 +102,13 @@ impl AwsSecretsProvider {
 			"static-credentials",
 		);
 
-		// Create HTTP client that supports both HTTP and HTTPS
-		let http_client = HyperClientBuilder::new().build_https();
-
+		// The SDK's default HTTPS transport also supports HTTP test endpoints.
 		let config = aws_config::load_defaults(BehaviorVersion::latest()).await;
 		let client = Client::from_conf(
 			aws_sdk_secretsmanager::config::Builder::from(&config)
 				.endpoint_url(endpoint_url)
 				.region(Region::new("us-east-1"))
 				.credentials_provider(credentials)
-				.http_client(http_client)
 				.build(),
 		);
 		Ok(Self { client, prefix })

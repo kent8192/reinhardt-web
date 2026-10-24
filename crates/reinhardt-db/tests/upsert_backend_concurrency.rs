@@ -1061,8 +1061,8 @@ async fn verify_get_races(connection: &mut DatabaseConnection) -> Result<()> {
 	let second_manager = TagRaceManager {
 		coordinator: coordinator.clone(),
 	};
-	let mut first_connection = connection.clone();
-	let mut second_connection = connection.clone();
+	let mut first_connection = *connection;
+	let mut second_connection = *connection;
 	let runtime = tokio::runtime::Handle::current();
 	let first_runtime = runtime.clone();
 	let first = spawn_race_thread("single-get-race-first", move || {
@@ -1102,8 +1102,8 @@ async fn verify_get_races(connection: &mut DatabaseConnection) -> Result<()> {
 	let second_manager = TenantTagRaceManager {
 		coordinator: coordinator.clone(),
 	};
-	let mut first_connection = connection.clone();
-	let mut second_connection = connection.clone();
+	let mut first_connection = *connection;
+	let mut second_connection = *connection;
 	let runtime = tokio::runtime::Handle::current();
 	let first_runtime = runtime.clone();
 	let first = spawn_race_thread("composite-get-race-first", move || {
@@ -1171,7 +1171,7 @@ async fn verify_update_race(connection: &mut DatabaseConnection) -> Result<()> {
 	};
 	let runtime = tokio::runtime::Handle::current();
 	let first_runtime = runtime.clone();
-	let first_connection = connection.clone();
+	let first_connection = *connection;
 	let first = spawn_race_thread("update-race-first", move || {
 		first_runtime.block_on(update_invocation(
 			first_connection,
@@ -1183,7 +1183,7 @@ async fn verify_update_race(connection: &mut DatabaseConnection) -> Result<()> {
 		))
 	})?;
 	let mut participants = RaceThreads::new(coordinator.clone(), first);
-	let second_connection = connection.clone();
+	let second_connection = *connection;
 	participants.spawn("update-race-second", move || {
 		runtime.block_on(update_invocation(
 			second_connection,
@@ -1226,7 +1226,7 @@ async fn verify_sqlite_update_serialization(connection: &mut DatabaseConnection)
 	};
 	let runtime = tokio::runtime::Handle::current();
 	let first_runtime = runtime.clone();
-	let first_connection = connection.clone();
+	let first_connection = *connection;
 	let first = spawn_race_thread("sqlite-update-holder", move || {
 		first_runtime.block_on(update_invocation(
 			first_connection,
@@ -1247,7 +1247,7 @@ async fn verify_sqlite_update_serialization(connection: &mut DatabaseConnection)
 	}
 
 	let (pending_tx, pending_rx) = std::sync::mpsc::channel();
-	let second_connection = connection.clone();
+	let second_connection = *connection;
 	participants.spawn("sqlite-update-contender", move || {
 		runtime.block_on(PendingProbe::new(
 			update_invocation(
@@ -1369,7 +1369,7 @@ async fn verify_sqlite_busy_retry(mut fixture: BackendFixture) -> Result<()> {
 	fixture.create_schema().await?;
 	let (locked_tx, locked_rx) = tokio::sync::oneshot::channel();
 	let (release_tx, release_rx) = tokio::sync::oneshot::channel();
-	let holder_connection = fixture.connection.clone();
+	let holder_connection = fixture.connection;
 	let holder = async move {
 		holder_connection
 			.atomic_write(async |transaction| {
@@ -1391,7 +1391,7 @@ async fn verify_sqlite_busy_retry(mut fixture: BackendFixture) -> Result<()> {
 			})
 			.await
 	};
-	let contender_connection = fixture.connection.clone();
+	let contender_connection = fixture.connection;
 	let contender = async move {
 		locked_rx.await.map_err(|error| {
 			Error::Internal(format!(
@@ -1426,7 +1426,7 @@ async fn verify_sqlite_busy_retry(mut fixture: BackendFixture) -> Result<()> {
 	assert!(held.1);
 
 	let (retried, created) = update_invocation(
-		fixture.connection.clone(),
+		fixture.connection,
 		Manager::<Tag>::new(),
 		"sqlite-busy",
 		"sqlite-busy@example.test",

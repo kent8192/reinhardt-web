@@ -7,6 +7,115 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.22](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit@v0.4.0-alpha.21...reinhardt-testkit@v0.4.0-alpha.22) - 2026-10-22
+
+### Added
+
+- *(testkit)* add scoped session account adapter
+
+### Fixed
+
+- *(testkit)* document and verify live session account wiring
+
+### Maintenance
+
+- *(release)* target 0.3.24 instead of 0.4.0
+- *(sync)* merge main into develop/0.4.0
+
+## [0.4.0-alpha.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit@v0.4.0-alpha.20...reinhardt-testkit@v0.4.0-alpha.21) - 2026-10-18
+
+### Added
+
+- *(test)* add method-aware async stub router
+- *(testkit)* add redirect policy to APIClientBuilder
+
+### Documentation
+
+- *(test)* document async stub routes through test facades
+- *(test)* record SimpleHandler migration and removal timeline
+- *(testkit)* describe shared guard lifetime on TestServerClient constructors
+
+### Fixed
+
+- *(testkit)* correct SimpleHandler deprecation guidance
+- *(testkit)* make native NATS JetStream fixture future Send
+- *(testkit)* share the server guard across TestServerClient forks
+
+### Maintenance
+
+- *(test)* merge develop/0.4.0 into stub router branch
+- *(testkit)* merge develop client transport changes
+- *(testkit)* sync latest develop after conflict resolution
+
+### Testing
+
+- *(testkit)* move HTTP stub route coverage to integration suite
+- *(testkit)* move redirect integration coverage to workspace tests
+- *(testkit)* compare form fields independently of map order
+
+### Added
+
+- `stub::StubRouter` registers capturing async closures for explicit HTTP
+  methods, using the framework's route dispatch and 404/405 handling.
+
+### Deprecated
+
+- `SimpleHandler` is deprecated starting in `0.4.0-alpha.21`. Its synchronous
+  closure requires custom handler adapters for async work and manual method
+  checks. Use `stub::StubRouter` to await request processing and register each
+  supported HTTP method explicitly. `SimpleHandler` and its compatibility
+  re-exports remain available throughout `0.4.x`; removal is planned for
+  `0.5.0`, following the breaking-change review process.
+
+### Migration: SimpleHandler to StubRouter
+
+1. Choose the facade already used by the test: `reinhardt_testkit::stub`,
+   `reinhardt_test::stub`, or `reinhardt::test::stub`. Each exports `StubRouter`;
+   facade users do not need a direct dependency on `reinhardt-testkit`.
+2. Replace the synchronous handler with an async closure registered for each
+   supported method. Manual method checks become `.get()`, `.post()`, `.put()`,
+   `.patch()`, `.delete()`, or `.route(path, method, handler)` registrations.
+
+Before:
+
+```rust
+use reinhardt_testkit::{SimpleHandler, http::Response};
+
+let handler = SimpleHandler::new(|request| {
+    Ok(Response::ok().with_body(request.body().clone()))
+});
+```
+
+After, for a POST-only webhook:
+
+```rust
+use reinhardt_testkit::{http::Response, stub::StubRouter};
+
+let router = StubRouter::new()
+    .post("/webhook", |request| async move {
+        Ok(Response::ok().with_body(request.body().clone()))
+    })
+    .into_server_router();
+```
+
+3. In an async test, call
+   `reinhardt_testkit::test_server_guard(router).await` and keep the returned
+   guard alive while sending requests. Through the facades, use
+   `reinhardt_test::fixtures::test_server_guard` or
+   `reinhardt::test::fixtures::test_server_guard`. Dropping the guard shuts down
+   the server. Unknown paths return 404; unregistered methods on a known path
+   return 405 without invoking the closure.
+
+## [0.4.0-alpha.20](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit@v0.4.0-alpha.19...reinhardt-testkit@v0.4.0-alpha.20) - 2026-10-06
+
+### Changed
+
+- *(testkit)* use typed truncate statements for table cleanup
+
+### Maintenance
+
+- *(sync)* merge main into develop/0.4.0
+
 ## [0.4.0-alpha.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit@v0.4.0-alpha.17...reinhardt-testkit@v0.4.0-alpha.18) - 2026-09-27
 
 ### Fixed
@@ -99,6 +208,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Maintenance
 
 - migrate dependency policy checks to cargo-deny
+
+## [0.3.24](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit@v0.3.23...reinhardt-testkit@v0.3.24) - 2026-10-14
+
+### Added
+
+- *(testkit)* add scoped session account adapter
+
+### Fixed
+
+- *(testkit)* document and verify live session account wiring
+
+### Fixed
+
+- Document and verify current-account backend wiring for session privilege overrides.
+
+
+## [0.3.23](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit@v0.3.22...reinhardt-testkit@v0.3.23) - 2026-10-08
+
+### Documentation
+
+- *(testkit)* correct PostgreSQL container version
+
+### Fixed
+
+- *(testkit)* replace default headers with per-request values
+- *(testkit)* retain repeated per-request header values
+
+## [0.3.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit@v0.3.20...reinhardt-testkit@v0.3.21) - 2026-10-05
+
+### Changed
+
+- *(testkit)* use typed truncate statements for table cleanup
+
+### Fixed
+
+- *(testkit)* cancel accepted connections on fixture shutdown
 ## [0.3.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit@v0.3.6...reinhardt-testkit@v0.3.7) - 2026-08-12
 
 ### Fixed

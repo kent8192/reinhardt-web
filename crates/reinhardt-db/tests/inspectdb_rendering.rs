@@ -9,33 +9,9 @@ use reinhardt_db::{
 use std::collections::HashMap;
 
 fn table(name: &str, columns: &[&str]) -> TableInfo {
-	let columns = columns
-		.iter()
-		.map(|name| {
-			(
-				(*name).to_string(),
-				ColumnInfo {
-					name: (*name).to_string(),
-					column_type: FieldType::Text,
-					nullable: false,
-					default: None,
-					auto_increment: false,
-					identity_generation: None,
-					generated: None,
-				},
-			)
-		})
-		.collect();
-
-	TableInfo {
-		name: name.to_string(),
-		columns,
-		indexes: HashMap::new(),
-		primary_key: Vec::new(),
-		foreign_keys: Vec::new(),
-		unique_constraints: Vec::new(),
-		check_constraints: Vec::new(),
-	}
+	columns.iter().fold(TableInfo::new(name), |table, column| {
+		table.with_column(ColumnInfo::new(*column, FieldType::Text, false))
+	})
 }
 
 async fn sqlite_connection() -> DatabaseConnection {
@@ -146,7 +122,9 @@ fn render_models_module_is_stable_and_parses_as_one_rust_module() {
 	let mut tables = HashMap::new();
 	tables.insert("zebra".to_string(), table("zebra", &["zeta", "alpha"]));
 	tables.insert("alpha".to_string(), table("alpha", &["omega", "beta"]));
-	let schema = DatabaseSchema { tables };
+	let schema = tables
+		.into_values()
+		.fold(DatabaseSchema::new(), DatabaseSchema::with_table);
 	let mut config = IntrospectConfig::default();
 	config.output.single_file = true;
 	config.imports.additional = vec![
@@ -174,9 +152,7 @@ fn canonical_generation_preserves_composite_primary_key_order() {
 	composite.primary_key = vec!["tenant_id".to_string(), "id".to_string()];
 	let output = generate_models_canonical(
 		&IntrospectConfig::default(),
-		&DatabaseSchema {
-			tables: [("tenants".to_string(), composite)].into(),
-		},
+		&DatabaseSchema::new().with_table(composite),
 	)
 	.expect("canonical generation should succeed");
 	let source = &output.files[0].content;
@@ -190,7 +166,9 @@ fn canonical_generation_preserves_composite_primary_key_order() {
 fn render_models_module_never_emits_database_credentials() {
 	let mut tables = HashMap::new();
 	tables.insert("accounts".to_string(), table("accounts", &["id"]));
-	let schema = DatabaseSchema { tables };
+	let schema = tables
+		.into_values()
+		.fold(DatabaseSchema::new(), DatabaseSchema::with_table);
 	let config = IntrospectConfig::default().with_database_url(
 		"postgres://inspect_user:database-password@localhost/accounts?api_key=query-secret",
 	);
@@ -211,12 +189,12 @@ fn canonical_stdout_and_directory_output_are_fully_repeatable() {
 	let mut second_tables = HashMap::new();
 	second_tables.insert("alpha".to_string(), table("alpha", &["beta", "omega"]));
 	second_tables.insert("zebra".to_string(), table("zebra", &["alpha", "zeta"]));
-	let first_schema = DatabaseSchema {
-		tables: first_tables,
-	};
-	let second_schema = DatabaseSchema {
-		tables: second_tables,
-	};
+	let first_schema = first_tables
+		.into_values()
+		.fold(DatabaseSchema::new(), DatabaseSchema::with_table);
+	let second_schema = second_tables
+		.into_values()
+		.fold(DatabaseSchema::new(), DatabaseSchema::with_table);
 	let mut config = IntrospectConfig::default();
 	config.output.directory = "/tmp/reinhardt-inspectdb-rendering".into();
 

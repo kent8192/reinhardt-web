@@ -17,6 +17,7 @@ The level applies per symbol. A type can be P1 while selected methods are P0.
 
 | API | Native behavior | WASM behavior |
 |---|---|---|
+| Reinhardt Query sequence/identity ASTs and builders | Construct literal qualified sequence identifiers, options, ownership, and identity clauses. | Construct and render the same driver-free SQL ASTs. |
 | Generated `ModelFormPatchPayload::clean_and_validate_patch` implementation with native forms support | Requires `reinhardt-forms` or facade `forms`; validates submitted values through the native forms engine. | Core `macros` and `validators` or facade `pages` validate the same submitted values without persistence dependencies. |
 | `QueryHandle::is_invalidated` | Reports whether an explicit invalidation still needs a successful completion, independently of hydration staleness. | Reports the same reactive invalidation state. |
 | `WebSocketEventError` | Represents the same payload-free error categories. | Represents the same payload-free error categories. |
@@ -45,6 +46,8 @@ core-only derives do not emit its implementation or named cleaned payload type.
 | `UnifiedRouter::client` | Type-checks and drops the closure without invoking it. | Invokes the closure and stores client routes. |
 | `FormPageSource` | Builds the page structure and remains inert with respect to browser submission. | Builds the page structure with the existing control-binding and mutation lifecycle. |
 | `#[url_patterns]` | When `cfg(server)` is enabled, retains the complete `.server(...)` configuration and its native handler references; otherwise uses the inert/erased arm. | Erases the complete `.server(...)` argument before browser-WASM name resolution while preserving the shared builder chain. |
+| `RouterHandle::current_path` / `RouterHandle::current_route_name` | No launcher installs an SPA router, so both return `Err(NavigateError::RouterNotInstalled)` without side effects. | Return the installed router's reactive path and route-name signals, which update on every committed navigation. |
+| `Link` active-link rendering (`active_class`, `match_prefix`, automatic `aria-current`) | Renders only static attributes because no SPA router is installed. | Toggles `aria-current="page"` and the active class reactively as the current route changes. |
 
 Inactive `UnifiedRouter` closures must not contain required side effects. Each
 active target must have an executable test proving its route configuration.

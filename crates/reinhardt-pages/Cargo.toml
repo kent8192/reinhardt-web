@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-pages"
-version = "0.4.0-alpha.19"
+version = "0.4.0-alpha.22"
 edition.workspace = true
 rust-version.workspace = true
 authors.workspace = true
@@ -452,6 +452,11 @@ required-features = []
 [[test]]
 name = "named_navigation_wasm_test"
 path = "tests/wasm/named_navigation_wasm_test.rs"
+required-features = []
+
+[[test]]
+name = "router_active_link_wasm_test"
+path = "tests/wasm/router_active_link_wasm_test.rs"
 required-features = []
 
 [[test]]

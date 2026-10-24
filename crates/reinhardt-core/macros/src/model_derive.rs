@@ -1203,6 +1203,8 @@ struct FieldConfig {
 	identity_always: Option<bool>,
 	#[cfg(feature = "db-postgres")]
 	identity_by_default: Option<bool>,
+	#[cfg(feature = "db-postgres")]
+	identity_options: Option<String>,
 	/// Auto-increment for integer primary keys.
 	/// Available for all databases. When set to true on an integer primary key,
 	/// the field is excluded from required builder inputs and uses 0 as default value.
@@ -1504,6 +1506,121 @@ impl FieldConfig {
 							"identity_by_default is only available with db-postgres feature",
 						))
 					}
+				} else if meta.path.is_ident("identity_options") {
+					#[cfg(feature = "db-postgres")]
+					{
+						let mut options = serde_json::Map::new();
+						meta.parse_nested_meta(|option| {
+							let name = option
+								.path
+								.get_ident()
+								.ok_or_else(|| {
+									option.error("identity option must be a simple name")
+								})?
+								.to_string();
+							if options.contains_key(&name) {
+								return Err(option.error("duplicate identity option"));
+							}
+							let value = match name.as_str() {
+								"sequence_name" | "sequence_schema" => {
+									let value: syn::LitStr = option.value()?.parse()?;
+									serde_json::Value::String(value.value())
+								}
+								"cycle" => {
+									let value: syn::LitBool = option.value()?.parse()?;
+									serde_json::Value::Bool(value.value)
+								}
+								"no_min_value" | "no_max_value" => {
+									let value: syn::LitBool = option.value()?.parse()?;
+									if !value.value {
+										return Err(option.error(
+											"bound resets must be true; omit the option for an unspecified bound",
+										));
+									}
+									serde_json::Value::Bool(true)
+								}
+								"start" | "increment" | "min_value" | "max_value" | "cache" => {
+									let expression: syn::Expr = option.value()?.parse()?;
+									let value = match expression {
+										syn::Expr::Lit(syn::ExprLit {
+											lit: syn::Lit::Int(value),
+											..
+										}) => value.base10_parse::<i64>()?,
+										syn::Expr::Unary(syn::ExprUnary {
+											op: syn::UnOp::Neg(_),
+											expr,
+											..
+										}) => {
+											let syn::Expr::Lit(syn::ExprLit {
+												lit: syn::Lit::Int(value),
+												..
+											}) = *expr
+											else {
+												return Err(option.error(
+													"identity option must be an integer literal",
+												));
+											};
+											let magnitude = value.base10_parse::<i128>()?;
+											i64::try_from(-magnitude).map_err(|_| {
+												option.error("identity option exceeds i64")
+											})?
+										}
+										_ => {
+											return Err(option.error(
+												"identity option must be an integer literal",
+											));
+										}
+									};
+									serde_json::json!(value)
+								}
+								_ => return Err(option.error("unknown identity option")),
+							};
+							options.insert(name, value);
+							Ok(())
+						})?;
+						if options.contains_key("min_value") && options.contains_key("no_min_value")
+							|| options.contains_key("max_value")
+								&& options.contains_key("no_max_value")
+						{
+							return Err(meta.error("a bound cannot have both a value and a reset"));
+						}
+						if options.contains_key("sequence_schema")
+							&& !options.contains_key("sequence_name")
+						{
+							return Err(meta.error("sequence_schema requires sequence_name"));
+						}
+						for bound in ["min_value", "max_value"] {
+							if let Some(value) = options.remove(bound) {
+								options.insert(bound.into(), serde_json::json!({"Value": value}));
+							}
+							if options.remove(&format!("no_{bound}")).is_some() {
+								options.insert(
+									bound.into(),
+									serde_json::Value::String("Default".into()),
+								);
+							}
+						}
+						if options
+							.get("increment")
+							.is_some_and(|value| value.as_i64() == Some(0))
+							|| options
+								.get("cache")
+								.and_then(serde_json::Value::as_i64)
+								.is_some_and(|value| value <= 0)
+						{
+							return Err(meta.error(
+								"identity increment must be nonzero and cache must be positive",
+							));
+						}
+						config.identity_options =
+							Some(serde_json::Value::Object(options).to_string());
+						Ok(())
+					}
+					#[cfg(not(feature = "db-postgres"))]
+					{
+						Err(meta
+							.error("identity_options is only available with db-postgres feature"))
+					}
 				} else if meta.path.is_ident("auto_increment") {
 					// auto_increment is available for all databases
 					// Integer primary keys are treated as auto_increment by default
@@ -1772,6 +1889,26 @@ impl FieldConfig {
 			return Err(syn::Error::new(
 				proc_macro2::Span::call_site(),
 				"Only one auto-increment attribute (identity_always, identity_by_default, auto_increment, autoincrement) can be specified per field",
+			));
+		}
+
+		#[cfg(feature = "db-postgres")]
+		if self.identity_options.is_some()
+			&& self.identity_always != Some(true)
+			&& self.identity_by_default != Some(true)
+		{
+			return Err(syn::Error::new(
+				proc_macro2::Span::call_site(),
+				"identity_options requires identity_always = true or identity_by_default = true",
+			));
+		}
+		#[cfg(feature = "db-postgres")]
+		if (self.identity_always == Some(true) || self.identity_by_default == Some(true))
+			&& (self.default.is_some() || self.null == Some(true))
+		{
+			return Err(syn::Error::new(
+				proc_macro2::Span::call_site(),
+				"identity columns cannot be nullable or have another default",
 			));
 		}
 
@@ -2551,7 +2688,17 @@ fn is_byte_vector(ty: &Type) -> bool {
 	matches!(arguments.args.first(), Some(GenericArgument::Type(Type::Path(element))) if element.path.is_ident("u8"))
 }
 
-/// Map `Vec<T>` to PostgreSQL Array type
+/// Macro type arguments can wrap scalar paths in transparent delimiter groups.
+#[cfg(feature = "db-postgres")]
+fn ungroup_array_element_type(ty: &Type) -> &Type {
+	match ty {
+		Type::Group(group) => ungroup_array_element_type(&group.elem),
+		Type::Paren(paren) => ungroup_array_element_type(&paren.elem),
+		_ => ty,
+	}
+}
+
+/// Map `Vec<T>` and `Vec<Option<T>>` to PostgreSQL Array type
 #[cfg(feature = "db-postgres")]
 fn map_vec_to_array_type(
 	ty: &Type,
@@ -2570,7 +2717,9 @@ fn map_vec_to_array_type(
 
 	// Try to infer the element type from Vec<T>
 	if let syn::PathArguments::AngleBracketed(args) = &segment.arguments
-		&& let Some(syn::GenericArgument::Type(Type::Path(inner_path))) = args.args.first()
+		&& let Some(syn::GenericArgument::Type(element_type)) = args.args.first()
+		&& let (_, element_type) = extract_option_type(ungroup_array_element_type(element_type))
+		&& let Type::Path(inner_path) = ungroup_array_element_type(element_type)
 		&& let Some(inner_segment) = inner_path.path.segments.last()
 	{
 		let inner_type_name = inner_segment.ident.to_string();
@@ -8455,18 +8604,25 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 		.iter()
 		.chain(unique_constraint_names.iter())
 		.collect::<Vec<_>>();
-	let generated_foreign_key_names = fk_field_infos.iter().map(|fk_info| {
+	// A `db_constraint` stays a literal so lookups compare it without allocating.
+	let foreign_key_constraint_name = |fk_info: &ForeignKeyFieldInfo| {
 		let column = &fk_info.id_column_name;
-		quote! {
-			#orm_crate::naming::foreign_key_constraint_name(Self::table_name(), #column)
-		}
+		fk_info.rel_attr.db_constraint.as_ref().map_or_else(
+			|| quote! { #orm_crate::naming::foreign_key_constraint_name(Self::table_name(), #column) },
+			|name| quote! { #name },
+		)
+	};
+	let generated_foreign_key_names = fk_field_infos.iter().map(|fk_info| {
+		let name = foreign_key_constraint_name(fk_info);
+		quote! { ::std::string::String::from(#name) }
 	});
 	let foreign_key_constraint_lookups = fk_field_infos.iter().map(|fk_info| {
-		let column = &fk_info.id_column_name;
+		let name = foreign_key_constraint_name(fk_info);
+		let shared_fields = &fk_info.rel_attr.shared_fields;
 		let logical_field = format!("{}_id", fk_info.field_name);
 		quote! {
-			if constraint == #orm_crate::naming::foreign_key_constraint_name(Self::table_name(), #column) {
-				return Some(vec![#logical_field]);
+			if constraint == #name {
+				return Some(vec![#(#shared_fields,)* #logical_field]);
 			}
 		}
 	});
@@ -9484,6 +9640,11 @@ fn generate_field_metadata(
 				);
 			});
 		}
+		#[cfg(feature = "db-postgres")]
+		if let Some(options) = &config.identity_options {
+			attrs.push(quote! { attributes.insert("identity_options".to_string(), #orm_crate::fields::FieldKwarg::String(#options.to_string())); });
+		}
+
 		#[cfg(feature = "db-mysql")]
 		if let Some(auto_increment) = config.auto_increment {
 			attrs.push(quote! {
@@ -9848,6 +10009,19 @@ fn generate_registration_code(input: RegistrationCodeInput<'_>) -> Result<TokenS
 			.unwrap_or_else(|| field_name.clone());
 
 		let mut params = Vec::new();
+		#[cfg(feature = "db-postgres")]
+		{
+			if let Some(value) = config.identity_always {
+				params.push(quote! { .with_param("identity_always", #value.to_string()) });
+			}
+			if let Some(value) = config.identity_by_default {
+				params.push(quote! { .with_param("identity_by_default", #value.to_string()) });
+			}
+			if let Some(value) = &config.identity_options {
+				params.push(quote! { .with_param("identity_options", #value) });
+			}
+		}
+
 		#[cfg(feature = "db-mysql")]
 		if let Some(unsigned) = config.unsigned {
 			params.push(quote! { .with_param("unsigned", #unsigned.to_string()) });
@@ -9999,6 +10173,8 @@ fn generate_registration_code(input: RegistrationCodeInput<'_>) -> Result<TokenS
 								referenced_column: "id".to_string(),
 								on_delete: #migrations_crate::ForeignKeyAction::Cascade,
 								on_update: #migrations_crate::ForeignKeyAction::Cascade,
+								shared_columns: ::std::vec::Vec::new(),
+								constraint_name: ::core::option::Option::None,
 							}
 						})
 						// Obtain the app label from the target's Model implementation so
@@ -10016,6 +10192,8 @@ fn generate_registration_code(input: RegistrationCodeInput<'_>) -> Result<TokenS
 							referenced_column: "id".to_string(),
 							on_delete: #migrations_crate::ForeignKeyAction::Cascade,
 							on_update: #migrations_crate::ForeignKeyAction::Cascade,
+							shared_columns: ::std::vec::Vec::new(),
+							constraint_name: ::core::option::Option::None,
 						})
 					}
 				}
@@ -10031,6 +10209,8 @@ fn generate_registration_code(input: RegistrationCodeInput<'_>) -> Result<TokenS
 							referenced_column: "id".to_string(),
 							on_delete: #migrations_crate::ForeignKeyAction::Cascade,
 							on_update: #migrations_crate::ForeignKeyAction::Cascade,
+							shared_columns: ::std::vec::Vec::new(),
+							constraint_name: ::core::option::Option::None,
 						})
 					}
 				}
@@ -10199,6 +10379,49 @@ fn generate_registration_code(input: RegistrationCodeInput<'_>) -> Result<TokenS
 		};
 		let on_delete = foreign_key_action(fk_info.rel_attr.on_delete);
 		let on_update = foreign_key_action(fk_info.rel_attr.on_update);
+		let shared_columns = fk_info
+			.rel_attr
+			.shared_fields
+			.iter()
+			.map(|shared| {
+				let local = field_infos
+					.iter()
+					.find(|field| ident_to_wire_name(&field.name) == *shared)
+					.filter(|field| field.rel.is_none() && !is_relationship_field_type(&field.ty))
+					.ok_or_else(|| {
+						syn::Error::new(
+							fk_info.rel_attr.span,
+							format!(
+								"'shared_fields' entry '{shared}' must name a non-relationship field of this model"
+							),
+						)
+					})?;
+				let local_column = local
+					.config
+					.db_column
+					.clone()
+					.unwrap_or_else(|| ident_to_wire_name(&local.name));
+				Ok(quote! {
+					(
+						#local_column.to_string(),
+						<#target_type as #orm_crate::Model>::field_metadata()
+							.into_iter()
+							.find_map(|field_info| {
+								if field_info.name == #shared {
+									Some(field_info.db_column.unwrap_or(field_info.name))
+								} else {
+									None
+								}
+							})
+							.unwrap_or_else(|| #shared.to_string()),
+					)
+				})
+			})
+			.collect::<Result<Vec<_>>>()?;
+		let constraint_name = fk_info.rel_attr.db_constraint.as_ref().map_or_else(
+			|| quote! { ::core::option::Option::None },
+			|name| quote! { ::core::option::Option::Some(#name.to_string()) },
+		);
 
 		// Extract "User" from ForeignKeyField<User>
 		let target_model_name = if let Type::Path(type_path) = target_ty {
@@ -10299,6 +10522,8 @@ fn generate_registration_code(input: RegistrationCodeInput<'_>) -> Result<TokenS
 						referenced_column: #referenced_column,
 						on_delete: #on_delete,
 						on_update: #on_update,
+						shared_columns: ::std::vec![#(#shared_columns),*],
+						constraint_name: #constraint_name,
 					})
 			);
 		});
@@ -16172,5 +16397,48 @@ mod tests {
 		assert_eq!(zero, 0);
 		assert_eq!(boundary, 2147483647);
 		assert_eq!(negative, -5);
+	}
+}
+
+#[cfg(all(test, feature = "db-postgres"))]
+mod sequence_identity_tests {
+	use super::*;
+	use rstest::rstest;
+	#[rstest]
+	fn identity_options_reach_both_metadata_surfaces() {
+		// Arrange
+		let input = quote! {
+			#[model(app_label = "events", table_name = "event_values")]
+			struct Event {
+				#[field(primary_key = true)]
+				id: i64,
+				#[field(db_column = "event_no", identity_always = true, identity_options(sequence_name = "event_numbers", start = -10, increment = -2, cache = 5, no_max_value = true))]
+				sequence: i64,
+			}
+		};
+		// Act
+		let output = model_derive_impl(syn::parse2(input).unwrap())
+			.unwrap()
+			.to_string()
+			.replace(' ', "");
+		// Assert
+		assert!(output.contains("with_param(\"identity_options\""));
+		assert!(output.contains("with_param(\"identity_always\""));
+		assert!(output.contains("attributes.insert(\"identity_options\""));
+		assert!(output.contains("event_no"));
+	}
+	#[rstest]
+	#[case(quote! { #[field(identity_always = true, identity_options(increment = 0))] })]
+	#[case(quote! { #[field(identity_always = true, identity_options(cache = 0))] })]
+	#[case(quote! { #[field(identity_options(start = 1))] })]
+	#[case(quote! { #[field(identity_always = true, identity_options(start = 1, start = 2))] })]
+	#[case(quote! { #[field(identity_always = true, identity_options(min_value = 1, no_min_value = true))] })]
+	fn invalid_identity_options_rejected(#[case] attribute: TokenStream) {
+		let attr: syn::Attribute = syn::parse_quote!(#attribute);
+		assert!(
+			FieldConfig::from_attrs(&[attr])
+				.and_then(|config| config.validate())
+				.is_err()
+		);
 	}
 }

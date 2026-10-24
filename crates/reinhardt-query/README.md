@@ -17,6 +17,14 @@ The standalone `inline_params` helper uses PostgreSQL literals for numbered
 placeholders (`$1`, `$2`, ...) and generic literals for positional placeholders
 (`?`), preserving `X'...'` byte literals for positional SQL.
 
+`Query::sqlite_foreign_keys(enabled).build_sqlite_checked()` builds a typed
+connection-local foreign-key setting. The checked PostgreSQL, MySQL, and
+CockroachDB methods reject it before execution. Execute the SQLite statement on
+the caller's connection outside a transaction or savepoint, and restore the
+prior setting after a temporary change. SQL generation has native/WASM parity.
+See [the setting-site inventory](../../docs/migration/sqlite-foreign-key-settings.md)
+for the schema editor's connection and cleanup guarantees.
+
 ## Features
 
 ### DML (Data Manipulation Language)
@@ -45,12 +53,37 @@ placeholders (`$1`, `$2`, ...) and generic literals for positional placeholders
 - **Events** - CREATE/ALTER/DROP EVENT (MySQL)
 - **Comments** - COMMENT ON for all database objects (PostgreSQL, CockroachDB)
 - **Maintenance** - VACUUM, ANALYZE, OPTIMIZE/REPAIR/CHECK TABLE
+  - Checked ANALYZE: PostgreSQL table/column lists and VERBOSE; MySQL table
+    lists; SQLite optional single table/index/schema target; CockroachDB single
+    table. Unsupported configurations return QueryBuildError. Identifier
+    escaping and generated empty Values are identical on native and WASM.
+
+`Func::mysql_last_insert_id` reads or assigns connection-scoped MySQL state
+through a typed expression with a signed integer result. Reset, insert, and read
+must share one executor. Checked non-MySQL builders and plan-only MySQL EXPLAIN
+reject this stateful expression. Both native and WASM can build it.
+
+`ExprTrait::cast_as_text` and `cast_as_signed_integer` use each backend's
+built-in type grammar while retaining bound values and escaped source identifiers.
 
 ### Multi-Backend Support
 - **PostgreSQL** - Full DDL and DML support with advanced features
 - **MySQL** - DML, Functions, Procedures, Events, and table maintenance
 - **SQLite** - DML and basic DDL operations
 - **CockroachDB** - Full PostgreSQL compatibility with distributed database features
+
+### SQLite Connection Inspection
+
+`Query::sqlite_database_list().build_sqlite_checked()` generates
+`PRAGMA database_list` with no parameters. The result retains SQLite's `seq`,
+`name`, and `file` columns, including empty filenames. Execution and decoding
+remain caller-owned, and the list describes the executing connection rather
+than the entire pool. An empty filename does not prove that a pool shares its
+main database.
+
+`SqliteDatabaseListStatement` exposes only checked rendering; its PostgreSQL,
+MySQL, and CockroachDB methods return `QueryBuildError::UnsupportedBackendFeature`.
+SQL generation has P2 native/WASM parity and needs no optional feature.
 
 ## Installation
 
@@ -59,7 +92,7 @@ Add to your `Cargo.toml`:
 <!-- reinhardt-version-sync -->
 ```toml
 [dependencies]
-reinhardt-query = { version = "0.4.0-alpha.19" }
+reinhardt-query = { version = "0.4.0-alpha.22" }
 ```
 
 ## Quick Start
@@ -154,6 +187,19 @@ backends; legacy builders panic instead of silently dropping the modifier.
 The last modifier replaces earlier modifiers, including `sqlite_or_replace()`,
 and `take()` resets the original statement. Construction and rendering are
 available with the same behavior on native and WASM targets.
+
+`OnConflict::constraint("users_pkey")` selects a quoted named unique constraint
+on PostgreSQL and CockroachDB. `action_and_where(Expr::col("version").lt(10))`
+adds a typed update predicate on those backends and SQLite; repeated predicates
+combine with AND. Condition values follow INSERT/source values in the generated
+argument list. Checked builders reject unsupported targets, MySQL update
+conditions and invalid actions; `do_nothing()` clears earlier update conditions.
+These APIs have identical native and WASM behavior.
+
+SQLite INSERT SELECT with an UPSERT adds a typed always-true WHERE when a
+source FROM without WHERE would make ON CONFLICT ambiguous. Compound sources
+use a derived table for that guard. Guard values remain part of the exact
+generated arguments; ordinary SELECT rendering is unchanged.
 
 ### Row locking
 

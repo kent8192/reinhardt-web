@@ -1,8 +1,10 @@
 //! ORM Integration Module
 //!
 //! This module provides integration between ContentTypes and reinhardt-orm.
-//! Through integration with Session, Query, and Transaction interfaces,
-//! ContentType operations through the ORM are made possible.
+//! It provides an ORM-style query builder and pool-backed ContentType operations
+//! for SQLite. These interfaces generate SQLite SQL regardless of the `AnyPool`
+//! driver; PostgreSQL and MySQL pools are not supported.
+//! These interfaces execute through the pool and do not own a database transaction.
 
 #[cfg(feature = "database")]
 use reinhardt_query::prelude::{
@@ -25,6 +27,9 @@ use super::persistence::{PersistenceError, prepare_query, prepare_sqlite_stateme
 ///
 /// Provides an API similar to reinhardt-orm's Query interface,
 /// building type-safe queries for ContentType.
+///
+/// Only SQLite-backed pools are supported. Queries use `SqliteQueryBuilder`
+/// regardless of the `AnyPool` driver. PostgreSQL and MySQL pools are unsupported.
 ///
 /// ## Example
 ///
@@ -82,7 +87,7 @@ enum OrderDirection {
 
 #[cfg(feature = "database")]
 impl ContentTypeQuery {
-	/// Create a new query builder
+	/// Create a new query builder for a SQLite-backed pool.
 	///
 	/// # Example
 	///
@@ -408,10 +413,23 @@ impl ContentTypeQuery {
 	}
 }
 
-/// ContentType operations with transaction support
+/// Pool-backed ContentType operations without transaction ownership.
 ///
-/// Enables executing ContentType operations within transactions
-/// through integration with ORM Transaction.
+/// Only SQLite-backed pools are supported. This context and its queries generate
+/// SQL with `SqliteQueryBuilder`, and [`Self::create`] retrieves the generated ID
+/// with SQLite's `last_insert_rowid()` on the same acquired connection as the
+/// insert. PostgreSQL and MySQL pools are unsupported.
+///
+/// The historical name is retained for compatibility. This context stores a pool;
+/// it does not begin or own a database transaction and has no commit or rollback
+/// boundary. Each operation executes independently through the pool, using its
+/// normal autocommit behavior. An error or dropping the context does not roll back
+/// preceding writes.
+///
+/// Queries returned by [`Self::query`] also execute through the pool. Opening a
+/// transaction separately on a pool connection does not enlist these operations
+/// in that transaction. Callers requiring atomic changes must use an API that
+/// executes on an owned database transaction.
 #[cfg(feature = "database")]
 pub struct ContentTypeTransaction {
 	pool: Arc<AnyPool>,
@@ -419,17 +437,27 @@ pub struct ContentTypeTransaction {
 
 #[cfg(feature = "database")]
 impl ContentTypeTransaction {
-	/// Create a new transaction context
+	/// Create a SQLite pool-backed context without acquiring a connection or beginning a transaction.
 	pub fn new(pool: Arc<AnyPool>) -> Self {
 		Self { pool }
 	}
 
-	/// Get query builder
+	/// Get an independent SQLite query builder using the same pool.
+	///
+	/// The builder does not share a transaction or snapshot with this context and
+	/// can be used after the context is dropped.
 	pub fn query(&self) -> ContentTypeQuery {
 		ContentTypeQuery::new(self.pool.clone())
 	}
 
-	/// Create ContentType (within transaction)
+	/// Create a ContentType through the SQLite pool using autocommit.
+	///
+	/// The insert and generated-ID lookup use one acquired connection, including
+	/// when the pool allows multiple connections or callers create concurrently.
+	///
+	/// Successful writes are not rolled back when the context is dropped or a
+	/// subsequent operation fails. This method does not provide atomicity with
+	/// other context operations.
 	pub async fn create(
 		&self,
 		app_label: impl Into<String>,
@@ -445,8 +473,12 @@ impl ContentTypeTransaction {
 			.expect("Failed to build insert statement")
 			.to_owned();
 		let (sql, arguments) = prepare_sqlite_statement(stmt)?;
+		// Both statements must use the same connection-local insert ID.
+		let mut connection = self.pool.acquire().await.map_err(|error| {
+			PersistenceError::DatabaseError(format!("Failed to create content type: {error}"))
+		})?;
 		sqlx::query_with(&sql, arguments)
-			.execute(&*self.pool)
+			.execute(&mut *connection)
 			.await
 			.map_err(|e| {
 				PersistenceError::DatabaseError(format!("Failed to create content type: {}", e))
@@ -465,7 +497,7 @@ impl ContentTypeTransaction {
 				.take(),
 		)?;
 		let id_row = sqlx::query_with(&sql, arguments)
-			.fetch_one(&*self.pool)
+			.fetch_one(&mut *connection)
 			.await
 			.map_err(|e| {
 				PersistenceError::DatabaseError(format!("Failed to get last insert ID: {}", e))
@@ -482,7 +514,10 @@ impl ContentTypeTransaction {
 		})
 	}
 
-	/// Delete ContentType (within transaction)
+	/// Delete a ContentType through the SQLite pool using autocommit.
+	///
+	/// Successful deletes are not rolled back when the context is dropped or a
+	/// subsequent operation fails.
 	pub async fn delete(&self, id: i64) -> Result<(), PersistenceError> {
 		let stmt = Query::delete()
 			.from_table(Alias::new("django_content_type"))
@@ -505,7 +540,8 @@ impl ContentTypeTransaction {
 #[cfg(all(test, feature = "database"))]
 mod tests {
 	use super::*;
-	use crate::contenttypes::persistence::ContentTypePersistence;
+	use crate::contenttypes::persistence::{ContentTypePersistence, ContentTypePersistenceBackend};
+	use rstest::{fixture, rstest};
 	use std::sync::Once;
 
 	static INIT_DRIVERS: Once = Once::new();
@@ -516,11 +552,12 @@ mod tests {
 		});
 	}
 
+	#[fixture]
 	async fn setup_test_db() -> Arc<AnyPool> {
 		init_drivers();
 
-		// Use in-memory SQLite with shared cache mode and single connection
-		let db_url = "sqlite::memory:?mode=rwc&cache=shared";
+		// Give each fixture a private in-memory database on its single connection.
+		let db_url = "sqlite::memory:?cache=private";
 
 		// Create pool with single connection
 		use sqlx::pool::PoolOptions;
@@ -541,14 +578,307 @@ mod tests {
 		pool.into()
 	}
 
+	struct MultiConnectionTestDb {
+		persistence: ContentTypePersistence,
+		pool: Arc<AnyPool>,
+		_directory: tempfile::TempDir,
+	}
+
+	#[fixture]
+	async fn setup_multi_connection_db() -> MultiConnectionTestDb {
+		init_drivers();
+		let directory = tempfile::tempdir().expect("Failed to create SQLite directory");
+		let path = directory.path().join("contenttypes.sqlite");
+		let url = format!("sqlite://{}?mode=rwc", path.display());
+		let pool = Arc::new(
+			sqlx::any::AnyPoolOptions::new()
+				.min_connections(2)
+				.max_connections(2)
+				.acquire_timeout(std::time::Duration::from_secs(5))
+				.connect(&url)
+				.await
+				.expect("Failed to open two-connection SQLite pool"),
+		);
+		let persistence = ContentTypePersistence::from_pool(pool.clone(), &url);
+		persistence
+			.create_table()
+			.await
+			.expect("Failed to create content type table");
+		MultiConnectionTestDb {
+			persistence,
+			pool,
+			_directory: directory,
+		}
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_content_type_context_create_ids_with_two_connections(
+		#[future] setup_multi_connection_db: MultiConnectionTestDb,
+	) {
+		// Arrange
+		let database = setup_multi_connection_db.await;
+		let context = ContentTypeTransaction::new(database.pool.clone());
+		let mut created = Vec::new();
+
+		// Act
+		for index in 0..8 {
+			created.push(
+				context
+					.create("affinity", format!("Sequential{index}"))
+					.await
+					.expect("Failed to create content type"),
+			);
+		}
+		let stored = database
+			.persistence
+			.load_all()
+			.await
+			.expect("Failed to load content types");
+
+		// Assert
+		assert_eq!(created, stored);
+		assert_eq!(
+			created
+				.iter()
+				.map(|content_type| content_type.id)
+				.collect::<Vec<_>>(),
+			(1..=8).map(Some).collect::<Vec<_>>(),
+		);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_content_type_context_concurrent_create_ids_with_two_connections(
+		#[future] setup_multi_connection_db: MultiConnectionTestDb,
+	) {
+		// Arrange
+		let database = setup_multi_connection_db.await;
+		let context = ContentTypeTransaction::new(database.pool.clone());
+
+		// Act
+		let (first, second) = tokio::try_join!(
+			context.create("affinity", "First"),
+			context.create("affinity", "Second"),
+		)
+		.expect("Failed to create content types concurrently");
+		let mut stored = database
+			.persistence
+			.load_all()
+			.await
+			.expect("Failed to load content types");
+		stored.sort_by(|left, right| left.model.cmp(&right.model));
+
+		// Assert
+		let mut ids = [first.id, second.id];
+		ids.sort();
+		assert_eq!(ids, [Some(1), Some(2)]);
+		assert_eq!(stored, vec![first, second]);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_content_type_context_duplicate_returns_both_connections(
+		#[future] setup_multi_connection_db: MultiConnectionTestDb,
+	) {
+		// Arrange
+		let database = setup_multi_connection_db.await;
+		let context = ContentTypeTransaction::new(database.pool.clone());
+		let created = context
+			.create("affinity", "Unique")
+			.await
+			.expect("Failed to create content type");
+
+		// Act
+		let error = context
+			.create("affinity", "Unique")
+			.await
+			.expect_err("Duplicate content type should fail");
+		let stored = database
+			.persistence
+			.load_all()
+			.await
+			.expect("Failed to load content types");
+		let _connections = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+			let first = database.pool.acquire().await?;
+			let second = database.pool.acquire().await?;
+			Ok::<_, sqlx::Error>((first, second))
+		})
+		.await
+		.expect("Both connections should return to the pool after an error")
+		.expect("Failed to acquire returned connections");
+
+		// Assert
+		assert!(matches!(error, PersistenceError::DatabaseError(_)));
+		assert_eq!(stored, vec![created]);
+		assert_eq!(database.pool.size(), 2);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_content_type_context_fixtures_are_isolated() {
+		// Arrange
+		let (first_pool, second_pool) = tokio::join!(setup_test_db(), setup_test_db());
+		let first_context = ContentTypeTransaction::new(first_pool);
+		let second_context = ContentTypeTransaction::new(second_pool);
+
+		// Act
+		let (first, second) = tokio::try_join!(
+			first_context.create("isolation", "SameModel"),
+			second_context.create("isolation", "SameModel"),
+		)
+		.expect("Independent fixtures should allow the same content type");
+		let first_rows = first_context
+			.query()
+			.all()
+			.await
+			.expect("Failed to query first fixture");
+		let second_rows = second_context
+			.query()
+			.all()
+			.await
+			.expect("Failed to query second fixture");
+
+		// Assert
+		assert_eq!(first.id, Some(1));
+		assert_eq!(second.id, Some(1));
+		assert_eq!(first_rows, vec![first]);
+		assert_eq!(second_rows, vec![second]);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_content_type_context_create_persists_after_drop(
+		#[future] setup_test_db: Arc<AnyPool>,
+	) {
+		// Arrange
+		let pool = setup_test_db.await;
+		let persistence = ContentTypePersistence::from_pool(pool.clone(), "sqlite::memory:");
+
+		// Act
+		let created = {
+			let context = ContentTypeTransaction::new(pool);
+			context
+				.create("affinity", "CommittedWithoutTransaction")
+				.await
+				.expect("Failed to create content type")
+		};
+		let stored = persistence
+			.get("affinity", "CommittedWithoutTransaction")
+			.await
+			.expect("Failed to retrieve content type");
+
+		// Assert
+		assert_eq!(stored, Some(created));
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_content_type_context_delete_persists_after_drop(
+		#[future] setup_test_db: Arc<AnyPool>,
+	) {
+		// Arrange
+		let pool = setup_test_db.await;
+		let persistence = ContentTypePersistence::from_pool(pool.clone(), "sqlite::memory:");
+		let created = persistence
+			.get_or_create("affinity", "DeletedWithoutTransaction")
+			.await
+			.expect("Failed to create content type");
+
+		// Act
+		{
+			let context = ContentTypeTransaction::new(pool);
+			context
+				.delete(created.id.expect("Missing content type ID"))
+				.await
+				.expect("Failed to delete content type");
+		}
+		let stored = persistence
+			.get("affinity", "DeletedWithoutTransaction")
+			.await
+			.expect("Failed to retrieve content type");
+
+		// Assert
+		assert_eq!(stored, None);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_content_type_context_error_does_not_roll_back_writes(
+		#[future] setup_test_db: Arc<AnyPool>,
+	) {
+		// Arrange
+		let pool = setup_test_db.await;
+		let persistence = ContentTypePersistence::from_pool(pool.clone(), "sqlite::memory:");
+
+		// Act
+		let (created, error) = {
+			let context = ContentTypeTransaction::new(pool);
+			let created = context
+				.create("affinity", "KeptAfterError")
+				.await
+				.expect("Failed to create content type");
+			let deleted = context
+				.create("affinity", "DeletedBeforeError")
+				.await
+				.expect("Failed to create content type");
+			context
+				.delete(deleted.id.expect("Missing content type ID"))
+				.await
+				.expect("Failed to delete content type");
+			let error = context
+				.create("affinity", "KeptAfterError")
+				.await
+				.expect_err("Duplicate content type should fail");
+			(created, error)
+		};
+		let remaining = persistence
+			.load_all()
+			.await
+			.expect("Failed to load content types");
+
+		// Assert
+		assert!(matches!(error, PersistenceError::DatabaseError(_)));
+		assert_eq!(remaining, vec![created]);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_content_type_context_query_survives_context_drop(
+		#[future] setup_test_db: Arc<AnyPool>,
+	) {
+		// Arrange
+		let pool = setup_test_db.await;
+
+		// Act
+		let (created, query) = {
+			let context = ContentTypeTransaction::new(pool);
+			let created = context
+				.create("affinity", "IndependentQuery")
+				.await
+				.expect("Failed to create content type");
+			(created, context.query())
+		};
+		let results = query.all().await.expect("Failed to query content types");
+
+		// Assert
+		assert_eq!(results, vec![created]);
+	}
+
 	#[tokio::test]
 	async fn test_content_type_query_all() {
 		let pool = setup_test_db().await;
 
 		// Create test data
-		let tx = ContentTypeTransaction::new(pool.clone());
-		tx.create("auth", "User").await.expect("Failed to create");
-		tx.create("auth", "Group").await.expect("Failed to create");
+		let context = ContentTypeTransaction::new(pool.clone());
+		context
+			.create("auth", "User")
+			.await
+			.expect("Failed to create");
+		context
+			.create("auth", "Group")
+			.await
+			.expect("Failed to create");
 
 		// Execute query
 		let query = ContentTypeQuery::new(pool);
@@ -562,9 +892,15 @@ mod tests {
 		let pool = setup_test_db().await;
 
 		// Create test data
-		let tx = ContentTypeTransaction::new(pool.clone());
-		tx.create("auth", "User").await.expect("Failed to create");
-		tx.create("blog", "Post").await.expect("Failed to create");
+		let context = ContentTypeTransaction::new(pool.clone());
+		context
+			.create("auth", "User")
+			.await
+			.expect("Failed to create");
+		context
+			.create("blog", "Post")
+			.await
+			.expect("Failed to create");
 
 		// Filter query
 		let query = ContentTypeQuery::new(pool);
@@ -583,9 +919,15 @@ mod tests {
 		let pool = setup_test_db().await;
 
 		// Create test data
-		let tx = ContentTypeTransaction::new(pool.clone());
-		tx.create("blog", "Post").await.expect("Failed to create");
-		tx.create("auth", "User").await.expect("Failed to create");
+		let context = ContentTypeTransaction::new(pool.clone());
+		context
+			.create("blog", "Post")
+			.await
+			.expect("Failed to create");
+		context
+			.create("auth", "User")
+			.await
+			.expect("Failed to create");
 
 		// Query with sorting
 		let query = ContentTypeQuery::new(pool);
@@ -605,10 +947,19 @@ mod tests {
 		let pool = setup_test_db().await;
 
 		// Create test data
-		let tx = ContentTypeTransaction::new(pool.clone());
-		tx.create("app1", "Model1").await.expect("Failed to create");
-		tx.create("app2", "Model2").await.expect("Failed to create");
-		tx.create("app3", "Model3").await.expect("Failed to create");
+		let context = ContentTypeTransaction::new(pool.clone());
+		context
+			.create("app1", "Model1")
+			.await
+			.expect("Failed to create");
+		context
+			.create("app2", "Model2")
+			.await
+			.expect("Failed to create");
+		context
+			.create("app3", "Model3")
+			.await
+			.expect("Failed to create");
 
 		// Query with limit/offset
 		let query = ContentTypeQuery::new(pool);
@@ -628,8 +979,11 @@ mod tests {
 		let pool = setup_test_db().await;
 
 		// Create test data
-		let tx = ContentTypeTransaction::new(pool.clone());
-		tx.create("auth", "User").await.expect("Failed to create");
+		let context = ContentTypeTransaction::new(pool.clone());
+		context
+			.create("auth", "User")
+			.await
+			.expect("Failed to create");
 
 		// first()
 		let query = ContentTypeQuery::new(pool);
@@ -648,10 +1002,19 @@ mod tests {
 		let pool = setup_test_db().await;
 
 		// Create test data
-		let tx = ContentTypeTransaction::new(pool.clone());
-		tx.create("auth", "User").await.expect("Failed to create");
-		tx.create("auth", "Group").await.expect("Failed to create");
-		tx.create("blog", "Post").await.expect("Failed to create");
+		let context = ContentTypeTransaction::new(pool.clone());
+		context
+			.create("auth", "User")
+			.await
+			.expect("Failed to create");
+		context
+			.create("auth", "Group")
+			.await
+			.expect("Failed to create");
+		context
+			.create("blog", "Post")
+			.await
+			.expect("Failed to create");
 
 		// count()
 		let query = ContentTypeQuery::new(pool);
@@ -669,8 +1032,11 @@ mod tests {
 		let pool = setup_test_db().await;
 
 		// Create test data
-		let tx = ContentTypeTransaction::new(pool.clone());
-		tx.create("auth", "User").await.expect("Failed to create");
+		let context = ContentTypeTransaction::new(pool.clone());
+		context
+			.create("auth", "User")
+			.await
+			.expect("Failed to create");
 
 		// exists()
 		let query = ContentTypeQuery::new(pool.clone());
@@ -694,11 +1060,11 @@ mod tests {
 	}
 
 	#[tokio::test]
-	async fn test_content_type_transaction_create() {
+	async fn test_content_type_context_create() {
 		let pool = setup_test_db().await;
 
-		let tx = ContentTypeTransaction::new(pool.clone());
-		let ct = tx
+		let context = ContentTypeTransaction::new(pool.clone());
+		let ct = context
 			.create("shop", "Product")
 			.await
 			.expect("Failed to create");
@@ -709,15 +1075,18 @@ mod tests {
 	}
 
 	#[tokio::test]
-	async fn test_content_type_transaction_delete() {
+	async fn test_content_type_context_delete() {
 		let pool = setup_test_db().await;
 
-		let tx = ContentTypeTransaction::new(pool.clone());
-		let ct = tx.create("temp", "Model").await.expect("Failed to create");
+		let context = ContentTypeTransaction::new(pool.clone());
+		let ct = context
+			.create("temp", "Model")
+			.await
+			.expect("Failed to create");
 		let id = ct.id.unwrap();
 
 		// Delete
-		tx.delete(id).await.expect("Failed to delete");
+		context.delete(id).await.expect("Failed to delete");
 
 		// Verify deletion
 		let query = ContentTypeQuery::new(pool);
@@ -730,9 +1099,15 @@ mod tests {
 	async fn test_content_type_query_multiple_filters() {
 		let pool = setup_test_db().await;
 
-		let tx = ContentTypeTransaction::new(pool.clone());
-		tx.create("auth", "User").await.expect("Failed to create");
-		tx.create("auth", "Group").await.expect("Failed to create");
+		let context = ContentTypeTransaction::new(pool.clone());
+		context
+			.create("auth", "User")
+			.await
+			.expect("Failed to create");
+		context
+			.create("auth", "Group")
+			.await
+			.expect("Failed to create");
 
 		// Multiple filters
 		let query = ContentTypeQuery::new(pool);
@@ -751,9 +1126,15 @@ mod tests {
 	async fn test_content_type_query_order_desc() {
 		let pool = setup_test_db().await;
 
-		let tx = ContentTypeTransaction::new(pool.clone());
-		tx.create("app1", "Model1").await.expect("Failed to create");
-		tx.create("app2", "Model2").await.expect("Failed to create");
+		let context = ContentTypeTransaction::new(pool.clone());
+		context
+			.create("app1", "Model1")
+			.await
+			.expect("Failed to create");
+		context
+			.create("app2", "Model2")
+			.await
+			.expect("Failed to create");
 
 		// Descending sort
 		let query = ContentTypeQuery::new(pool);

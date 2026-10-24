@@ -676,7 +676,7 @@ async fn select_for_update_rows_with_executor_short_circuits_empty_querysets() {
 async fn select_for_update_rejects_select_related_aggregate_annotations_without_querying() {
 	// Arrange
 	let query = QuerySet::<Article>::new()
-		.select_related(&["author"])
+		.select_related(["author"])
 		.annotate(
 			reinhardt_db::orm::func::count_all::<Article>()
 				.label("article_count")
@@ -1068,7 +1068,7 @@ async fn latest_and_earliest_use_typed_ordering_with_caller_owned_executors() {
 		executor
 			.calls
 			.iter()
-			.all(|call| call.params == vec![QueryValue::Int(1)])
+			.all(|call| call.params == vec![QueryValue::Uint(1)])
 	);
 
 	let mut transaction_executor =
@@ -1120,7 +1120,7 @@ async fn latest_and_earliest_use_typed_ordering_with_caller_owned_executors() {
 		transaction_executor
 			.calls
 			.iter()
-			.all(|call| call.params == vec![QueryValue::Int(1)])
+			.all(|call| call.params == vec![QueryValue::Uint(1)])
 	);
 }
 
@@ -1475,6 +1475,60 @@ async fn mysql_create_uses_exact_insert_result_and_physical_primary_key_reload()
 	assert_eq!(executor.calls[1].params, vec![QueryValue::Int(42)]);
 }
 
+#[rstest]
+#[tokio::test]
+async fn mysql_transaction_create_preserves_reset_insert_read_reload_order() {
+	// Arrange
+	let id_row = |id| Row {
+		data: HashMap::from([("generated_id".into(), QueryValue::Int(id))]),
+	};
+	let mut executor =
+		RecordingTransactionExecutor::new(reinhardt_db::backends::DatabaseType::Mysql)
+			.with_fetch_one(id_row(0))
+			.with_fetch_one(id_row(43))
+			.with_fetch_one(article_row(43, "bound' ? $99"));
+	// Act
+	let created = Manager::<Article>::new()
+		.insert_with_executor(
+			&mut executor,
+			&Article {
+				id: None,
+				title: "bound' ? $99".into(),
+			},
+		)
+		.await
+		.unwrap();
+	// Assert
+	assert_eq!(created.id, Some(43));
+	assert_eq!(created.title, "bound' ? $99");
+	assert_eq!(executor.calls.len(), 4);
+	assert_eq!(
+		executor.calls[0],
+		RecordedCall {
+			kind: "fetch_one",
+			sql: "SELECT CAST(LAST_INSERT_ID(?) AS SIGNED) AS `generated_id`".into(),
+			params: vec![QueryValue::Int(0)],
+		}
+	);
+	assert_eq!(executor.calls[1].kind, "execute");
+	assert!(executor.calls[1].sql.starts_with("INSERT"));
+	assert_eq!(
+		executor.calls[1].params,
+		vec![QueryValue::String("bound' ? $99".into())]
+	);
+	assert_eq!(
+		executor.calls[2],
+		RecordedCall {
+			kind: "fetch_one",
+			sql: "SELECT CAST(LAST_INSERT_ID() AS SIGNED) AS `generated_id`".into(),
+			params: vec![],
+		}
+	);
+	assert_eq!(executor.calls[3].kind, "fetch_one");
+	assert!(executor.calls[3].sql.contains("article_id"));
+	assert_eq!(executor.calls[3].params, vec![QueryValue::Int(43)]);
+}
+
 #[tokio::test]
 async fn postgres_and_sqlite_create_render_the_supplied_executor_dialect() {
 	for (backend, placeholder) in [
@@ -1600,8 +1654,16 @@ async fn custom_manager_bulk_terminals_preserve_executor_borrows_and_hooks() {
 	assert_eq!(updated, 1);
 	assert_eq!(manager.bulk_update_calls.load(Ordering::SeqCst), 1);
 	assert_eq!(bulk_update_executor.calls.len(), 1);
+	assert_eq!(
+		bulk_update_executor.calls[0].params,
+		vec![
+			QueryValue::Int(31),
+			QueryValue::String("hooked-bulk-updated".into()),
+			QueryValue::Int(31)
+		]
+	);
 	assert!(
-		bulk_update_executor.calls[0]
+		!bulk_update_executor.calls[0]
 			.sql
 			.contains("hooked-bulk-updated")
 	);
@@ -1753,9 +1815,9 @@ fn queryset_write_expressions_resolve_model_fields_without_rewriting_explicit_re
 		.expect("expression updates should compile");
 	assert_eq!(
 		expression_sql,
-		"UPDATE \"articles\" SET \"article_title\" = COALESCE(\"article_title\", 'fallback') WHERE \"article_title\" = $1"
+		"UPDATE \"articles\" SET \"article_title\" = COALESCE(\"article_title\", $1) WHERE \"article_title\" = $2"
 	);
-	assert_eq!(expression_params, vec!["updated"]);
+	assert_eq!(expression_params, vec!["fallback", "updated"]);
 
 	let explicit_physical_queryset = QuerySet::<Article>::new().filter(Filter::new(
 		"article_title",
@@ -1805,8 +1867,10 @@ async fn queryset_count_and_exists_record_orm_instrumentation() {
 		FilterOperator::Eq,
 		FilterValue::Integer(7),
 	));
-	let mut config = NPlusOneConfig::default();
-	config.threshold = usize::MAX;
+	let config = NPlusOneConfig {
+		threshold: usize::MAX,
+		..Default::default()
+	};
 
 	let (result, report) = NPlusOneScope::warn("queryset-count-and-exists", config)
 		.run_with_report(async {

@@ -49,6 +49,20 @@ impl<T> MapServerFnError<T> for Result<T, AdminError> {
 	}
 }
 
+/// Convert an error returned by `ModelAdmin::before_save` into a server error.
+///
+/// Validation and invalid-action errors use the same HTTP 422 shape as a
+/// form-wide `AdminForm::validate` failure, so the form displays the message
+/// under the `_all` field. Other variants keep their usual mapping.
+pub(crate) fn save_hook_error_to_server_error(error: AdminError) -> ServerFnError {
+	match error {
+		AdminError::ValidationError(message) | AdminError::InvalidAction(message) => {
+			ServerFnError::validation([("_all", message)])
+		}
+		error => error.into_server_fn_error(),
+	}
+}
+
 /// Authentication and authorization checker for admin panel.
 ///
 /// This struct extracts authentication state from the HTTP request
@@ -481,6 +495,39 @@ mod tests {
 		assert_eq!(server_err.user_message(), "Database operation failed");
 		assert!(!server_err.user_message().contains("SQL"));
 		assert!(!server_err.user_message().contains("42"));
+	}
+
+	#[rstest]
+	#[case::validation(AdminError::ValidationError("sessions could not be ended".into()))]
+	#[case::invalid_action(AdminError::InvalidAction("sessions could not be ended".into()))]
+	fn save_hook_rejection_uses_form_wide_validation_shape(#[case] error: AdminError) {
+		// Act
+		let server_err = save_hook_error_to_server_error(error);
+
+		// Assert
+		assert_eq!(server_err.kind(), ServerFnErrorKind::Validation);
+		assert_eq!(server_err.status(), Some(422));
+		assert_eq!(
+			server_err
+				.field_errors()
+				.iter()
+				.map(|error| (error.field(), error.message()))
+				.collect::<Vec<_>>(),
+			vec![("_all", "sessions could not be ended")]
+		);
+	}
+
+	#[rstest]
+	fn save_hook_database_error_keeps_hidden_server_error() {
+		// Act
+		let server_err =
+			save_hook_error_to_server_error(AdminError::DatabaseError("redis timeout".into()));
+
+		// Assert
+		assert_eq!(server_err.kind(), ServerFnErrorKind::Server);
+		assert_eq!(server_err.status(), Some(500));
+		assert_eq!(server_err.user_message(), "Database operation failed");
+		assert!(server_err.field_errors().is_empty());
 	}
 
 	#[rstest]

@@ -1,9 +1,10 @@
 //! Handler for `#[settings(fragment = true, section = "...")]`
 
-use crate::settings_schema::{self, SettingAttr};
+use crate::settings_schema::{self, ParsedField, SettingAttr, TypeShape};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
-use syn::{ItemStruct, LitStr, Result};
+use syn::punctuated::Punctuated;
+use syn::{Attribute, ItemStruct, LitStr, Result, Token};
 
 /// Implementation for `#[settings(fragment = true, section = "...")]`.
 pub(crate) fn settings_fragment_impl(args: TokenStream, input: ItemStruct) -> Result<TokenStream> {
@@ -60,14 +61,29 @@ pub(crate) fn settings_fragment_impl(args: TokenStream, input: ItemStruct) -> Re
 	// Check if derives are already present
 	let has_derive = input.attrs.iter().any(|a| a.path().is_ident("derive"));
 
+	// A derived `Debug` would print `#[setting(secret)]` values verbatim, so
+	// fragments with secret fields get a generated redacting impl instead.
+	let has_secret_fields = parsed_fields.iter().any(|field| field.secret);
+	let (attrs, derived_debug) = if has_secret_fields {
+		strip_debug_derives(&input.attrs)?
+	} else {
+		(input.attrs.clone(), false)
+	};
+
 	let derive_attr = if has_derive {
 		quote! {}
+	} else if has_secret_fields {
+		quote! { #[derive(Clone, serde::Serialize, serde::Deserialize)] }
 	} else {
 		quote! { #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)] }
 	};
 
-	// Preserve existing attributes
-	let attrs = &input.attrs;
+	let debug_impl = if has_secret_fields && (derived_debug || !has_derive) {
+		redacting_debug_impl(struct_name, &parsed_fields)
+	} else {
+		quote! {}
+	};
+
 	let semi_token = &input.semi_token;
 
 	// Process fields: parse #[setting(...)] attrs, generate field_policies, strip attrs
@@ -333,6 +349,8 @@ pub(crate) fn settings_fragment_impl(args: TokenStream, input: ItemStruct) -> Re
 
 			#(#whole_field_check_defs)*
 
+		#debug_impl
+
 		#validation_impl
 
 		#[doc = "Typed schema references for this settings fragment."]
@@ -384,4 +402,67 @@ pub(crate) fn settings_fragment_impl(args: TokenStream, input: ItemStruct) -> Re
 
 		#root_fragment_impl
 	})
+}
+
+/// Removes `Debug` from every `#[derive(...)]` attribute.
+///
+/// Returns the rewritten attributes and whether a `Debug` derive was removed.
+/// The final path segment identifies the derive, so `Debug`,
+/// `std::fmt::Debug`, and `core::fmt::Debug` are all recognized.
+fn strip_debug_derives(attrs: &[Attribute]) -> Result<(Vec<Attribute>, bool)> {
+	let mut stripped = false;
+	let mut rewritten = Vec::with_capacity(attrs.len());
+	for attr in attrs {
+		if !attr.path().is_ident("derive") {
+			rewritten.push(attr.clone());
+			continue;
+		}
+		let derives = attr.parse_args_with(Punctuated::<syn::Path, Token![,]>::parse_terminated)?;
+		let original_len = derives.len();
+		let kept: Punctuated<syn::Path, Token![,]> = derives
+			.into_iter()
+			.filter(|path| path.segments.last().is_none_or(|s| s.ident != "Debug"))
+			.collect();
+		if kept.len() == original_len {
+			rewritten.push(attr.clone());
+			continue;
+		}
+		stripped = true;
+		if !kept.is_empty() {
+			rewritten.push(syn::parse_quote!(#[derive(#kept)]));
+		}
+	}
+	Ok((rewritten, stripped))
+}
+
+/// Generates a `Debug` impl that prints `[REDACTED]` for `#[setting(secret)]`
+/// fields. An optional secret renders as `Some("[REDACTED]")` or `None`, so
+/// presence stays visible while the value does not.
+fn redacting_debug_impl(struct_name: &syn::Ident, fields: &[ParsedField]) -> TokenStream {
+	let entries = fields.iter().map(|field| {
+		let ident = &field.ident;
+		let name = &field.rust_name;
+		let cfg_attrs = &field.cfg_attrs;
+		let value = match (field.secret, &field.shape) {
+			(false, _) => quote! { &self.#ident },
+			(true, TypeShape::Optional { .. }) => {
+				quote! { &self.#ident.as_ref().map(|_| "[REDACTED]") }
+			}
+			(true, _) => quote! { &"[REDACTED]" },
+		};
+		quote! {
+			#(#cfg_attrs)*
+			__debug.field(#name, #value);
+		}
+	});
+
+	quote! {
+		impl ::std::fmt::Debug for #struct_name {
+			fn fmt(&self, __formatter: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+				let mut __debug = __formatter.debug_struct(stringify!(#struct_name));
+				#(#entries)*
+				__debug.finish()
+			}
+		}
+	}
 }

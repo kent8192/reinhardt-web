@@ -3,9 +3,10 @@
 #![allow(deprecated)]
 
 use super::fields::{BaseField, Field, FieldDeconstruction, FieldKwarg};
+use cap_std::{ambient_authority, fs::Dir};
 use std::fs;
-use std::io;
-use std::path::PathBuf;
+use std::io::{self, Write};
+use std::path::{Component, Path, PathBuf};
 
 /// Error types for file field operations
 #[non_exhaustive]
@@ -47,6 +48,94 @@ impl std::error::Error for LegacyFileFieldError {}
 impl From<io::Error> for LegacyFileFieldError {
 	fn from(error: io::Error) -> Self {
 		LegacyFileFieldError::IoError(error)
+	}
+}
+
+/// Validates a path that is interpreted relative to the storage root.
+///
+/// Empty paths, absolute paths, platform prefixes, and `..` components are
+/// rejected because joining them onto the storage root could leave it.
+fn confined_relative_path(path: &Path) -> Result<&Path, LegacyFileFieldError> {
+	let mut has_name = false;
+	for component in path.components() {
+		match component {
+			Component::Normal(_) => has_name = true,
+			Component::CurDir => {}
+			Component::RootDir | Component::Prefix(_) | Component::ParentDir => {
+				return Err(LegacyFileFieldError::InvalidPath(
+					path.to_string_lossy().into_owned(),
+				));
+			}
+		}
+	}
+	if !has_name {
+		return Err(LegacyFileFieldError::InvalidPath(
+			path.to_string_lossy().into_owned(),
+		));
+	}
+	Ok(path)
+}
+
+/// Opens the storage root as a directory capability.
+///
+/// Operations performed through the returned [`Dir`] resolve paths relative to
+/// the root and fail instead of following `..` or symlinks out of it.
+fn open_storage_root(storage_path: Option<&Path>, create: bool) -> io::Result<Dir> {
+	let root = storage_path.unwrap_or_else(|| Path::new("."));
+	if create {
+		fs::create_dir_all(root)?;
+	}
+	Dir::open_ambient_dir(root, ambient_authority())
+}
+
+/// Writes `content` to `upload_to/file_name` below the storage root and
+/// returns the root-relative path.
+fn save_confined(
+	storage_path: Option<&Path>,
+	upload_to: &str,
+	file_name: &str,
+	content: &[u8],
+) -> Result<String, LegacyFileFieldError> {
+	confined_relative_path(Path::new(file_name))?;
+	let joined = Path::new(upload_to).join(file_name);
+	let relative_path = confined_relative_path(&joined)?;
+
+	let root = open_storage_root(storage_path, true)?;
+	if let Some(parent) = relative_path.parent()
+		&& !parent.as_os_str().is_empty()
+	{
+		root.create_dir_all(parent)?;
+	}
+	let mut file = root.create(relative_path)?;
+	file.write_all(content)?;
+
+	Ok(relative_path.to_string_lossy().into_owned())
+}
+
+/// Reports whether a root-relative path exists without leaving the storage root.
+fn exists_confined(storage_path: Option<&Path>, path: &str) -> bool {
+	let Ok(relative_path) = confined_relative_path(Path::new(path)) else {
+		return false;
+	};
+	open_storage_root(storage_path, false)
+		.and_then(|root| root.metadata(relative_path))
+		.is_ok()
+}
+
+/// Removes a root-relative file without leaving the storage root.
+///
+/// A missing storage root or file is treated as already deleted.
+fn delete_confined(storage_path: Option<&Path>, path: &str) -> Result<(), LegacyFileFieldError> {
+	let relative_path = confined_relative_path(Path::new(path))?;
+	let root = match open_storage_root(storage_path, false) {
+		Ok(root) => root,
+		Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
+		Err(error) => return Err(error.into()),
+	};
+	match root.remove_file(relative_path) {
+		Ok(()) => Ok(()),
+		Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+		Err(error) => Err(error.into()),
 	}
 }
 
@@ -136,6 +225,17 @@ impl LegacyFileField {
 
 	/// Save file content to storage
 	///
+	/// The file is written to `upload_to/file_name` below the storage root
+	/// (`storage_path`, or the current directory when unset).
+	///
+	/// # Errors
+	///
+	/// Returns [`LegacyFileFieldError::InvalidPath`] when `file_name` or the
+	/// joined `upload_to/file_name` path is empty, absolute, has a platform
+	/// prefix, or contains a `..` component. Returns
+	/// [`LegacyFileFieldError::IoError`] when the write fails, including when a
+	/// symlink would lead outside the storage root.
+	///
 	/// # Examples
 	///
 	/// ```no_run
@@ -147,21 +247,12 @@ impl LegacyFileField {
 	/// assert!(path.contains("uploads/files/example.txt"));
 	/// ```
 	pub fn save(&self, file_name: &str, content: &[u8]) -> Result<String, LegacyFileFieldError> {
-		let base_path = self
-			.storage_path
-			.clone()
-			.unwrap_or_else(|| PathBuf::from("."));
-		let upload_path = base_path.join(&self.upload_to);
-
-		// Create directory if it doesn't exist
-		fs::create_dir_all(&upload_path)?;
-
-		let file_path = upload_path.join(file_name);
-		fs::write(&file_path, content)?;
-
-		// Return relative path from storage root
-		let relative_path = PathBuf::from(&self.upload_to).join(file_name);
-		Ok(relative_path.to_string_lossy().into_owned())
+		save_confined(
+			self.storage_path.as_deref(),
+			&self.upload_to,
+			file_name,
+			content,
+		)
 	}
 
 	/// Generate URL for the file
@@ -181,6 +272,10 @@ impl LegacyFileField {
 
 	/// Check if file exists
 	///
+	/// `path` is interpreted relative to the storage root. Paths that are
+	/// empty, absolute, prefixed, contain `..`, or resolve outside the storage
+	/// root through a symlink are reported as missing.
+	///
 	/// # Examples
 	///
 	/// ```no_run
@@ -190,14 +285,20 @@ impl LegacyFileField {
 	/// let exists = field.exists("uploads/files/example.txt");
 	/// ```
 	pub fn exists(&self, path: &str) -> bool {
-		let base_path = self
-			.storage_path
-			.clone()
-			.unwrap_or_else(|| PathBuf::from("."));
-		base_path.join(path).exists()
+		exists_confined(self.storage_path.as_deref(), path)
 	}
 
 	/// Delete file from storage
+	///
+	/// `path` is interpreted relative to the storage root. A missing file is
+	/// treated as already deleted.
+	///
+	/// # Errors
+	///
+	/// Returns [`LegacyFileFieldError::InvalidPath`] when `path` is empty,
+	/// absolute, has a platform prefix, or contains a `..` component. Returns
+	/// [`LegacyFileFieldError::IoError`] when removal fails, including when a
+	/// symlink would lead outside the storage root.
 	///
 	/// # Examples
 	///
@@ -208,17 +309,7 @@ impl LegacyFileField {
 	/// field.delete("uploads/files/example.txt").unwrap();
 	/// ```
 	pub fn delete(&self, path: &str) -> Result<(), LegacyFileFieldError> {
-		let base_path = self
-			.storage_path
-			.clone()
-			.unwrap_or_else(|| PathBuf::from("."));
-		let file_path = base_path.join(path);
-
-		if file_path.exists() {
-			fs::remove_file(file_path)?;
-		}
-
-		Ok(())
+		delete_confined(self.storage_path.as_deref(), path)
 	}
 }
 
@@ -373,6 +464,18 @@ impl LegacyImageField {
 
 	/// Save image with validation
 	///
+	/// The image is written to `upload_to/file_name` below the storage root
+	/// (`storage_path`, or the current directory when unset).
+	///
+	/// # Errors
+	///
+	/// Returns [`LegacyFileFieldError::InvalidImage`] when `content` is not a
+	/// decodable image. Returns [`LegacyFileFieldError::InvalidPath`] when
+	/// `file_name` or the joined `upload_to/file_name` path is empty, absolute,
+	/// has a platform prefix, or contains a `..` component. Returns
+	/// [`LegacyFileFieldError::IoError`] when the write fails, including when a
+	/// symlink would lead outside the storage root.
+	///
 	/// # Examples
 	///
 	/// ```no_run
@@ -394,19 +497,13 @@ impl LegacyImageField {
 		// Validate image first
 		let (width, height) = self.validate_image(content)?;
 
-		let base_path = self
-			.storage_path
-			.clone()
-			.unwrap_or_else(|| PathBuf::from("."));
-		let upload_path = base_path.join(&self.upload_to);
-
-		fs::create_dir_all(&upload_path)?;
-
-		let file_path = upload_path.join(file_name);
-		fs::write(&file_path, content)?;
-
-		let relative_path = PathBuf::from(&self.upload_to).join(file_name);
-		Ok((relative_path.to_string_lossy().into_owned(), width, height))
+		let relative_path = save_confined(
+			self.storage_path.as_deref(),
+			&self.upload_to,
+			file_name,
+			content,
+		)?;
+		Ok((relative_path, width, height))
 	}
 
 	/// Validate image dimensions
@@ -468,6 +565,10 @@ impl LegacyImageField {
 
 	/// Check if image exists
 	///
+	/// `path` is interpreted relative to the storage root. Paths that are
+	/// empty, absolute, prefixed, contain `..`, or resolve outside the storage
+	/// root through a symlink are reported as missing.
+	///
 	/// # Examples
 	///
 	/// ```no_run
@@ -477,14 +578,20 @@ impl LegacyImageField {
 	/// let exists = field.exists("uploads/images/photo.png");
 	/// ```
 	pub fn exists(&self, path: &str) -> bool {
-		let base_path = self
-			.storage_path
-			.clone()
-			.unwrap_or_else(|| PathBuf::from("."));
-		base_path.join(path).exists()
+		exists_confined(self.storage_path.as_deref(), path)
 	}
 
 	/// Delete image from storage
+	///
+	/// `path` is interpreted relative to the storage root. A missing file is
+	/// treated as already deleted.
+	///
+	/// # Errors
+	///
+	/// Returns [`LegacyFileFieldError::InvalidPath`] when `path` is empty,
+	/// absolute, has a platform prefix, or contains a `..` component. Returns
+	/// [`LegacyFileFieldError::IoError`] when removal fails, including when a
+	/// symlink would lead outside the storage root.
 	///
 	/// # Examples
 	///
@@ -495,17 +602,7 @@ impl LegacyImageField {
 	/// field.delete("uploads/images/photo.png").unwrap();
 	/// ```
 	pub fn delete(&self, path: &str) -> Result<(), LegacyFileFieldError> {
-		let base_path = self
-			.storage_path
-			.clone()
-			.unwrap_or_else(|| PathBuf::from("."));
-		let file_path = base_path.join(path);
-
-		if file_path.exists() {
-			fs::remove_file(file_path)?;
-		}
-
-		Ok(())
+		delete_confined(self.storage_path.as_deref(), path)
 	}
 
 	/// Resize image to specified dimensions
@@ -699,6 +796,7 @@ impl Field for LegacyImageField {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::{fixture, rstest};
 
 	// LegacyFileField tests
 	#[test]
@@ -1031,5 +1129,265 @@ mod tests {
 		let invalid_content = b"Not an image";
 		let result = field.convert_format(invalid_content, image::ImageFormat::Jpeg);
 		assert!(result.is_err());
+	}
+
+	/// Storage root nested inside a parent directory, so files that land next
+	/// to the root are observable escapes.
+	struct ConfinedLayout {
+		parent: tempfile::TempDir,
+		root: PathBuf,
+	}
+
+	#[fixture]
+	fn layout() -> ConfinedLayout {
+		let parent = tempfile::TempDir::new().expect("temporary directory should be created");
+		let root = parent.path().join("media");
+		fs::create_dir(&root).expect("storage root should be created");
+		ConfinedLayout { parent, root }
+	}
+
+	#[rstest]
+	#[case::parent_escape("../../escape.txt")]
+	#[case::nested_parent_escape("nested/../../../escape.txt")]
+	#[case::empty("")]
+	#[case::current_dir(".")]
+	fn legacy_file_field_save_rejects_names_outside_upload_root(
+		layout: ConfinedLayout,
+		#[case] file_name: &str,
+	) {
+		// Arrange
+		let field = LegacyFileField::with_storage("uploads", layout.root.clone());
+
+		// Act
+		let result = field.save(file_name, b"payload");
+
+		// Assert
+		assert!(
+			matches!(result, Err(LegacyFileFieldError::InvalidPath(ref path)) if path == file_name)
+		);
+		assert!(!layout.parent.path().join("escape.txt").exists());
+	}
+
+	#[rstest]
+	fn legacy_file_field_save_rejects_absolute_file_name(layout: ConfinedLayout) {
+		// Arrange
+		let target = layout.parent.path().join("escape.txt");
+		let file_name = target.to_str().expect("temporary path should be UTF-8");
+		let field = LegacyFileField::with_storage("uploads", layout.root.clone());
+
+		// Act
+		let result = field.save(file_name, b"payload");
+
+		// Assert
+		assert!(
+			matches!(result, Err(LegacyFileFieldError::InvalidPath(ref path)) if path == file_name)
+		);
+		assert!(!target.exists());
+	}
+
+	#[rstest]
+	fn legacy_file_field_save_rejects_upload_to_outside_storage_root(layout: ConfinedLayout) {
+		// Arrange
+		let field = LegacyFileField::with_storage("../outside", layout.root.clone());
+
+		// Act
+		let result = field.save("file.txt", b"payload");
+
+		// Assert
+		assert!(matches!(
+			result,
+			Err(LegacyFileFieldError::InvalidPath(ref path)) if path == "../outside/file.txt"
+		));
+		assert!(!layout.parent.path().join("outside").exists());
+	}
+
+	#[rstest]
+	#[case::parent_escape("../victim.txt")]
+	#[case::nested_parent_escape("uploads/../../victim.txt")]
+	fn legacy_file_field_delete_and_exists_reject_paths_outside_storage_root(
+		layout: ConfinedLayout,
+		#[case] path: &str,
+	) {
+		// Arrange
+		let victim = layout.parent.path().join("victim.txt");
+		fs::write(&victim, b"keep").expect("victim fixture should be written");
+		let field = LegacyFileField::with_storage("uploads", layout.root.clone());
+
+		// Act
+		let exists = field.exists(path);
+		let deleted = field.delete(path);
+
+		// Assert
+		assert!(!exists);
+		assert!(
+			matches!(deleted, Err(LegacyFileFieldError::InvalidPath(ref rejected)) if rejected == path)
+		);
+		assert_eq!(fs::read(&victim).expect("victim should remain"), b"keep");
+	}
+
+	#[rstest]
+	fn legacy_file_field_delete_and_exists_reject_absolute_path(layout: ConfinedLayout) {
+		// Arrange
+		let victim = layout.parent.path().join("victim.txt");
+		fs::write(&victim, b"keep").expect("victim fixture should be written");
+		let path = victim.to_str().expect("temporary path should be UTF-8");
+		let field = LegacyFileField::with_storage("uploads", layout.root.clone());
+
+		// Act
+		let exists = field.exists(path);
+		let deleted = field.delete(path);
+
+		// Assert
+		assert!(!exists);
+		assert!(
+			matches!(deleted, Err(LegacyFileFieldError::InvalidPath(ref rejected)) if rejected == path)
+		);
+		assert_eq!(fs::read(&victim).expect("victim should remain"), b"keep");
+	}
+
+	#[cfg(unix)]
+	#[rstest]
+	fn legacy_file_field_rejects_directory_symlinks_that_escape_storage_root(
+		layout: ConfinedLayout,
+	) {
+		use std::os::unix::fs::symlink;
+
+		// Arrange
+		let outside = layout.parent.path().join("outside");
+		fs::create_dir(&outside).expect("outside directory should be created");
+		fs::write(outside.join("victim.txt"), b"keep").expect("victim fixture should be written");
+		symlink(&outside, layout.root.join("uploads")).expect("test symlink should be created");
+		let field = LegacyFileField::with_storage("uploads", layout.root.clone());
+
+		// Act
+		let saved = field.save("new.txt", b"payload");
+		let exists = field.exists("uploads/victim.txt");
+		let deleted = field.delete("uploads/victim.txt");
+
+		// Assert
+		assert!(matches!(saved, Err(LegacyFileFieldError::IoError(_))));
+		assert!(!exists);
+		assert!(matches!(deleted, Err(LegacyFileFieldError::IoError(_))));
+		assert!(!outside.join("new.txt").exists());
+		assert_eq!(
+			fs::read(outside.join("victim.txt")).expect("victim should remain"),
+			b"keep"
+		);
+	}
+
+	#[cfg(unix)]
+	#[rstest]
+	fn legacy_file_field_save_rejects_dangling_symlink_that_escapes_storage_root(
+		layout: ConfinedLayout,
+	) {
+		use std::os::unix::fs::symlink;
+
+		// Arrange
+		let target = layout.parent.path().join("escape.txt");
+		fs::create_dir(layout.root.join("uploads")).expect("upload directory should be created");
+		symlink(&target, layout.root.join("uploads").join("link.txt"))
+			.expect("test symlink should be created");
+		let field = LegacyFileField::with_storage("uploads", layout.root.clone());
+
+		// Act
+		let result = field.save("link.txt", b"payload");
+
+		// Assert
+		assert!(matches!(result, Err(LegacyFileFieldError::IoError(_))));
+		assert!(!target.exists());
+	}
+
+	#[rstest]
+	#[case::flat("report.txt", "uploads/report.txt")]
+	#[case::nested("2026/10/report.txt", "uploads/2026/10/report.txt")]
+	#[case::double_dot_in_name("archive..tar", "uploads/archive..tar")]
+	fn legacy_file_field_round_trips_paths_inside_storage_root(
+		layout: ConfinedLayout,
+		#[case] file_name: &str,
+		#[case] expected: &str,
+	) {
+		// Arrange
+		let field = LegacyFileField::with_storage("uploads", layout.root.clone());
+
+		// Act
+		let saved = field
+			.save(file_name, b"payload")
+			.expect("confined save should succeed");
+		let stored = fs::read(layout.root.join(&saved)).expect("saved file should be readable");
+		let existed = field.exists(&saved);
+		field
+			.delete(&saved)
+			.expect("confined delete should succeed");
+
+		// Assert
+		assert_eq!(saved, expected);
+		assert_eq!(stored, b"payload");
+		assert!(existed);
+		assert!(!field.exists(&saved));
+	}
+
+	#[rstest]
+	fn legacy_file_field_delete_treats_missing_file_as_deleted(layout: ConfinedLayout) {
+		// Arrange
+		let field = LegacyFileField::with_storage("uploads", layout.root.clone());
+
+		// Act
+		let result = field.delete("uploads/missing.txt");
+
+		// Assert
+		assert!(matches!(result, Ok(())));
+	}
+
+	#[rstest]
+	fn legacy_image_field_delete_and_exists_reject_paths_outside_storage_root(
+		layout: ConfinedLayout,
+	) {
+		// Arrange
+		let victim = layout.parent.path().join("victim.png");
+		fs::write(&victim, b"keep").expect("victim fixture should be written");
+		let field = LegacyImageField::with_storage("uploads", layout.root.clone());
+
+		// Act
+		let exists = field.exists("../victim.png");
+		let deleted = field.delete("../victim.png");
+
+		// Assert
+		assert!(!exists);
+		assert!(matches!(
+			deleted,
+			Err(LegacyFileFieldError::InvalidPath(ref rejected)) if rejected == "../victim.png"
+		));
+		assert_eq!(fs::read(&victim).expect("victim should remain"), b"keep");
+	}
+
+	#[cfg(feature = "image-fields")]
+	#[rstest]
+	fn legacy_image_field_save_confines_names_to_upload_root(layout: ConfinedLayout) {
+		use image::{ImageBuffer, Rgb};
+
+		// Arrange
+		let img = ImageBuffer::from_fn(4, 4, |_, _| Rgb([255u8, 0u8, 0u8]));
+		let mut png = Vec::new();
+		img.write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+			.expect("test image should be encoded");
+		let field = LegacyImageField::with_storage("uploads", layout.root.clone());
+
+		// Act
+		let rejected = field.save("../../escape.png", &png);
+		let saved = field
+			.save("photo.png", &png)
+			.expect("confined image save should succeed");
+
+		// Assert
+		assert!(matches!(
+			rejected,
+			Err(LegacyFileFieldError::InvalidPath(ref path)) if path == "../../escape.png"
+		));
+		assert!(!layout.parent.path().join("escape.png").exists());
+		assert_eq!(saved, ("uploads/photo.png".to_string(), 4, 4));
+		assert_eq!(
+			fs::read(layout.root.join("uploads/photo.png")).expect("saved image should exist"),
+			png
+		);
 	}
 }

@@ -26,6 +26,9 @@ pub use crate::types::{
 	InlineModelAdmin, ListColumn, ModelAdmin, ModelAdminConfig, ModelAdminConfigBuilder,
 };
 
+// Save hook types are plain data compiled identically on both targets.
+pub use crate::core::{AdminChange, AdminSaveContext};
+
 // Re-export shared types (DTOs) that are always from reinhardt-admin-types.
 // The types::ExportFormat is the DTO variant for HTTP request/response serialization,
 // re-exported as RequestExportFormat to distinguish from core::export::ExportFormat

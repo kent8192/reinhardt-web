@@ -460,15 +460,61 @@ fn modern_relation_fields_retain_physical_foreign_key_metadata() {
 				referenced_column: "target_external_key".to_string(),
 				on_delete: ForeignKeyAction::SetNull,
 				on_update: ForeignKeyAction::Restrict,
+				shared_columns: Vec::new(),
+				constraint_name: None,
 			},
 			ForeignKeyInfo {
 				referenced_table: "accessor_targets".to_string(),
 				referenced_column: "target_pk".to_string(),
 				on_delete: ForeignKeyAction::SetDefault,
 				on_update: ForeignKeyAction::Cascade,
+				shared_columns: Vec::new(),
+				constraint_name: None,
 			},
 		]
 	);
+}
+
+mod visible_relations {
+	use reinhardt_db::associations::ForeignKeyField;
+	use reinhardt_macros::model;
+	use serde::{Deserialize, Serialize};
+
+	#[model(app_label = "visibility_test", table_name = "visibility_targets")]
+	#[derive(Serialize, Deserialize)]
+	pub struct VisibleTarget {
+		#[field(primary_key = true)]
+		pub id: Option<i64>,
+	}
+
+	#[model(app_label = "visibility_test", table_name = "visibility_sources")]
+	#[derive(Serialize, Deserialize)]
+	pub struct VisibleSource {
+		#[field(primary_key = true)]
+		pub id: Option<i64>,
+
+		#[rel(foreign_key)]
+		pub target: ForeignKeyField<VisibleTarget>,
+
+		#[rel(foreign_key, null = true)]
+		pub optional_target: ForeignKeyField<VisibleTarget>,
+	}
+}
+
+#[rstest]
+fn generated_relation_id_fields_share_the_relation_visibility() {
+	// Arrange
+	let source = visible_relations::VisibleSource::build()
+		.id(Some(1_i64))
+		.target(7_i64)
+		.optional_target(8_i64)
+		.finish();
+
+	// Act
+	let ids = (source.target_id, source.optional_target_id);
+
+	// Assert
+	assert_eq!(ids, (7, Some(8)));
 }
 
 #[test]

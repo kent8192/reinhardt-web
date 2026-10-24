@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-utils"
-version = "0.4.0-alpha.19"
+version = "0.4.0-alpha.22"
 description = "Utility functions aggregator for Reinhardt"
 edition.workspace = true
 rust-version.workspace = true
@@ -9,13 +9,20 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+# Shared utilities (`utils_core`, `humanize`) that also build for browser WASM.
 chrono = { workspace = true, features = ["serde"]}
 serde = { workspace = true }
 thiserror = { workspace = true }
-
-# Core utils (always included)
-async-trait = { workspace = true }
 reinhardt-core = { workspace = true, features = ["exception", "security", "types"] }
+tracing = { workspace = true }
+chrono-tz = { workspace = true }
+
+# Native-only modules (cache, logging, staticfiles, storage) and their backends.
+# Browser WASM builds compile only the shared utilities, so these dependencies
+# (tokio with networking, hyper, reinhardt-http, and others) stay out of the
+# wasm32-unknown-unknown graph.
+[target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dependencies]
+async-trait = { workspace = true }
 reinhardt-http = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true, features = ["fs"] }
@@ -37,7 +44,6 @@ hmac = { workspace = true, optional = true }
 once_cell = { workspace = true, optional = false }
 http = "1.0"
 mime_guess = "2.0"
-tracing = { workspace = true }
 sha2 = "0.10"
 hex = "0.4"
 regex = "1.10"
@@ -61,7 +67,12 @@ oxc_ast_visit = { version = "0.96.0", optional = true }
 cssparser = { version = "0.34.0", optional = true }
 html5ever = { version = "0.29.1", optional = true }
 aws-config = { version = "1.0", optional = true }
-aws-sdk-s3 = { version = "1.0", optional = true }
+aws-sdk-s3 = { version = "1.0", default-features = false, features = [
+  "sigv4a",
+  "http-1x",
+  "default-https-client",
+  "rt-tokio",
+], optional = true }
 time = { workspace = true, optional = true }
 percent-encoding = { version = "2.3", optional = true }
 google-cloud-storage = { version = "1.12.0", optional = true }
@@ -71,7 +82,6 @@ image = { version = "0.25", optional = true }
 webp = { version = "0.3", optional = true }
 uuid = { workspace = true }
 tempfile = "3.14"
-chrono-tz = { workspace = true }
 inventory = "0.3"
 reqwest = { workspace = true }
 

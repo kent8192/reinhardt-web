@@ -17,6 +17,92 @@ const NONINTERACTIVE_CHILD_ENV: &str = "REINHARDT_SQUASHMIGRATIONS_NONINTERACTIV
 const NONINTERACTIVE_TEST_NAME: &str =
 	"squashmigrations_management::noninteractive_input_without_no_input_does_not_write";
 
+#[rstest::rstest]
+#[tokio::test]
+#[serial(command_current_dir)]
+async fn sql_assets_squash_emits_standalone_payloads() {
+	use reinhardt_commands::squashmigrations::{
+		SquashMigrationsOptions, StdinConfirmationReader, execute_squashmigrations_with_io,
+	};
+	// Arrange
+	let project = TempDir::new_in("/tmp").unwrap();
+	let app = project.path().join("assets");
+	fs::create_dir(&app).unwrap();
+	let forward = "-- exact\r\nDO $guard$ BEGIN PERFORM 1; END $guard$;\r\n";
+	let reverse = "SELECT 'reverse';\n";
+	fs::write(app.join("forward.sql"), forward).unwrap();
+	fs::write(app.join("reverse.sql"), reverse).unwrap();
+	for (name, dependency) in [
+		("0001_guard", ""),
+		("0002_guard", ".add_dependency(\"assets\", \"0001_guard\")"),
+	] {
+		fs::write(app.join(format!("{name}.rs")), format!(r#"// reinhardt-migration-source: 1
+fn migration() -> Migration {{
+    Migration::new("{name}", "assets"){dependency}
+        .add_operation(Operation::RunSQL {{ sql: include_str!("forward.sql").into(), reverse_sql: Some(include_str!("reverse.sql").into()) }})
+}}
+"#)).unwrap();
+	}
+	let mut stdout = Vec::new();
+	let mut stderr = Vec::new();
+	// Act
+	let summary = execute_squashmigrations_with_io(
+		project.path(),
+		SquashMigrationsOptions {
+			app_label: "assets".into(),
+			start_migration: None,
+			migration_name: "0002_guard".into(),
+			no_optimize: false,
+			no_input: true,
+			no_header: false,
+			squashed_name: Some("standalone".into()),
+		},
+		&mut StdinConfirmationReader,
+		&mut stdout,
+		&mut stderr,
+	)
+	.await
+	.unwrap()
+	.unwrap();
+	let deployed = TempDir::new_in("/tmp").unwrap();
+	fs::create_dir(deployed.path().join("assets")).unwrap();
+	let standalone = deployed
+		.path()
+		.join("assets")
+		.join(summary.path.file_name().unwrap());
+	fs::copy(&summary.path, &standalone).unwrap();
+	drop(project);
+	let loaded = FilesystemSource::new(deployed.path())
+		.all_migrations()
+		.await
+		.unwrap();
+	// Assert
+	assert_eq!(loaded.len(), 1);
+	assert_eq!(
+		loaded[0].operations,
+		vec![
+			Operation::RunSQL {
+				sql: forward.into(),
+				reverse_sql: Some(reverse.into())
+			};
+			2
+		]
+	);
+	assert_eq!(
+		loaded[0].replaces,
+		vec![
+			("assets".into(), "0001_guard".into()),
+			("assets".into(), "0002_guard".into())
+		]
+	);
+	assert!(
+		!fs::read_to_string(&standalone)
+			.unwrap()
+			.contains("include_str!")
+	);
+	assert!(stderr.is_empty());
+}
+
 struct ProjectDirGuard {
 	original_dir: PathBuf,
 }

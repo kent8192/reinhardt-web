@@ -2,25 +2,37 @@
 
 use super::store::{
 	AuthorizationCommit, ClientKind, ClientRegistration, CodeInspection, CodeRedemption,
-	CodeRedemptionRequest, OAuthServerStore, PendingRecord, ResourceRegistration, StoredCode,
-	StoredToken,
+	CodeRedemptionRequest, CodeRedemptionWithRefresh, DeviceApproval, DeviceDecisionCommit,
+	DevicePoll, DeviceRedemption, DeviceRedemptionRequest, OAuthServerStore, PendingRecord,
+	RefreshInspection, RefreshRotation, RefreshRotationRequest, ResourceRegistration, StoredCode,
+	StoredDeviceAuthorization, StoredRefreshToken, StoredToken, StoredTokenFamily,
 };
 use crate::repository::UserRepository;
 use argon2::Argon2;
 use async_trait::async_trait;
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use password_hash::{
-	PasswordHash, PasswordHasher as _, PasswordVerifier as _, SaltString, rand_core::OsRng,
+	PasswordHash, PasswordHasher as _, PasswordVerifier as _, SaltString,
+	rand_core::{OsRng, RngCore as _},
 };
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
 	collections::HashSet,
+	net::IpAddr,
 	sync::Arc,
 	time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use url::Url;
+
+/// Grant type URN of the RFC 8628 Device Authorization Grant.
+pub(crate) const DEVICE_CODE_GRANT: &str = "urn:ietf:params:oauth:grant-type:device_code";
+/// Characters of a User Code: consonants only, so codes cannot spell words or confuse 0/O and 1/I.
+const USER_CODE_ALPHABET: &[u8; 20] = b"BCDFGHJKLMNPQRSTVWXZ";
+const USER_CODE_LEN: usize = 8;
+/// Attempts to find an unused User Code before giving up with a server error.
+const USER_CODE_ATTEMPTS: usize = 5;
 
 pub(crate) struct CodeExchangeRequest<'a> {
 	pub(crate) code: &'a str,
@@ -62,6 +74,13 @@ pub enum OAuthError {
 	AccessDenied,
 	/// Persistent storage or another internal operation failed.
 	ServerError,
+	/// Device Authorization Grant: the user has not decided yet; keep polling.
+	AuthorizationPending,
+	/// Device Authorization Grant: polling too fast, or too many Verification Page
+	/// lookups for one browser session.
+	SlowDown,
+	/// Device Authorization Grant: the Device Code expired.
+	ExpiredToken,
 }
 impl OAuthError {
 	/// OAuth wire error code.
@@ -77,6 +96,9 @@ impl OAuthError {
 			Self::UnsupportedResponseType => "unsupported_response_type",
 			Self::AccessDenied => "access_denied",
 			Self::ServerError => "server_error",
+			Self::AuthorizationPending => "authorization_pending",
+			Self::SlowDown => "slow_down",
+			Self::ExpiredToken => "expired_token",
 		}
 	}
 }
@@ -95,6 +117,75 @@ pub enum TokenPrincipal {
 	User(String),
 	/// A client acting on its own behalf.
 	Client(String),
+}
+
+/// Longest idle lifetime a refresh-token policy may grant.
+const MAX_REFRESH_IDLE_TTL: Duration = Duration::from_secs(90 * 24 * 3600);
+/// Longest absolute lifetime a refresh-token policy may grant.
+const MAX_REFRESH_LIFETIME: Duration = Duration::from_secs(365 * 24 * 3600);
+
+/// Lifetimes of refresh tokens issued by the Authorization Code grant.
+///
+/// A token family (the rotation chain started by one code redemption) expires when
+/// either limit is reached: `idle_ttl` after the most recent refresh, or `max_lifetime`
+/// after the code was redeemed. Rotation never extends `max_lifetime`.
+///
+/// Changing the policy is retroactive for idle expiry (each refresh uses the current
+/// `idle_ttl`) but not for `max_lifetime`, which is fixed when the family is created.
+/// To cut off existing families immediately, use [`OAuthServer::revoke_client`] or
+/// [`OAuthServer::revoke_user`].
+///
+/// ```
+/// use reinhardt_auth::oauth2_server::RefreshTokenPolicy;
+/// use std::time::Duration;
+///
+/// let policy = RefreshTokenPolicy::new(
+///     Duration::from_secs(7 * 24 * 3600),
+///     Duration::from_secs(30 * 24 * 3600),
+/// ).unwrap();
+/// assert_eq!(policy.idle_ttl, Duration::from_secs(7 * 24 * 3600));
+/// // The idle lifetime may not exceed the absolute lifetime.
+/// assert!(RefreshTokenPolicy::new(Duration::from_secs(60), Duration::from_secs(30)).is_err());
+/// ```
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub struct RefreshTokenPolicy {
+	/// Lifetime of a refresh token since it was issued (at most 90 days).
+	pub idle_ttl: Duration,
+	/// Lifetime of a token family since its code was redeemed (at most 365 days).
+	pub max_lifetime: Duration,
+}
+impl RefreshTokenPolicy {
+	/// Create a policy. Both lifetimes must be non-zero, `idle_ttl` at most 90 days,
+	/// `max_lifetime` at most 365 days, and `idle_ttl` no longer than `max_lifetime`.
+	pub fn new(idle_ttl: Duration, max_lifetime: Duration) -> Result<Self, OAuthError> {
+		let policy = Self {
+			idle_ttl,
+			max_lifetime,
+		};
+		policy.validate()?;
+		Ok(policy)
+	}
+	fn validate(&self) -> Result<(), OAuthError> {
+		if self.idle_ttl.as_secs() == 0
+			|| self.max_lifetime.as_secs() == 0
+			|| self.idle_ttl > MAX_REFRESH_IDLE_TTL
+			|| self.max_lifetime > MAX_REFRESH_LIFETIME
+			|| self.idle_ttl > self.max_lifetime
+		{
+			return Err(OAuthError::InvalidRequest);
+		}
+		Ok(())
+	}
+}
+impl Default for RefreshTokenPolicy {
+	/// Idle lifetime of 30 days and absolute lifetime of 90 days.
+	fn default() -> Self {
+		Self {
+			idle_ttl: Duration::from_secs(30 * 24 * 3600),
+			max_lifetime: Duration::from_secs(90 * 24 * 3600),
+		}
+	}
 }
 
 /// Protocol lifetimes and published endpoint URLs.
@@ -117,6 +208,55 @@ pub struct OAuthServerConfig {
 	pub pending_ttl: Duration,
 	/// Lifetime of an access token (at most one hour).
 	pub token_ttl: Duration,
+	/// Refresh-token lifetimes. `None` (the default) disables the `refresh_token` grant;
+	/// clients must additionally opt in through `ClientRegistration::refresh_token`.
+	pub refresh_tokens: Option<RefreshTokenPolicy>,
+	/// RFC 8628 Device Authorization Grant settings; `None` disables the grant.
+	pub device_authorization: Option<DeviceAuthorizationConfig>,
+}
+
+/// Settings of the RFC 8628 Device Authorization Grant.
+///
+/// Enable the grant with [`OAuthServerConfig::with_device_authorization`].
+///
+/// ```
+/// use reinhardt_auth::oauth2_server::{DeviceAuthorizationConfig, OAuthServerConfig};
+///
+/// let config = OAuthServerConfig::new(
+///     "https://auth.example.com",
+///     "https://auth.example.com/oauth/authorize",
+///     "https://auth.example.com/oauth/token",
+///     "https://auth.example.com/oauth/revoke",
+///     "https://auth.example.com/oauth/introspect",
+/// ).unwrap()
+/// .with_device_authorization(DeviceAuthorizationConfig::new(
+///     "https://auth.example.com/oauth/device",
+///     "https://auth.example.com/device",
+/// )).unwrap();
+/// assert!(config.device_authorization.is_some());
+/// ```
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+pub struct DeviceAuthorizationConfig {
+	/// Absolute device authorization endpoint URL, on the issuer origin.
+	pub endpoint: String,
+	/// Absolute URL of the host-owned Verification Page, on the issuer origin.
+	pub verification_uri: String,
+	/// Lifetime of a Device Authorization (1 to 1800 seconds).
+	pub code_ttl: Duration,
+	/// Initial minimum polling interval (1 to 60 seconds).
+	pub poll_interval: Duration,
+}
+impl DeviceAuthorizationConfig {
+	/// Construct settings with a ten-minute lifetime and a five-second polling interval.
+	pub fn new(endpoint: &str, verification_uri: &str) -> Self {
+		Self {
+			endpoint: endpoint.to_owned(),
+			verification_uri: verification_uri.to_owned(),
+			code_ttl: Duration::from_secs(600),
+			poll_interval: Duration::from_secs(5),
+		}
+	}
 }
 impl OAuthServerConfig {
 	/// Construct defaults from an HTTPS issuer and explicit mounted URLs.
@@ -136,6 +276,8 @@ impl OAuthServerConfig {
 			code_ttl: Duration::from_secs(300),
 			pending_ttl: Duration::from_secs(600),
 			token_ttl: Duration::from_secs(3600),
+			refresh_tokens: None,
+			device_authorization: None,
 		};
 		if Url::parse(&config.issuer)
 			.map_err(|_| OAuthError::InvalidRequest)?
@@ -163,6 +305,8 @@ impl OAuthServerConfig {
 			code_ttl: Duration::from_secs(300),
 			pending_ttl: Duration::from_secs(600),
 			token_ttl: Duration::from_secs(3600),
+			refresh_tokens: None,
+			device_authorization: None,
 		};
 		if Url::parse(&config.issuer)
 			.map_err(|_| OAuthError::InvalidRequest)?
@@ -172,6 +316,15 @@ impl OAuthServerConfig {
 		}
 		config.validate()?;
 		Ok(config)
+	}
+	/// Enable the Device Authorization Grant and validate the resulting configuration.
+	pub fn with_device_authorization(
+		mut self,
+		device_authorization: DeviceAuthorizationConfig,
+	) -> Result<Self, OAuthError> {
+		self.device_authorization = Some(device_authorization);
+		self.validate()?;
+		Ok(self)
 	}
 	/// RFC 8414 well-known metadata URL derived from the issuer.
 	pub fn metadata_url(&self) -> Result<String, OAuthError> {
@@ -204,12 +357,17 @@ impl OAuthServerConfig {
 		{
 			return Err(OAuthError::InvalidRequest);
 		}
+		let device = self.device_authorization.as_ref();
 		for endpoint in [
 			&self.authorization_endpoint,
 			&self.token_endpoint,
 			&self.revocation_endpoint,
 			&self.introspection_endpoint,
-		] {
+		]
+		.into_iter()
+		.chain(device.map(|device| &device.endpoint))
+		.chain(device.map(|device| &device.verification_uri))
+		{
 			let url = Url::parse(endpoint).map_err(|_| OAuthError::InvalidRequest)?;
 			if url.scheme() != issuer.scheme()
 				|| url.origin() != issuer.origin()
@@ -227,6 +385,17 @@ impl OAuthServerConfig {
 			|| self.pending_ttl > Duration::from_secs(600)
 			|| self.token_ttl.as_secs() == 0
 			|| self.token_ttl > Duration::from_secs(3600)
+		{
+			return Err(OAuthError::InvalidRequest);
+		}
+		if let Some(policy) = &self.refresh_tokens {
+			policy.validate()?;
+		}
+		if let Some(device) = device
+			&& (device.code_ttl < Duration::from_secs(1)
+				|| device.code_ttl > Duration::from_secs(1800)
+				|| device.poll_interval < Duration::from_secs(1)
+				|| device.poll_interval > Duration::from_secs(60))
 		{
 			return Err(OAuthError::InvalidRequest);
 		}
@@ -251,6 +420,39 @@ pub struct PendingAuthorization {
 	pub code_challenge: String,
 	/// Client state, passed through unchanged.
 	pub state: Option<String>,
+}
+
+/// Device Authorization shown on the Verification Page for the user to approve or deny.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct PendingDeviceAuthorization {
+	/// Opaque identifier to pass to `OAuthServer::complete_device_authorization`.
+	/// It is neither the User Code nor the Device Code.
+	pub id: String,
+	/// Registered client identifier.
+	pub client_id: String,
+	/// Requested scopes.
+	pub scopes: Vec<String>,
+	/// Resource audience.
+	pub audience: String,
+}
+
+/// RFC 8628 section 3.2 device authorization response.
+#[derive(Clone, Debug, Serialize)]
+#[non_exhaustive]
+pub struct DeviceAuthorizationResponse {
+	/// Secret the client presents while polling the token endpoint.
+	pub device_code: String,
+	/// Short code the user types on the Verification Page, formatted `XXXX-XXXX`.
+	pub user_code: String,
+	/// Verification Page URL.
+	pub verification_uri: String,
+	/// Verification Page URL with the User Code in the `user_code` query parameter.
+	pub verification_uri_complete: String,
+	/// Lifetime of the Device Code and User Code in seconds.
+	pub expires_in: u64,
+	/// Minimum seconds between polling requests.
+	pub interval: u64,
 }
 
 /// Authorization query supplied by the browser.
@@ -288,8 +490,9 @@ pub enum AuthorizationDecision {
 	Deny,
 }
 
-/// Access token data returned only at issuance.
+/// Token data returned only at issuance.
 #[derive(Clone, Debug, Serialize)]
+#[non_exhaustive]
 pub struct IssuedToken {
 	/// Opaque bearer token.
 	pub access_token: String,
@@ -299,6 +502,10 @@ pub struct IssuedToken {
 	pub expires_in: u64,
 	/// Space-separated granted scopes.
 	pub scope: String,
+	/// Opaque refresh token; present only when the server policy and the client both
+	/// opt in, and only for the Authorization Code grant and its refreshes.
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub refresh_token: Option<String>,
 }
 
 /// Active token metadata; never includes the raw token.
@@ -522,7 +729,8 @@ impl OAuthServer {
 		client.previous_secret_expires_at = None;
 		self.replace_client(&expected, client).await
 	}
-	/// Atomically disable a client and invalidate its pending requests, codes, and tokens.
+	/// Atomically disable a client and invalidate its pending requests, codes, tokens, and
+	/// token families. Returns the number of newly revoked access tokens.
 	pub async fn disable_client(&self, id: &str) -> Result<u64, OAuthError> {
 		self.store
 			.disable_client(id)
@@ -622,6 +830,7 @@ impl OAuthServer {
 			.await
 	}
 	/// Begin an OIDC request while binding openid to the OIDC code endpoint.
+	#[cfg(feature = "oidc-op")]
 	pub(crate) async fn begin_oidc_authorization(
 		&self,
 		request: AuthorizationRequest,
@@ -836,6 +1045,7 @@ impl OAuthServer {
 		.map(|(token, _)| token)
 	}
 	/// Redeem an OIDC code with an OIDC-specific access-token lifetime.
+	#[cfg(feature = "oidc-op")]
 	pub(crate) async fn exchange_oidc_code(
 		&self,
 		request: CodeExchangeRequest<'_>,
@@ -905,6 +1115,14 @@ impl OAuthServer {
 		}
 		let raw = random_secret();
 		let issued_at = now();
+		// Refresh tokens belong to the plain Authorization Code grant only; the OIDC
+		// token endpoint never issues them.
+		let refresh_policy = self
+			.config
+			.refresh_tokens
+			.as_ref()
+			.filter(|_| !expect_oidc && client.refresh_token);
+		let family_id = refresh_policy.map(|_| random_secret());
 		let token = StoredToken {
 			digest: digest(&raw),
 			client_id: client.client_id.clone(),
@@ -915,21 +1133,58 @@ impl OAuthServer {
 			expires_at: issued_at + ttl.as_secs() as i64,
 			revoked: false,
 			code_digest: Some(code_digest.clone()),
+			family_id: family_id.clone(),
 		};
-		let redeemed = self
-			.store
-			.redeem_code_and_store_token(CodeRedemptionRequest {
-				digest: &code_digest,
-				client_id,
-				redirect_uri,
-				challenge: &challenge(verifier),
-				resource,
-				expect_oidc,
-				now: now(),
-				token,
-			})
-			.await
-			.map_err(|_| OAuthError::ServerError)?;
+		let redemption = CodeRedemptionRequest {
+			digest: &code_digest,
+			client_id,
+			redirect_uri,
+			challenge: &challenge(verifier),
+			resource,
+			expect_oidc,
+			now: now(),
+			token,
+		};
+		let (redeemed, raw_refresh) = match (refresh_policy, family_id) {
+			(Some(policy), Some(family_id)) => {
+				let absolute_expires_at = issued_at + policy.max_lifetime.as_secs() as i64;
+				let raw_refresh = random_secret();
+				let family = StoredTokenFamily {
+					family_id: family_id.clone(),
+					client_id: client.client_id.clone(),
+					user_id: record.user_id.clone(),
+					scopes: record.scopes.clone(),
+					audience: record.audience.clone(),
+					code_digest: code_digest.clone(),
+					created_at: issued_at,
+					absolute_expires_at,
+					revoked: false,
+				};
+				let refresh_token = StoredRefreshToken {
+					digest: digest(&raw_refresh),
+					family_id,
+					parent_digest: None,
+					issued_at,
+					idle_expires_at: (issued_at + policy.idle_ttl.as_secs() as i64)
+						.min(absolute_expires_at),
+					rotated: false,
+				};
+				let redeemed = self
+					.store
+					.redeem_code_and_store_tokens(CodeRedemptionWithRefresh {
+						redemption,
+						family,
+						refresh_token,
+					})
+					.await;
+				(redeemed, Some(raw_refresh))
+			}
+			_ => (
+				self.store.redeem_code_and_store_token(redemption).await,
+				None,
+			),
+		};
+		let redeemed = redeemed.map_err(|_| OAuthError::ServerError)?;
 		let CodeRedemption::Valid(record) = redeemed else {
 			return Err(OAuthError::InvalidGrant);
 		};
@@ -939,9 +1194,436 @@ impl OAuthServer {
 				token_type: "Bearer",
 				expires_in: ttl.as_secs(),
 				scope: record.scopes.join(" "),
+				refresh_token: raw_refresh,
 			},
 			record.user_id,
 		))
+	}
+	/// Exchange a refresh token for a new access token and a replacement refresh token.
+	///
+	/// Requires `OAuthServerConfig::refresh_tokens` and `ClientRegistration::refresh_token`.
+	/// The client authenticates exactly as for the code grant. The presented token is
+	/// consumed: presenting it again revokes the whole token family and every access token
+	/// issued from it, so clients must serialize refreshes (for example with a file lock).
+	/// `scope` may narrow the original grant but never widen it, and the issued scopes are
+	/// further limited to the client's current scope allowlist. The family's audience must
+	/// still be in the client's current audience allowlist. Expired, revoked, reused, and
+	/// foreign tokens are all reported as `InvalidGrant`.
+	pub async fn refresh(
+		&self,
+		refresh_token: &str,
+		client_id: &str,
+		client_secret: Option<&str>,
+		scope: Option<&str>,
+		resource: Option<&str>,
+	) -> Result<IssuedToken, OAuthError> {
+		let policy = self
+			.config
+			.refresh_tokens
+			.as_ref()
+			.ok_or(OAuthError::UnsupportedGrantType)?;
+		let client = self.authenticate_client(client_id, client_secret).await?;
+		if !client.refresh_token || !client.authorization_code {
+			return Err(OAuthError::UnauthorizedClient);
+		}
+		let presented = digest(refresh_token);
+		let family = match self
+			.store
+			.inspect_refresh_token(&presented, client_id, now())
+			.await
+			.map_err(|_| OAuthError::ServerError)?
+		{
+			RefreshInspection::Active(_, family) => family,
+			RefreshInspection::Reused { family_id } => {
+				tracing::warn!(
+					client_id,
+					family_id,
+					"refresh token reuse revoked its token family"
+				);
+				return Err(OAuthError::InvalidGrant);
+			}
+			RefreshInspection::Invalid => return Err(OAuthError::InvalidGrant),
+		};
+		if resource.is_some_and(|resource| resource != family.audience) {
+			return Err(OAuthError::InvalidTarget);
+		}
+		if !client.audiences.contains(&family.audience) {
+			return Err(OAuthError::InvalidGrant);
+		}
+		let requested = match scope {
+			Some(raw) => {
+				let requested: Vec<String> = raw.split(' ').map(str::to_owned).collect();
+				if requested.iter().any(|scope| !valid_scope(scope))
+					|| requested.iter().collect::<HashSet<_>>().len() != requested.len()
+					|| !subset(&requested, &family.scopes)
+				{
+					return Err(OAuthError::InvalidScope);
+				}
+				requested
+			}
+			None => family.scopes.clone(),
+		};
+		let issued_scopes: Vec<String> = requested
+			.into_iter()
+			.filter(|scope| client.scopes.contains(scope))
+			.collect();
+		// A family granted without scopes keeps refreshing with none; a family whose
+		// scopes the client may no longer use at all must not degrade to an unscoped token.
+		if issued_scopes.is_empty() && !family.scopes.is_empty() {
+			return Err(OAuthError::InvalidGrant);
+		}
+		let audience_enabled = self
+			.store
+			.resource_for_audience(&family.audience)
+			.await
+			.map_err(|_| OAuthError::ServerError)?
+			.is_some_and(|resource| resource.enabled);
+		if !audience_enabled {
+			return Err(OAuthError::InvalidGrant);
+		}
+		let user = self
+			.users
+			.get_user_by_id(&family.user_id)
+			.await
+			.map_err(|_| OAuthError::ServerError)?;
+		if !user.is_some_and(|user| user.is_account_active() && user.is_authenticated()) {
+			return Err(OAuthError::InvalidGrant);
+		}
+		let raw_access = random_secret();
+		let raw_refresh = random_secret();
+		let issued_at = now();
+		let ttl = self.config.token_ttl;
+		let replacement = StoredRefreshToken {
+			digest: digest(&raw_refresh),
+			family_id: family.family_id.clone(),
+			parent_digest: Some(presented.clone()),
+			issued_at,
+			idle_expires_at: (issued_at + policy.idle_ttl.as_secs() as i64)
+				.min(family.absolute_expires_at),
+			rotated: false,
+		};
+		let token = StoredToken {
+			digest: digest(&raw_access),
+			client_id: client.client_id.clone(),
+			principal: TokenPrincipal::User(family.user_id.clone()),
+			scopes: issued_scopes.clone(),
+			audience: family.audience.clone(),
+			issued_at,
+			expires_at: issued_at + ttl.as_secs() as i64,
+			revoked: false,
+			code_digest: None,
+			family_id: Some(family.family_id.clone()),
+		};
+		match self
+			.store
+			.rotate_refresh_token(RefreshRotationRequest {
+				presented_digest: &presented,
+				client_id,
+				now: issued_at,
+				replacement,
+				token,
+			})
+			.await
+			.map_err(|_| OAuthError::ServerError)?
+		{
+			RefreshRotation::Rotated => Ok(IssuedToken {
+				access_token: raw_access,
+				token_type: "Bearer",
+				expires_in: ttl.as_secs(),
+				scope: issued_scopes.join(" "),
+				refresh_token: Some(raw_refresh),
+			}),
+			RefreshRotation::Reused { family_id } => {
+				tracing::warn!(
+					client_id,
+					family_id,
+					"refresh token reuse revoked its token family"
+				);
+				Err(OAuthError::InvalidGrant)
+			}
+			RefreshRotation::Invalid => Err(OAuthError::InvalidGrant),
+		}
+	}
+	/// Issue a Device Code and User Code for a device client (RFC 8628 section 3.1).
+	///
+	/// Authenticates the client like the token endpoint. Returns `InvalidRequest` when
+	/// the Device Authorization Grant is not enabled in the server configuration,
+	/// `UnauthorizedClient` for a client without the `device_code` flag and
+	/// `InvalidScope` when `openid` is requested.
+	pub async fn begin_device_authorization(
+		&self,
+		client_id: &str,
+		client_secret: Option<&str>,
+		scope: Option<&str>,
+		resource: Option<&str>,
+	) -> Result<DeviceAuthorizationResponse, OAuthError> {
+		let device = self.device_config().ok_or(OAuthError::InvalidRequest)?;
+		let client = self.authenticate_client(client_id, client_secret).await?;
+		if !client.device_code {
+			return Err(OAuthError::UnauthorizedClient);
+		}
+		let scopes = choose_scopes(&client, scope)?;
+		if scopes.iter().any(|scope| scope == "openid") {
+			return Err(OAuthError::InvalidScope);
+		}
+		let audience = choose_audience(&client, resource)?;
+		self.active_audience(&audience).await?;
+		let ttl = device.code_ttl.as_secs();
+		let interval = device.poll_interval.as_secs();
+		for _ in 0..USER_CODE_ATTEMPTS {
+			let device_code = random_secret();
+			let normalized = random_user_code();
+			let user_code = format_user_code(&normalized);
+			let issued_at = now();
+			let record = StoredDeviceAuthorization {
+				id: random_secret(),
+				device_code_digest: digest(&device_code),
+				user_code_digest: digest(&normalized),
+				client_id: client.client_id.clone(),
+				scopes: scopes.clone(),
+				audience: audience.clone(),
+				session_digest: None,
+				status: super::store::DeviceAuthorizationStatus::Pending,
+				user_id: None,
+				approved_scopes: Vec::new(),
+				token_digest: None,
+				interval,
+				last_polled_at: None,
+				expires_at: issued_at + ttl as i64,
+			};
+			if !self
+				.store
+				.insert_device_authorization(record, issued_at)
+				.await
+				.map_err(|_| OAuthError::ServerError)?
+			{
+				continue;
+			}
+			let mut complete =
+				Url::parse(&device.verification_uri).map_err(|_| OAuthError::ServerError)?;
+			complete
+				.query_pairs_mut()
+				.append_pair("user_code", &user_code);
+			return Ok(DeviceAuthorizationResponse {
+				device_code,
+				user_code,
+				verification_uri: device.verification_uri.clone(),
+				verification_uri_complete: complete.into(),
+				expires_in: ttl,
+				interval,
+			});
+		}
+		Err(OAuthError::ServerError)
+	}
+	/// Resolve a User Code typed on the Verification Page and bind it to the browser session.
+	///
+	/// Every call counts against two rate limits checked before the code is examined:
+	/// one keyed by the browser session (`DeviceVerification:session:<digest>`) and one
+	/// keyed by the requester's address (`DeviceVerification:ip:<client_ip>`), which
+	/// still applies when an attacker discards the session between guesses. Pass the
+	/// address resolved through the host's trusted-proxy configuration. When either
+	/// limit is exceeded the call returns [`OAuthError::SlowDown`].
+	/// The first session to look up a User Code owns the Device Authorization; any
+	/// other session receives `InvalidGrant`, as do malformed, unknown, expired,
+	/// already decided, and invalidated codes. Repeating the lookup from the owning
+	/// session returns the same [`PendingDeviceAuthorization`].
+	///
+	/// The host must show the client and scopes and require explicit confirmation
+	/// before calling [`Self::complete_device_authorization`]; never approve
+	/// automatically from `verification_uri_complete` (RFC 8628 section 5.4).
+	pub async fn lookup_device_user_code(
+		&self,
+		user_code: &str,
+		browser_session: &str,
+		client_ip: IpAddr,
+	) -> Result<PendingDeviceAuthorization, OAuthError> {
+		self.device_config().ok_or(OAuthError::InvalidRequest)?;
+		if browser_session.is_empty() {
+			return Err(OAuthError::InvalidRequest);
+		}
+		let session_digest = digest(browser_session);
+		// Both limits are consulted so every attempt counts against each key.
+		let session_allowed = self
+			.allow(&format!("DeviceVerification:session:{session_digest}"))
+			.await;
+		let source_allowed = self
+			.allow(&format!("DeviceVerification:ip:{client_ip}"))
+			.await;
+		if !(session_allowed && source_allowed) {
+			return Err(OAuthError::SlowDown);
+		}
+		let normalized = normalize_user_code(user_code).ok_or(OAuthError::InvalidGrant)?;
+		let record = self
+			.store
+			.bind_device_user_code(&digest(&normalized), &session_digest, now())
+			.await
+			.map_err(|_| OAuthError::ServerError)?
+			.ok_or(OAuthError::InvalidGrant)?;
+		let client = self.active_client(&record.client_id).await?;
+		if !client.device_code {
+			return Err(OAuthError::InvalidGrant);
+		}
+		self.active_audience(&record.audience).await?;
+		Ok(PendingDeviceAuthorization {
+			id: record.id,
+			client_id: record.client_id,
+			scopes: record.scopes,
+			audience: record.audience,
+		})
+	}
+	/// Record the user's decision for a Device Authorization bound to this browser session.
+	///
+	/// Denial needs no user. Approval requires an existing, active, authenticated user;
+	/// otherwise the Device Authorization is recorded as denied and the call succeeds,
+	/// mirroring the code flow's `access_denied` redirect. Approved scopes must be a
+	/// subset of the requested scopes (`InvalidScope`, record untouched). A record that
+	/// is unbound, bound to another session, expired, or already decided yields
+	/// `InvalidGrant`.
+	pub async fn complete_device_authorization(
+		&self,
+		id: &str,
+		browser_session: &str,
+		decision: AuthorizationDecision,
+	) -> Result<(), OAuthError> {
+		self.device_config().ok_or(OAuthError::InvalidRequest)?;
+		if browser_session.is_empty() {
+			return Err(OAuthError::InvalidRequest);
+		}
+		let session_digest = digest(browser_session);
+		let record = self
+			.store
+			.device_authorization_by_id(id)
+			.await
+			.map_err(|_| OAuthError::ServerError)?
+			.filter(|record| {
+				record.status == super::store::DeviceAuthorizationStatus::Pending
+					&& record.session_digest.as_deref() == Some(session_digest.as_str())
+					&& record.expires_at > now()
+			})
+			.ok_or(OAuthError::InvalidGrant)?;
+		let client = self.active_client(&record.client_id).await?;
+		if !client.device_code {
+			return Err(OAuthError::InvalidGrant);
+		}
+		let approved = match decision {
+			AuthorizationDecision::Deny => None,
+			AuthorizationDecision::Approve { user_id, scopes } => {
+				let user = self
+					.users
+					.get_user_by_id(&user_id)
+					.await
+					.map_err(|_| OAuthError::ServerError)?;
+				if !user.is_some_and(|user| user.is_account_active() && user.is_authenticated()) {
+					None
+				} else if !subset(&scopes, &record.scopes) {
+					return Err(OAuthError::InvalidScope);
+				} else {
+					Some((user_id, scopes))
+				}
+			}
+		};
+		let committed = self
+			.store
+			.decide_device_authorization(DeviceDecisionCommit {
+				id: &record.id,
+				session_digest: &session_digest,
+				now: now(),
+				approval: approved
+					.as_ref()
+					.map(|(user_id, scopes)| DeviceApproval { user_id, scopes }),
+			})
+			.await
+			.map_err(|_| OAuthError::ServerError)?;
+		if committed {
+			Ok(())
+		} else {
+			Err(OAuthError::InvalidGrant)
+		}
+	}
+	/// Exchange an approved Device Code for an opaque access token (RFC 8628 section 3.4).
+	///
+	/// Each call is one poll, evaluated atomically in the store. A redeemed Device Code
+	/// reports `InvalidGrant` and revokes its token before any throttling. Otherwise an
+	/// expired Device Code returns [`OAuthError::ExpiredToken`] without throttling; a
+	/// poll sooner than the current interval after the previous one returns
+	/// [`OAuthError::SlowDown`] and lengthens the interval by five seconds; later checks
+	/// run in the order pending ([`OAuthError::AuthorizationPending`]), denial
+	/// (`AccessDenied`), and approval.
+	/// An unknown Device Code, or one issued to another client, is `InvalidGrant`.
+	pub async fn exchange_device_code(
+		&self,
+		device_code: &str,
+		client_id: &str,
+		client_secret: Option<&str>,
+	) -> Result<IssuedToken, OAuthError> {
+		self.device_config()
+			.ok_or(OAuthError::UnsupportedGrantType)?;
+		let client = self.authenticate_client(client_id, client_secret).await?;
+		if !client.device_code {
+			return Err(OAuthError::UnauthorizedClient);
+		}
+		let device_code_digest = digest(device_code);
+		let polled = self
+			.store
+			.poll_device_authorization(&device_code_digest, &client.client_id, now())
+			.await
+			.map_err(|_| OAuthError::ServerError)?;
+		let record = match polled {
+			DevicePoll::Approved(record) => *record,
+			DevicePoll::SlowDown => return Err(OAuthError::SlowDown),
+			DevicePoll::Expired => return Err(OAuthError::ExpiredToken),
+			DevicePoll::Pending => return Err(OAuthError::AuthorizationPending),
+			DevicePoll::Denied => return Err(OAuthError::AccessDenied),
+			_ => return Err(OAuthError::InvalidGrant),
+		};
+		let user_id = record.user_id.clone().ok_or(OAuthError::ServerError)?;
+		self.active_audience(&record.audience).await?;
+		let user = self
+			.users
+			.get_user_by_id(&user_id)
+			.await
+			.map_err(|_| OAuthError::ServerError)?;
+		if !user.is_some_and(|user| user.is_account_active() && user.is_authenticated()) {
+			return Err(OAuthError::InvalidGrant);
+		}
+		let raw = random_secret();
+		let issued_at = now();
+		let ttl = self.config.token_ttl;
+		let token = StoredToken {
+			digest: digest(&raw),
+			client_id: client.client_id.clone(),
+			principal: TokenPrincipal::User(user_id),
+			scopes: record.approved_scopes.clone(),
+			audience: record.audience.clone(),
+			issued_at,
+			expires_at: issued_at + ttl.as_secs() as i64,
+			revoked: false,
+			code_digest: None,
+			family_id: None,
+		};
+		let redeemed = self
+			.store
+			.redeem_device_authorization(DeviceRedemptionRequest {
+				device_code_digest: &device_code_digest,
+				client_id: &client.client_id,
+				now: now(),
+				token,
+			})
+			.await
+			.map_err(|_| OAuthError::ServerError)?;
+		let DeviceRedemption::Valid(record) = redeemed else {
+			return Err(OAuthError::InvalidGrant);
+		};
+		Ok(IssuedToken {
+			access_token: raw,
+			token_type: "Bearer",
+			expires_in: ttl.as_secs(),
+			scope: record.approved_scopes.join(" "),
+			refresh_token: None,
+		})
+	}
+	fn device_config(&self) -> Option<&DeviceAuthorizationConfig> {
+		self.config.device_authorization.as_ref()
 	}
 	/// Issue a client-credentials token for a confidential client.
 	pub async fn client_credentials(
@@ -993,6 +1675,7 @@ impl OAuthServer {
 				expires_at: issued_at + ttl.as_secs() as i64,
 				revoked: false,
 				code_digest,
+				family_id: None,
 			})
 			.await
 			.map_err(|_| OAuthError::ServerError)?;
@@ -1001,6 +1684,7 @@ impl OAuthServer {
 			token_type: "Bearer",
 			expires_in: ttl.as_secs(),
 			scope: scopes.join(" "),
+			refresh_token: None,
 		})
 	}
 	/// Look up active token metadata. User tokens require an active account.
@@ -1048,18 +1732,54 @@ impl OAuthServer {
 			expires_at: record.expires_at,
 		}))
 	}
-	/// Revoke an access token, limited to its owning client.
+	/// Revoke an access token or a refresh token, limited to its owning client.
+	///
+	/// Equivalent to [`OAuthServer::revoke_with_hint`] without a hint.
 	pub async fn revoke(
 		&self,
 		token: &str,
 		client_id: &str,
 		secret: Option<&str>,
 	) -> Result<(), OAuthError> {
+		self.revoke_with_hint(token, client_id, secret, None).await
+	}
+	/// Revoke an access token or a refresh token, limited to its owning client.
+	///
+	/// `token_type_hint` is the RFC 7009 optional hint (`access_token` or `refresh_token`).
+	/// It only chooses which kind is tried first; unknown values are ignored and both kinds
+	/// are always tried. An access token is revoked on its own, while a refresh token
+	/// (current or already rotated) revokes its whole token family together with every
+	/// access token issued from it. A token owned by another client, or an unknown token,
+	/// has no effect and still succeeds.
+	pub async fn revoke_with_hint(
+		&self,
+		token: &str,
+		client_id: &str,
+		secret: Option<&str>,
+		token_type_hint: Option<&str>,
+	) -> Result<(), OAuthError> {
 		self.authenticate_client(client_id, secret).await?;
-		self.store
-			.revoke_token(&digest(token), client_id)
-			.await
-			.map_err(|_| OAuthError::ServerError)
+		let digest = digest(token);
+		let revoke_access = async {
+			self.store
+				.revoke_token(&digest, client_id)
+				.await
+				.map_err(|_| OAuthError::ServerError)
+		};
+		let revoke_family = async {
+			self.store
+				.revoke_refresh_family(&digest, client_id)
+				.await
+				.map(|_| ())
+				.map_err(|_| OAuthError::ServerError)
+		};
+		if token_type_hint == Some("refresh_token") {
+			revoke_family.await?;
+			revoke_access.await
+		} else {
+			revoke_access.await?;
+			revoke_family.await
+		}
 	}
 	/// Inspect a token for an authenticated resource server and its audience.
 	pub async fn introspect(
@@ -1082,21 +1802,24 @@ impl OAuthServer {
 			.await?
 			.filter(|info| info.audience == resource.audience))
 	}
-	/// Invalidate outstanding codes and revoke tokens after a host account security event.
-	/// Returns the number of newly revoked tokens without retiring the user or OIDC subject.
+	/// Invalidate outstanding codes and revoke tokens and token families (so refresh tokens
+	/// stop working) after a host account security event. Returns the number of newly
+	/// revoked access tokens without retiring the user or OIDC subject.
 	pub async fn revoke_user(&self, user_id: &str) -> Result<u64, OAuthError> {
 		self.store
 			.revoke_user(user_id)
 			.await
 			.map_err(|_| OAuthError::ServerError)
 	}
+	#[cfg(feature = "oidc-op")]
 	pub(crate) async fn retire_user(&self, user_id: &str) -> Result<(), OAuthError> {
 		self.store
 			.retire_user(user_id)
 			.await
 			.map_err(|_| OAuthError::ServerError)
 	}
-	/// Revoke all tokens issued to a client.
+	/// Revoke all tokens and token families issued to a client. Returns the number of
+	/// newly revoked access tokens.
 	pub async fn revoke_client(&self, client_id: &str) -> Result<u64, OAuthError> {
 		self.store
 			.revoke_client(client_id)
@@ -1163,8 +1886,10 @@ fn validate_client_registration(
 	config: &OAuthServerConfig,
 ) -> Result<(), OAuthError> {
 	if client.client_id.is_empty()
-		|| !(client.authorization_code || client.client_credentials)
+		|| !(client.authorization_code || client.client_credentials || client.device_code)
+		|| (client.device_code && config.device_authorization.is_none())
 		|| (client.kind == ClientKind::Public && client.client_credentials)
+		|| (client.refresh_token && !client.authorization_code)
 		|| (client.kind != ClientKind::Public && !client.browser_origins.is_empty())
 		|| (client.oidc_enabled
 			&& (client.kind != ClientKind::Confidential
@@ -1203,6 +1928,44 @@ fn validate_client_registration(
 		}
 	}
 	Ok(())
+}
+/// Generate a User Code as eight uniformly distributed alphabet characters.
+fn random_user_code() -> String {
+	// 240 is the largest multiple of the alphabet size that fits in a byte; rejecting
+	// larger samples avoids modulo bias.
+	let limit = 256 - 256 % USER_CODE_ALPHABET.len();
+	let mut code = String::with_capacity(USER_CODE_LEN);
+	let mut buffer = [0u8; 16];
+	while code.len() < USER_CODE_LEN {
+		OsRng.fill_bytes(&mut buffer);
+		for &byte in &buffer {
+			if (byte as usize) < limit && code.len() < USER_CODE_LEN {
+				code.push(USER_CODE_ALPHABET[byte as usize % USER_CODE_ALPHABET.len()] as char);
+			}
+		}
+	}
+	code
+}
+/// Display a normalized User Code as `XXXX-XXXX`.
+fn format_user_code(normalized: &str) -> String {
+	let (head, tail) = normalized.split_at(USER_CODE_LEN / 2);
+	format!("{head}-{tail}")
+}
+/// Normalize typed input: uppercase, drop `-` and whitespace, and require exactly
+/// eight alphabet characters.
+fn normalize_user_code(input: &str) -> Option<String> {
+	// Bound the work done for oversized input before examining it.
+	if input.len() > 64 {
+		return None;
+	}
+	let normalized: String = input
+		.chars()
+		.filter(|c| *c != '-' && !c.is_whitespace())
+		.map(|c| c.to_ascii_uppercase())
+		.collect();
+	(normalized.len() == USER_CODE_LEN
+		&& normalized.bytes().all(|c| USER_CODE_ALPHABET.contains(&c)))
+	.then_some(normalized)
 }
 fn valid_resource_uri(value: &str) -> bool {
 	Url::parse(value).is_ok_and(|url| valid_resource_url(&url))

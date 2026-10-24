@@ -81,11 +81,15 @@ impl SqliteBackend {
 		query: sqlx::query::Query<'q, sqlx::Sqlite, sqlx::sqlite::SqliteArguments<'q>>,
 		value: &'q QueryValue,
 	) -> Result<sqlx::query::Query<'q, sqlx::Sqlite, sqlx::sqlite::SqliteArguments<'q>>> {
+		crate::backends::types::validate_json_array(value)?;
 		Ok(match value {
 			QueryValue::Null => query.bind(None::<i32>),
 			QueryValue::Bool(b) => query.bind(b),
 			QueryValue::Int32(i) => query.bind(i),
 			QueryValue::Int(i) => query.bind(i),
+			QueryValue::Uint(i) => query.bind(crate::backends::types::checked_unsigned_integer(
+				*i, "SQLite",
+			)?),
 			QueryValue::Float(f) => query.bind(f),
 			QueryValue::String(s) => query.bind(s),
 			QueryValue::Bytes(b) => query.bind(b),
@@ -116,6 +120,27 @@ impl SqliteBackend {
 			}
 			QueryValue::UuidArray(values) => {
 				query.bind(serde_json::to_string(values).expect("UUID arrays serialize"))
+			}
+			QueryValue::NullableStringArray(values) => {
+				query.bind(serde_json::to_string(values).expect("nullable arrays serialize"))
+			}
+			QueryValue::NullableIntArray(values) => {
+				query.bind(serde_json::to_string(values).expect("nullable arrays serialize"))
+			}
+			QueryValue::NullableBigIntArray(values) => {
+				query.bind(serde_json::to_string(values).expect("nullable arrays serialize"))
+			}
+			QueryValue::NullableBoolArray(values) => {
+				query.bind(serde_json::to_string(values).expect("nullable arrays serialize"))
+			}
+			QueryValue::NullableFloatArray(values) => {
+				query.bind(serde_json::to_string(values).expect("nullable arrays serialize"))
+			}
+			QueryValue::NullableDoubleArray(values) => {
+				query.bind(serde_json::to_string(values).expect("nullable arrays serialize"))
+			}
+			QueryValue::NullableUuidArray(values) => {
+				query.bind(serde_json::to_string(values).expect("nullable arrays serialize"))
 			}
 			QueryValue::Now => {
 				// SQLite uses datetime('now'), which should be part of SQL string
@@ -218,9 +243,8 @@ impl DatabaseBackend for SqliteBackend {
 			.into());
 		}
 		let pool = Arc::clone(&self.pool);
-		let (sql, arguments) = reinhardt_query_sqlx::prepare_sqlite_with_text_uuid(built)
-			.map_err(crate::backends::generated::binding_error)?
-			.into_parts();
+		let (sql, values) = built;
+		let arguments = crate::backends::generated::sqlite::arguments(values)?;
 		Ok(Box::pin(async_stream::stream! {
 			let rows = sqlx::query_with(&sql, arguments).fetch(pool.as_ref());
 			futures::pin_mut!(rows);
@@ -241,9 +265,8 @@ impl DatabaseBackend for SqliteBackend {
 		built: (String, reinhardt_query::Values),
 		_context: Option<crate::backends::error::PgvectorOperationKind>,
 	) -> Result<QueryResult> {
-		let (sql, arguments) = reinhardt_query_sqlx::prepare_sqlite_with_text_uuid(built)
-			.map_err(crate::backends::generated::binding_error)?
-			.into_parts();
+		let (sql, values) = built;
+		let arguments = crate::backends::generated::sqlite::arguments(values)?;
 		let result = sqlx::query_with(&sql, arguments)
 			.execute(self.pool.as_ref())
 			.await
@@ -259,9 +282,8 @@ impl DatabaseBackend for SqliteBackend {
 		built: (String, reinhardt_query::Values),
 		_context: Option<crate::backends::error::PgvectorOperationKind>,
 	) -> Result<Row> {
-		let (sql, arguments) = reinhardt_query_sqlx::prepare_sqlite_with_text_uuid(built)
-			.map_err(crate::backends::generated::binding_error)?
-			.into_parts();
+		let (sql, values) = built;
+		let arguments = crate::backends::generated::sqlite::arguments(values)?;
 		let result = sqlx::query_with(&sql, arguments)
 			.fetch_one(self.pool.as_ref())
 			.await
@@ -274,9 +296,8 @@ impl DatabaseBackend for SqliteBackend {
 		built: (String, reinhardt_query::Values),
 		_context: Option<crate::backends::error::PgvectorOperationKind>,
 	) -> Result<Vec<Row>> {
-		let (sql, arguments) = reinhardt_query_sqlx::prepare_sqlite_with_text_uuid(built)
-			.map_err(crate::backends::generated::binding_error)?
-			.into_parts();
+		let (sql, values) = built;
+		let arguments = crate::backends::generated::sqlite::arguments(values)?;
 		let result = sqlx::query_with(&sql, arguments)
 			.fetch_all(self.pool.as_ref())
 			.await
@@ -289,9 +310,8 @@ impl DatabaseBackend for SqliteBackend {
 		built: (String, reinhardt_query::Values),
 		_context: Option<crate::backends::error::PgvectorOperationKind>,
 	) -> Result<Option<Row>> {
-		let (sql, arguments) = reinhardt_query_sqlx::prepare_sqlite_with_text_uuid(built)
-			.map_err(crate::backends::generated::binding_error)?
-			.into_parts();
+		let (sql, values) = built;
+		let arguments = crate::backends::generated::sqlite::arguments(values)?;
 		let result = sqlx::query_with(&sql, arguments)
 			.fetch_optional(self.pool.as_ref())
 			.await
@@ -299,6 +319,47 @@ impl DatabaseBackend for SqliteBackend {
 		result.map(Self::convert_row).transpose()
 	}
 
+	async fn __execute_generated(
+		&self,
+		sql: &str,
+		values: reinhardt_query::Values,
+	) -> Result<QueryResult> {
+		let arguments = crate::backends::generated::sqlite::arguments(values)?;
+		let result = sqlx::query_with(sql, arguments)
+			.execute(self.pool.as_ref())
+			.await
+			.map_err(map_sqlx_error)?;
+		Ok(QueryResult {
+			rows_affected: result.rows_affected(),
+			last_insert_id: None,
+		})
+	}
+
+	async fn __fetch_one_generated(
+		&self,
+		sql: &str,
+		values: reinhardt_query::Values,
+	) -> Result<Row> {
+		let arguments = crate::backends::generated::sqlite::arguments(values)?;
+		let row = sqlx::query_with(sql, arguments)
+			.fetch_one(self.pool.as_ref())
+			.await
+			.map_err(map_sqlx_error)?;
+		Self::convert_row(row)
+	}
+
+	async fn __fetch_all_generated(
+		&self,
+		sql: &str,
+		values: reinhardt_query::Values,
+	) -> Result<Vec<Row>> {
+		let arguments = crate::backends::generated::sqlite::arguments(values)?;
+		let rows = sqlx::query_with(sql, arguments)
+			.fetch_all(self.pool.as_ref())
+			.await
+			.map_err(map_sqlx_error)?;
+		rows.into_iter().map(Self::convert_row).collect()
+	}
 	fn database_type(&self) -> DatabaseType {
 		DatabaseType::Sqlite
 	}
@@ -498,11 +559,15 @@ impl SqliteTransactionExecutor {
 		query: sqlx::query::Query<'q, sqlx::Sqlite, sqlx::sqlite::SqliteArguments<'q>>,
 		value: &'q QueryValue,
 	) -> Result<sqlx::query::Query<'q, sqlx::Sqlite, sqlx::sqlite::SqliteArguments<'q>>> {
+		crate::backends::types::validate_json_array(value)?;
 		Ok(match value {
 			QueryValue::Null => query.bind(None::<i32>),
 			QueryValue::Bool(b) => query.bind(b),
 			QueryValue::Int32(i) => query.bind(i),
 			QueryValue::Int(i) => query.bind(i),
+			QueryValue::Uint(i) => query.bind(crate::backends::types::checked_unsigned_integer(
+				*i, "SQLite",
+			)?),
 			QueryValue::Float(f) => query.bind(f),
 			QueryValue::String(s) => query.bind(s),
 			QueryValue::Bytes(b) => query.bind(b),
@@ -533,6 +598,27 @@ impl SqliteTransactionExecutor {
 			}
 			QueryValue::UuidArray(values) => {
 				query.bind(serde_json::to_string(values).expect("UUID arrays serialize"))
+			}
+			QueryValue::NullableStringArray(values) => {
+				query.bind(serde_json::to_string(values).expect("nullable arrays serialize"))
+			}
+			QueryValue::NullableIntArray(values) => {
+				query.bind(serde_json::to_string(values).expect("nullable arrays serialize"))
+			}
+			QueryValue::NullableBigIntArray(values) => {
+				query.bind(serde_json::to_string(values).expect("nullable arrays serialize"))
+			}
+			QueryValue::NullableBoolArray(values) => {
+				query.bind(serde_json::to_string(values).expect("nullable arrays serialize"))
+			}
+			QueryValue::NullableFloatArray(values) => {
+				query.bind(serde_json::to_string(values).expect("nullable arrays serialize"))
+			}
+			QueryValue::NullableDoubleArray(values) => {
+				query.bind(serde_json::to_string(values).expect("nullable arrays serialize"))
+			}
+			QueryValue::NullableUuidArray(values) => {
+				query.bind(serde_json::to_string(values).expect("nullable arrays serialize"))
 			}
 			QueryValue::Now => query.bind(chrono::Utc::now()),
 		})
@@ -631,9 +717,8 @@ impl TransactionExecutor for SqliteTransactionExecutor {
 			.into());
 		}
 		let tx = self.tx.as_mut().ok_or_else(transaction_consumed_error)?;
-		let (sql, arguments) = reinhardt_query_sqlx::prepare_sqlite_with_text_uuid(built)
-			.map_err(crate::backends::generated::binding_error)?
-			.into_parts();
+		let (sql, values) = built;
+		let arguments = crate::backends::generated::sqlite::arguments(values)?;
 		Ok(Box::pin(async_stream::stream! {
 			let rows = sqlx::query_with(&sql, arguments).fetch(&mut **tx);
 			futures::pin_mut!(rows);
@@ -655,9 +740,8 @@ impl TransactionExecutor for SqliteTransactionExecutor {
 		_context: Option<crate::backends::error::PgvectorOperationKind>,
 	) -> Result<QueryResult> {
 		let tx = self.tx.as_mut().ok_or_else(transaction_consumed_error)?;
-		let (sql, arguments) = reinhardt_query_sqlx::prepare_sqlite_with_text_uuid(built)
-			.map_err(crate::backends::generated::binding_error)?
-			.into_parts();
+		let (sql, values) = built;
+		let arguments = crate::backends::generated::sqlite::arguments(values)?;
 		let result = sqlx::query_with(&sql, arguments)
 			.execute(&mut **tx)
 			.await
@@ -674,9 +758,8 @@ impl TransactionExecutor for SqliteTransactionExecutor {
 		_context: Option<crate::backends::error::PgvectorOperationKind>,
 	) -> Result<Row> {
 		let tx = self.tx.as_mut().ok_or_else(transaction_consumed_error)?;
-		let (sql, arguments) = reinhardt_query_sqlx::prepare_sqlite_with_text_uuid(built)
-			.map_err(crate::backends::generated::binding_error)?
-			.into_parts();
+		let (sql, values) = built;
+		let arguments = crate::backends::generated::sqlite::arguments(values)?;
 		let result = sqlx::query_with(&sql, arguments)
 			.fetch_one(&mut **tx)
 			.await
@@ -690,9 +773,8 @@ impl TransactionExecutor for SqliteTransactionExecutor {
 		_context: Option<crate::backends::error::PgvectorOperationKind>,
 	) -> Result<Vec<Row>> {
 		let tx = self.tx.as_mut().ok_or_else(transaction_consumed_error)?;
-		let (sql, arguments) = reinhardt_query_sqlx::prepare_sqlite_with_text_uuid(built)
-			.map_err(crate::backends::generated::binding_error)?
-			.into_parts();
+		let (sql, values) = built;
+		let arguments = crate::backends::generated::sqlite::arguments(values)?;
 		let result = sqlx::query_with(&sql, arguments)
 			.fetch_all(&mut **tx)
 			.await
@@ -706,9 +788,8 @@ impl TransactionExecutor for SqliteTransactionExecutor {
 		_context: Option<crate::backends::error::PgvectorOperationKind>,
 	) -> Result<Option<Row>> {
 		let tx = self.tx.as_mut().ok_or_else(transaction_consumed_error)?;
-		let (sql, arguments) = reinhardt_query_sqlx::prepare_sqlite_with_text_uuid(built)
-			.map_err(crate::backends::generated::binding_error)?
-			.into_parts();
+		let (sql, values) = built;
+		let arguments = crate::backends::generated::sqlite::arguments(values)?;
 		let result = sqlx::query_with(&sql, arguments)
 			.fetch_optional(&mut **tx)
 			.await
@@ -716,10 +797,62 @@ impl TransactionExecutor for SqliteTransactionExecutor {
 		result.map(Self::convert_row).transpose()
 	}
 
+	async fn __fetch_one_generated(
+		&mut self,
+		sql: &str,
+		values: reinhardt_query::Values,
+		_backend: DatabaseType,
+		_context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> Result<Row> {
+		let arguments = crate::backends::generated::sqlite::arguments(values)?;
+		let connection = self.tx.as_mut().ok_or_else(transaction_consumed_error)?;
+		let query = sqlx::query_with(sql, arguments);
+		let row = query
+			.fetch_one(&mut **connection)
+			.await
+			.map_err(map_sqlx_error)?;
+		Self::convert_row(row)
+	}
+
+	async fn __fetch_all_generated(
+		&mut self,
+		sql: &str,
+		values: reinhardt_query::Values,
+		_backend: DatabaseType,
+		_context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> Result<Vec<Row>> {
+		let arguments = crate::backends::generated::sqlite::arguments(values)?;
+		let connection = self.tx.as_mut().ok_or_else(transaction_consumed_error)?;
+		let query = sqlx::query_with(sql, arguments);
+		let rows = query
+			.fetch_all(&mut **connection)
+			.await
+			.map_err(map_sqlx_error)?;
+		rows.into_iter().map(Self::convert_row).collect()
+	}
+
 	fn backend(&self) -> DatabaseType {
 		DatabaseType::Sqlite
 	}
 
+	async fn __execute_generated(
+		&mut self,
+		sql: &str,
+		values: reinhardt_query::Values,
+		_backend: DatabaseType,
+		_context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> Result<QueryResult> {
+		let arguments = crate::backends::generated::sqlite::arguments(values)?;
+		let connection = self.tx.as_mut().ok_or_else(transaction_consumed_error)?;
+		let result = sqlx::query_with(sql, arguments)
+			.execute(&mut **connection)
+			.await
+			.map_err(map_sqlx_error)?;
+		Ok(QueryResult {
+			rows_affected: result.rows_affected(),
+			last_insert_id: None,
+		})
+	}
 	async fn execute(&mut self, sql: &str, params: Vec<QueryValue>) -> Result<QueryResult> {
 		let tx = self.tx.as_mut().ok_or_else(transaction_consumed_error)?;
 
@@ -946,9 +1079,8 @@ impl TransactionExecutor for SqliteRawTransactionExecutor {
 			.into());
 		}
 		let conn = self.connection_mut()?;
-		let (sql, arguments) = reinhardt_query_sqlx::prepare_sqlite_with_text_uuid(built)
-			.map_err(crate::backends::generated::binding_error)?
-			.into_parts();
+		let (sql, values) = built;
+		let arguments = crate::backends::generated::sqlite::arguments(values)?;
 		Ok(Box::pin(async_stream::stream! {
 			let rows = sqlx::query_with(&sql, arguments).fetch(&mut **conn);
 			futures::pin_mut!(rows);
@@ -970,9 +1102,8 @@ impl TransactionExecutor for SqliteRawTransactionExecutor {
 		_context: Option<crate::backends::error::PgvectorOperationKind>,
 	) -> Result<QueryResult> {
 		let conn = self.connection_mut()?;
-		let (sql, arguments) = reinhardt_query_sqlx::prepare_sqlite_with_text_uuid(built)
-			.map_err(crate::backends::generated::binding_error)?
-			.into_parts();
+		let (sql, values) = built;
+		let arguments = crate::backends::generated::sqlite::arguments(values)?;
 		let result = sqlx::query_with(&sql, arguments)
 			.execute(&mut **conn)
 			.await
@@ -989,9 +1120,8 @@ impl TransactionExecutor for SqliteRawTransactionExecutor {
 		_context: Option<crate::backends::error::PgvectorOperationKind>,
 	) -> Result<Row> {
 		let conn = self.connection_mut()?;
-		let (sql, arguments) = reinhardt_query_sqlx::prepare_sqlite_with_text_uuid(built)
-			.map_err(crate::backends::generated::binding_error)?
-			.into_parts();
+		let (sql, values) = built;
+		let arguments = crate::backends::generated::sqlite::arguments(values)?;
 		let result = sqlx::query_with(&sql, arguments)
 			.fetch_one(&mut **conn)
 			.await
@@ -1005,9 +1135,8 @@ impl TransactionExecutor for SqliteRawTransactionExecutor {
 		_context: Option<crate::backends::error::PgvectorOperationKind>,
 	) -> Result<Vec<Row>> {
 		let conn = self.connection_mut()?;
-		let (sql, arguments) = reinhardt_query_sqlx::prepare_sqlite_with_text_uuid(built)
-			.map_err(crate::backends::generated::binding_error)?
-			.into_parts();
+		let (sql, values) = built;
+		let arguments = crate::backends::generated::sqlite::arguments(values)?;
 		let result = sqlx::query_with(&sql, arguments)
 			.fetch_all(&mut **conn)
 			.await
@@ -1021,14 +1150,65 @@ impl TransactionExecutor for SqliteRawTransactionExecutor {
 		_context: Option<crate::backends::error::PgvectorOperationKind>,
 	) -> Result<Option<Row>> {
 		let conn = self.connection_mut()?;
-		let (sql, arguments) = reinhardt_query_sqlx::prepare_sqlite_with_text_uuid(built)
-			.map_err(crate::backends::generated::binding_error)?
-			.into_parts();
+		let (sql, values) = built;
+		let arguments = crate::backends::generated::sqlite::arguments(values)?;
 		let result = sqlx::query_with(&sql, arguments)
 			.fetch_optional(&mut **conn)
 			.await
 			.map_err(map_sqlx_error)?;
 		result.map(SqliteBackend::convert_row).transpose()
+	}
+
+	async fn __fetch_one_generated(
+		&mut self,
+		sql: &str,
+		values: reinhardt_query::Values,
+		_backend: DatabaseType,
+		_context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> Result<Row> {
+		let arguments = crate::backends::generated::sqlite::arguments(values)?;
+		let connection = self.connection_mut()?;
+		let query = sqlx::query_with(sql, arguments);
+		let row = query
+			.fetch_one(&mut **connection)
+			.await
+			.map_err(map_sqlx_error)?;
+		SqliteBackend::convert_row(row)
+	}
+
+	async fn __fetch_all_generated(
+		&mut self,
+		sql: &str,
+		values: reinhardt_query::Values,
+		_backend: DatabaseType,
+		_context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> Result<Vec<Row>> {
+		let arguments = crate::backends::generated::sqlite::arguments(values)?;
+		let connection = self.connection_mut()?;
+		let query = sqlx::query_with(sql, arguments);
+		let rows = query
+			.fetch_all(&mut **connection)
+			.await
+			.map_err(map_sqlx_error)?;
+		rows.into_iter().map(SqliteBackend::convert_row).collect()
+	}
+
+	async fn __execute_generated(
+		&mut self,
+		sql: &str,
+		values: reinhardt_query::Values,
+		_backend: DatabaseType,
+		_context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> Result<QueryResult> {
+		let arguments = crate::backends::generated::sqlite::arguments(values)?;
+		let result = sqlx::query_with(sql, arguments)
+			.execute(&mut **self.connection_mut()?)
+			.await
+			.map_err(map_sqlx_error)?;
+		Ok(QueryResult {
+			rows_affected: result.rows_affected(),
+			last_insert_id: None,
+		})
 	}
 
 	fn backend(&self) -> DatabaseType {
@@ -1182,6 +1362,54 @@ mod tests {
 		atomic::{AtomicBool, Ordering},
 	};
 	use std::time::Duration;
+
+	#[rstest::rstest]
+	#[case::nan(f64::NAN)]
+	#[case::positive_infinity(f64::INFINITY)]
+	#[case::negative_infinity(f64::NEG_INFINITY)]
+	fn json_array_binding_rejects_non_finite_elements(#[case] special: f64) {
+		// Arrange
+		let values = [
+			QueryValue::FloatArray(vec![1.5, special as f32]),
+			QueryValue::DoubleArray(vec![1.5, special]),
+			QueryValue::NullableFloatArray(vec![None, Some(special as f32)]),
+			QueryValue::NullableDoubleArray(vec![None, Some(special)]),
+		];
+		for value in &values {
+			// Act
+			let pool = SqliteBackend::bind_value(sqlx::query("SELECT ?"), value);
+			let transaction = SqliteTransactionExecutor::bind_value(sqlx::query("SELECT ?"), value);
+			// Assert
+			for result in [pool, transaction] {
+				let error = result
+					.err()
+					.expect("non-finite elements must fail before execution");
+				assert_eq!(
+					error.database_kind(),
+					Some(reinhardt_core::exception::DatabaseErrorKind::Type)
+				);
+				assert!(error.to_string().contains("non-finite"));
+			}
+		}
+	}
+
+	#[rstest::rstest]
+	fn json_array_binding_accepts_finite_null_and_empty_elements() {
+		// Arrange
+		let values = [
+			QueryValue::FloatArray(vec![f32::MIN, f32::MAX]),
+			QueryValue::DoubleArray(vec![f64::MIN, f64::MAX]),
+			QueryValue::NullableFloatArray(vec![None, Some(1.5), None]),
+			QueryValue::NullableDoubleArray(vec![None, Some(-2.5), None]),
+			QueryValue::NullableFloatArray(vec![None]),
+			QueryValue::NullableDoubleArray(vec![]),
+		];
+		// Act / Assert
+		for value in &values {
+			assert!(SqliteBackend::bind_value(sqlx::query("SELECT ?"), value).is_ok());
+			assert!(SqliteTransactionExecutor::bind_value(sqlx::query("SELECT ?"), value).is_ok());
+		}
+	}
 
 	struct RecordingTransactionControl {
 		calls: Vec<String>,

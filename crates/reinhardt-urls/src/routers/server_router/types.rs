@@ -96,6 +96,9 @@ pub(crate) struct CompiledRoutes {
 	pub(crate) exact_options: HashMap<String, RouteHandler>,
 	pub(crate) custom: HashMap<Method, MatchitRouter<RouteHandler>>,
 	pub(crate) exact_custom: HashMap<Method, HashMap<String, RouteHandler>>,
+	/// Raw handlers and views used for methods without an endpoint table.
+	pub(crate) any_method: MatchitRouter<RouteHandler>,
+	pub(crate) exact_any_method: HashMap<String, RouteHandler>,
 	pub(crate) errors: Vec<String>,
 }
 
@@ -118,6 +121,8 @@ impl Default for CompiledRoutes {
 			exact_options: HashMap::new(),
 			custom: HashMap::new(),
 			exact_custom: HashMap::new(),
+			any_method: MatchitRouter::new(),
+			exact_any_method: HashMap::new(),
 			errors: Vec::new(),
 		}
 	}
@@ -136,23 +141,11 @@ impl CompiledRoutes {
 			Method::PATCH => Some(&self.exact_patch),
 			Method::HEAD => Some(&self.exact_head),
 			Method::OPTIONS => Some(&self.exact_options),
-			_ => self.exact_custom.get(method),
-		}
-	}
-
-	pub(crate) fn exact_for_method_mut(
-		&mut self,
-		method: &Method,
-	) -> Option<&mut HashMap<String, RouteHandler>> {
-		match *method {
-			Method::GET => Some(&mut self.exact_get),
-			Method::POST => Some(&mut self.exact_post),
-			Method::PUT => Some(&mut self.exact_put),
-			Method::DELETE => Some(&mut self.exact_delete),
-			Method::PATCH => Some(&mut self.exact_patch),
-			Method::HEAD => Some(&mut self.exact_head),
-			Method::OPTIONS => Some(&mut self.exact_options),
-			_ => Some(self.exact_custom.entry(method.clone()).or_default()),
+			_ => Some(
+				self.exact_custom
+					.get(method)
+					.unwrap_or(&self.exact_any_method),
+			),
 		}
 	}
 
@@ -168,23 +161,30 @@ impl CompiledRoutes {
 			Method::PATCH => Some(&self.patch),
 			Method::HEAD => Some(&self.head),
 			Method::OPTIONS => Some(&self.options),
-			_ => self.custom.get(method),
+			_ => Some(self.custom.get(method).unwrap_or(&self.any_method)),
 		}
 	}
 
-	pub(crate) fn router_for_method_mut(
+	/// Return the matchit table and exact-path fast path for an endpoint method.
+	pub(crate) fn tables_for_method_mut(
 		&mut self,
 		method: &Method,
-	) -> Option<&mut MatchitRouter<RouteHandler>> {
+	) -> (
+		&mut MatchitRouter<RouteHandler>,
+		&mut HashMap<String, RouteHandler>,
+	) {
 		match *method {
-			Method::GET => Some(&mut self.get),
-			Method::POST => Some(&mut self.post),
-			Method::PUT => Some(&mut self.put),
-			Method::DELETE => Some(&mut self.delete),
-			Method::PATCH => Some(&mut self.patch),
-			Method::HEAD => Some(&mut self.head),
-			Method::OPTIONS => Some(&mut self.options),
-			_ => Some(self.custom.entry(method.clone()).or_default()),
+			Method::GET => (&mut self.get, &mut self.exact_get),
+			Method::POST => (&mut self.post, &mut self.exact_post),
+			Method::PUT => (&mut self.put, &mut self.exact_put),
+			Method::DELETE => (&mut self.delete, &mut self.exact_delete),
+			Method::PATCH => (&mut self.patch, &mut self.exact_patch),
+			Method::HEAD => (&mut self.head, &mut self.exact_head),
+			Method::OPTIONS => (&mut self.options, &mut self.exact_options),
+			_ => (
+				self.custom.entry(method.clone()).or_default(),
+				self.exact_custom.entry(method.clone()).or_default(),
+			),
 		}
 	}
 
@@ -200,6 +200,7 @@ impl CompiledRoutes {
 		]
 		.into_iter()
 		.chain(self.custom.values())
+		.chain(std::iter::once(&self.any_method))
 	}
 }
 

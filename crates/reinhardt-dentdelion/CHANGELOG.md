@@ -7,6 +7,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.22](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dentdelion@v0.4.0-alpha.21...reinhardt-dentdelion@v0.4.0-alpha.22) - 2026-10-22
+
+### Documentation
+
+- update version references to v0.4.0
+- update version references to v0.3.25
+
+### Fixed
+
+- *(plugins)* [**breaking**] bound execution and pin outbound HTTP
+- *(security)* [**breaking**] preserve configuration and typed values in hardening
+- *(dentdelion)* include result conversion in javascript deadlines
+- *(dentdelion)* bound asynchronous wasm lifecycle calls
+- *(dentdelion)* enforce an aggregate wasm memory budget
+- *(security)* reject non-global ipv6 and overlay identifiers
+- *(dentdelion)* resolve plugin dns without blocking the executor
+- *(dentdelion)* enforce memory and SSR invocation budgets
+- *(dentdelion)* preserve remaining lifecycle epoch budget
+- *(security)* permit globally reachable IPv4 anycast exceptions
+- *(dentdelion)* cap empty WASM resource counts
+- *(dentdelion)* bound SSR source preparation and hydration
+- *(dentdelion)* bound SSR path admission copies
+- *(dentdelion)* gate SSR helpers by the TypeScript feature
+- *(dentdelion)* preserve unbounded deadlines after epoch progress
+- *(security)* reject the non-global IPv4 relay anycast address
+- *(dentdelion)* accept NAT64 addresses that embed public IPv4
+- *(dentdelion)* port owner-scoped event bus calls to shared bus state
+- *(dentdelion)* require the Signals grant for WIT event host calls
+
+### Maintenance
+
+- *(release)* target 0.3.24 instead of 0.4.0
+- *(sync)* merge main into develop/0.4.0
+
+## [0.4.0-alpha.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dentdelion@v0.4.0-alpha.20...reinhardt-dentdelion@v0.4.0-alpha.21) - 2026-10-18
+
+### Fixed
+
+- *(dentdelion)* bound plugin event bytes and share fan-out storage
+- *(dentdelion)* compile the wasm feature without ts
+
+### Maintenance
+
+- *(sync)* merge main into develop/0.4.0
+
 ## [0.4.0-alpha.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dentdelion@v0.4.0-alpha.17...reinhardt-dentdelion@v0.4.0-alpha.18) - 2026-09-27
 
 ### Documentation
@@ -80,6 +125,74 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Maintenance
 
 - merge main into develop/0.4.0
+
+## [0.3.25](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dentdelion@v0.3.24...reinhardt-dentdelion@v0.3.25) - 2026-10-20
+
+### Fixed
+
+- *(dentdelion)* require the Signals grant for WIT event host calls
+
+## [0.3.24](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dentdelion@v0.3.23...reinhardt-dentdelion@v0.3.24) - 2026-10-14
+
+### Fixed
+
+- *(plugins)* [**breaking**] bound execution and pin outbound HTTP
+- *(security)* [**breaking**] preserve configuration and typed values in hardening
+- *(dentdelion)* include result conversion in javascript deadlines
+- *(dentdelion)* bound asynchronous wasm lifecycle calls
+- *(dentdelion)* enforce an aggregate wasm memory budget
+- *(security)* reject non-global ipv6 and overlay identifiers
+- *(dentdelion)* resolve plugin dns without blocking the executor
+- *(dentdelion)* enforce memory and SSR invocation budgets
+- *(dentdelion)* preserve remaining lifecycle epoch budget
+- *(security)* permit globally reachable IPv4 anycast exceptions
+- *(dentdelion)* cap empty WASM resource counts
+- *(dentdelion)* bound SSR source preparation and hydration
+- *(dentdelion)* bound SSR path admission copies
+- *(dentdelion)* gate SSR helpers by the TypeScript feature
+- *(dentdelion)* preserve unbounded deadlines after epoch progress
+- *(security)* reject the non-global IPv4 relay anycast address
+- *(dentdelion)* accept NAT64 addresses that embed public IPv4
+- *(dentdelion)* port owner-scoped event bus calls to shared bus state
+
+### Fixed
+
+- Keep unbounded WASM timeouts valid after engine epoch progress, using bounded relative epoch checks that retain the original lifecycle deadline.
+- Compile the `wasm` feature without `ts` by gating the TypeScript constructor and helpers with their backend feature; the `ts`-enabled signatures are unchanged.
+- Bound empty WASM core instances, memories and tables with per-store count quotas derived from the configured memory budget, capped at 128 of each kind. The count quota is `bytes / (3 * 64 KiB)` per kind (five for a one-MiB budget); it bounds resource metadata cardinality rather than process RSS.
+- Check SSR component file size before decoding or hydration allocation, cap reads if the file grows, and include blocking-pool preparation and hydration in the existing lifecycle deadline.
+- Bound SSR component path and serialized props before copying them for blocking-pool admission.
+
+- Resolve plugin DNS asynchronously within the lifecycle deadline.
+
+- Reject non-global and overlay IPv6 assignments while preserving routable locator exceptions.
+
+- Reject the non-global `192.88.99.2` relay anycast address for literal and DNS-resolved plugin HTTP destinations.
+
+- Enforce one aggregate linear-memory budget across a WASM store and reject shared memories that bypass limiter callbacks.
+
+- Cancel asynchronous WASM host imports when the whole lifecycle invocation expires.
+
+- Include result conversion in the JavaScript cooperative deadline.
+
+- Keep JavaScript queue deadlines separate from execution budgets, cancel unstarted work without poisoning the runtime, and preserve the remaining WASM lifecycle epoch budget across guest calls.
+
+- Preserve custom plugin HTTP transport settings through a trusted client-builder factory while retaining destination pinning, disabled redirects/proxies, and the request timeout.
+- Apply cooperative JavaScript elapsed-time deadlines and distinguish the separately configured interpreter loop budget from a timeout.
+
+### Migration
+
+- Replace `.http_client(client)` with `.http_client_factory(|| reqwest::Client::builder().default_headers(headers.clone()))`; add custom CA roots or client certificates in the factory as needed. Opaque prebuilt clients now return a clear migration error instead of silently losing configuration.
+- Add `loop_iteration_limit` to explicit `TsResourceLimits` literals, or use `..TsResourceLimits::default()` (default: 1,000,000 iterations per loop). Handle `TsError::RuntimeLimitExceeded` independently of elapsed-time timeouts. Native builtin callbacks can run synchronously, so this interpreter guard must remain enabled.
+- API approval and rationale: [RFC #6763](https://github.com/kent8192/reinhardt-web/issues/6763).
+
+
+## [0.3.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dentdelion@v0.3.20...reinhardt-dentdelion@v0.3.21) - 2026-10-05
+
+### Documentation
+
+- *(dentdelion)* complete capability matrix
+- *(dentdelion)* correct capability implementation status
 
 ## [0.3.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dentdelion@v0.3.15...reinhardt-dentdelion@v0.3.16) - 2026-09-08
 

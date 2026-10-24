@@ -1,7 +1,7 @@
 //! DateTime column type implementation
 
-use crate::builder::html::td;
-use crate::dom::Element;
+use super::{cell, placeholder_cell};
+use crate::component::Page;
 use crate::tables::column::Column as ColumnTrait;
 use std::any::Any;
 
@@ -56,20 +56,19 @@ impl ColumnTrait for DateTimeColumn {
 		&self.label
 	}
 
-	fn render(&self, value: &dyn Any) -> Element {
+	fn render(&self, value: &dyn Any) -> Page {
 		#[cfg(feature = "chrono")]
 		{
 			if let Some(dt) = value.downcast_ref::<chrono::NaiveDateTime>() {
-				return td().text(&dt.format(&self.format).to_string()).build();
+				return cell(dt.format(&self.format).to_string());
 			}
 			if let Some(dt) = value.downcast_ref::<chrono::DateTime<chrono::Utc>>() {
-				return td().text(&dt.format(&self.format).to_string()).build();
+				return cell(dt.format(&self.format).to_string());
 			}
 		}
-		if let Some(s) = value.downcast_ref::<String>() {
-			td().text(s).build()
-		} else {
-			td().text("-").build()
+		match value.downcast_ref::<String>() {
+			Some(s) => cell(s),
+			None => placeholder_cell(),
 		}
 	}
 

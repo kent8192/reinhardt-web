@@ -23,13 +23,14 @@
 //!   quantity BIGINT, active BOOLEAN, created_at TIMESTAMP WITH TIME ZONE)
 
 use bytes::Bytes;
-use chrono::{DateTime, TimeZone, Utc};
+use chrono::{DateTime, Utc};
 use futures::future::join_all;
 use hyper::{HeaderMap, Method, StatusCode, Version};
 use reinhardt_core::macros::model;
 use reinhardt_http::Request;
+use reinhardt_query::ExprTrait;
 use reinhardt_query::prelude::{
-	ColumnDef, Iden, IntoIden, PostgresQueryBuilder, Query, QueryStatementBuilder,
+	ColumnDef, Expr, Iden, IntoIden, PostgresQueryBuilder, Query, QueryStatementBuilder,
 };
 use reinhardt_rest::serializers::JsonSerializer;
 use reinhardt_test::fixtures::shared_db_pool;
@@ -488,60 +489,41 @@ async fn test_boolean_edge_cases(#[future] edge_items_table: Arc<PgPool>) {
 
 /// Test: Timestamp edge cases (far past, far future, timezones)
 #[rstest]
+#[case::epoch("1970-01-01T00:00:00Z")]
+#[case::future("2100-12-31T23:59:59Z")]
+#[case::microseconds("2026-10-08T12:34:56.123456Z")]
+#[case::timezone("2026-10-08T21:34:56.123456+09:00")]
 #[tokio::test]
-async fn test_timestamp_edge_cases(#[future] edge_items_table: Arc<PgPool>) {
-	let _pool = edge_items_table.await;
-
+async fn test_timestamp_edge_cases(
+	#[future] edge_items_table: Arc<PgPool>,
+	#[case] timestamp: &str,
+) {
+	// Arrange: PostgreSQL preserves microseconds; finer timestamps are rejected by the codec.
+	let pool = edge_items_table.await;
 	let view = CreateAPIView::<EdgeTestItem, JsonSerializer<EdgeTestItem>>::new();
+	let expected = DateTime::parse_from_rfc3339(timestamp)
+		.unwrap()
+		.with_timezone(&Utc);
+	let json_body = serde_json::json!({"name": "Timestamp", "created_at": timestamp}).to_string();
+	let request = create_post_request("/items/", &json_body);
 
-	// Far past: 1970-01-01 (Unix epoch)
-	let epoch = Utc.with_ymd_and_hms(1970, 1, 1, 0, 0, 0).unwrap();
-	let json_body_past = format!(r#"{{"name":"Past","created_at":"{}"}}"#, epoch.to_rfc3339());
-	let request_past = create_post_request("/items/", &json_body_past);
+	// Act
+	let response = view.dispatch(request).await.unwrap();
 
-	let result_past = view.dispatch(request_past).await;
-	match result_past {
-		Ok(response) => {
-			assert!(
-				response.status == StatusCode::CREATED
-					|| response.status == StatusCode::BAD_REQUEST,
-				"Far past timestamp should be handled"
-			);
-		}
-		Err(_) => {
-			assert!(true, "Far past timestamp may cause error");
-		}
-	}
-
-	// Far future: 2100-12-31
-	let future = Utc.with_ymd_and_hms(2100, 12, 31, 23, 59, 59).unwrap();
-	let json_body_future = format!(
-		r#"{{"name":"Future","created_at":"{}"}}"#,
-		future.to_rfc3339()
-	);
-	let request_future = create_post_request("/items/", &json_body_future);
-
-	let result_future = view.dispatch(request_future).await;
-	match result_future {
-		Ok(response) => {
-			assert!(
-				response.status == StatusCode::CREATED
-					|| response.status == StatusCode::BAD_REQUEST,
-				"Far future timestamp should be handled"
-			);
-		}
-		Err(_) => {
-			assert!(true, "Far future timestamp may cause error");
-		}
-	}
-
-	// Current time (should always work)
-	let now = Utc::now();
-	let json_body_now = format!(r#"{{"name":"Now","created_at":"{}"}}"#, now.to_rfc3339());
-	let request_now = create_post_request("/items/", &json_body_now);
-
-	let result_now = view.dispatch(request_now).await;
-	assert!(result_now.is_ok(), "Current timestamp should always work");
+	// Assert: the response and persisted row retain the exact instant after offset conversion.
+	assert_eq!(response.status, StatusCode::CREATED);
+	let item: EdgeTestItem = serde_json::from_slice(&response.body).unwrap();
+	assert_eq!(item.created_at, Some(expected));
+	let sql = Query::select()
+		.column(EdgeTestItems::CreatedAt)
+		.from(EdgeTestItems::Table.into_iden())
+		.and_where(Expr::col(EdgeTestItems::Id).eq(item.id.unwrap()))
+		.to_string(PostgresQueryBuilder::new());
+	let stored: DateTime<Utc> = sqlx::query_scalar(&sql)
+		.fetch_one(pool.as_ref())
+		.await
+		.unwrap();
+	assert_eq!(stored, expected);
 }
 
 /// Test: List operation with edge case data

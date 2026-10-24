@@ -423,7 +423,7 @@ async fn test_get_list_select_related_uses_custom_to_field_physical_columns() {
 		.expect_fetch_all()
 		.withf(|sql, params| {
 			sql == "SELECT \"admin_list_select_related_to_field_sources_5992\".*, COUNT(*) OVER() AS \"__reinhardt_total_count\", \"__reinhardt_related_table_0\".\"id\" AS \"__reinhardt_related_0__id\", \"__reinhardt_related_table_0\".\"target_slug_column_5992\" AS \"__reinhardt_related_0__target_slug_column_5992\" FROM \"admin_list_select_related_to_field_sources_5992\" LEFT JOIN \"admin_list_select_related_to_field_targets_5992\" AS \"__reinhardt_related_table_0\" ON \"admin_list_select_related_to_field_sources_5992\".\"source_target_slug_column_5992\" = \"__reinhardt_related_table_0\".\"target_slug_column_5992\" ORDER BY \"admin_list_select_related_to_field_sources_5992\".\"id\" DESC LIMIT $1 OFFSET $2"
-				&& params.as_slice() == [QueryValue::Int(25), QueryValue::Int(0)]
+				&& params.as_slice() == [QueryValue::Uint(25), QueryValue::Uint(0)]
 		})
 		.times(1)
 		.returning(|_, _| {
@@ -514,7 +514,7 @@ async fn test_get_list_computed_column_maps_sort_to_real_database_field() {
 		.expect_fetch_all()
 		.withf(|sql, params| {
 			sql == "SELECT \"admin_computed_columns_5993\".*, COUNT(*) OVER() AS \"__reinhardt_total_count\" FROM \"admin_computed_columns_5993\" ORDER BY \"admin_computed_columns_5993\".\"created_at\" DESC LIMIT $1 OFFSET $2"
-				&& params.as_slice() == [QueryValue::Int(25), QueryValue::Int(0)]
+				&& params.as_slice() == [QueryValue::Uint(25), QueryValue::Uint(0)]
 		})
 		.times(1)
 		.returning(|_, _| {
@@ -670,8 +670,8 @@ async fn test_get_list_date_hierarchy_choices_preserve_full_scope() {
 						QueryValue::String("visible".to_string()),
 						QueryValue::String("2024-01-01".to_string()),
 						QueryValue::String("2025-01-01".to_string()),
-						QueryValue::Int(100),
-						QueryValue::Int(0),
+						QueryValue::Uint(100),
+						QueryValue::Uint(0),
 					]
 		})
 		.times(1)
@@ -806,8 +806,8 @@ async fn test_get_list_date_hierarchy_uses_custom_db_columns_for_date_and_dateti
 					== [
 						QueryValue::String("2024-01-01".to_string()),
 						QueryValue::String("2025-01-01".to_string()),
-						QueryValue::Int(100),
-						QueryValue::Int(0),
+						QueryValue::Uint(100),
+						QueryValue::Uint(0),
 					]
 		})
 		.times(1)
@@ -856,8 +856,8 @@ async fn test_get_list_date_hierarchy_uses_custom_db_columns_for_date_and_dateti
 					== [
 						QueryValue::NaiveTimestamp(start),
 						QueryValue::NaiveTimestamp(end),
-						QueryValue::Int(100),
-						QueryValue::Int(0),
+						QueryValue::Uint(100),
+						QueryValue::Uint(0),
 					]
 		})
 		.times(1)

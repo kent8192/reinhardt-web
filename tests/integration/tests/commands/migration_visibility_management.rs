@@ -276,6 +276,88 @@ async fn postgres_collected_sql_matches_executor_visible_plan(
 
 #[rstest]
 #[tokio::test]
+async fn sql_assets_execute_preview_show_and_reverse_postgres_do_block(
+	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
+) {
+	use reinhardt_commands::MigrateCommand;
+	// Arrange
+	let (_container, pool, _port, url) = postgres_container.await;
+	let project = TempDir::new_in("/tmp").unwrap();
+	let root = project.path().join("migrations");
+	let app = root.join("assets");
+	std::fs::create_dir_all(app.join("sql")).unwrap();
+	let forward = "-- complete dollar quoted payload\r\nDO $guard$\nBEGIN\n  CREATE TABLE sql_asset_guard (value TEXT);\n  INSERT INTO sql_asset_guard VALUES ('semi;colon');\nEND\n$guard$;\n";
+	let reverse = "DO $undo$ BEGIN DROP TABLE sql_asset_guard; END $undo$;\n";
+	std::fs::write(app.join("sql/forward.sql"), forward).unwrap();
+	std::fs::write(app.join("sql/reverse.sql"), reverse).unwrap();
+	std::fs::write(
+		app.join("0001_guard.rs"),
+		r#"// reinhardt-migration-source: 1
+fn migration() -> Migration {
+    Migration::new("0001_guard", "assets").database_only(true).add_operation(Operation::RunSQL {
+        sql: include_str!("sql/forward.sql").into(),
+        reverse_sql: Some(include_str!("sql/reverse.sql").into()),
+    })
+}
+"#,
+	)
+	.unwrap();
+	let writer = Arc::new(RecordingWriter::default());
+	let mut preview = CommandContext::new(vec!["assets".into(), "0001".into()]);
+	preview.set_option("database-url".into(), url.clone());
+	preview.set_option("migrations-dir".into(), root.to_string_lossy().into_owned());
+	// Act: preview must retain the entire block without executing it.
+	SqlMigrateCommand::with_writer(writer.clone())
+		.execute(&preview)
+		.await
+		.unwrap();
+	let sql = writer.take().join("");
+	assert!(sql.contains(forward), "{sql}");
+	let exists: bool = sqlx::query_scalar("SELECT to_regclass('sql_asset_guard') IS NOT NULL")
+		.fetch_one(pool.as_ref())
+		.await
+		.unwrap();
+	assert!(!exists);
+	let mut migrate = CommandContext::new(vec!["assets".into()]);
+	migrate.set_option("database".into(), url.clone());
+	migrate.set_option("migrations-dir".into(), root.to_string_lossy().into_owned());
+	MigrateCommand.execute(&migrate).await.unwrap();
+	let value: String = sqlx::query_scalar("SELECT value FROM sql_asset_guard")
+		.fetch_one(pool.as_ref())
+		.await
+		.unwrap();
+	assert_eq!(value, "semi;colon");
+	let mut show = preview.clone();
+	show.args = vec!["assets".into()];
+	ShowMigrationsCommand::with_writer(writer.clone())
+		.execute(&show)
+		.await
+		.unwrap();
+	assert_eq!(writer.take(), vec!["assets\n [X] 0001_guard\n".to_owned()]);
+	preview.set_option("backwards".into(), "true".into());
+	SqlMigrateCommand::with_writer(writer.clone())
+		.execute(&preview)
+		.await
+		.unwrap();
+	assert!(writer.take().join("").contains(reverse));
+	migrate.args.push("zero".into());
+	MigrateCommand.execute(&migrate).await.unwrap();
+	// Assert
+	let exists: bool = sqlx::query_scalar("SELECT to_regclass('sql_asset_guard') IS NOT NULL")
+		.fetch_one(pool.as_ref())
+		.await
+		.unwrap();
+	assert!(!exists);
+	let recorded: i64 =
+		sqlx::query_scalar("SELECT COUNT(*) FROM reinhardt_migrations WHERE app = 'assets'")
+			.fetch_one(pool.as_ref())
+			.await
+			.unwrap();
+	assert_eq!(recorded, 0);
+}
+
+#[rstest]
+#[tokio::test]
 async fn mysql_collected_sql_matches_executor_visible_plan(
 	#[future] mysql_container: (ContainerAsync<GenericImage>, Arc<MySqlPool>, u16, String),
 ) {

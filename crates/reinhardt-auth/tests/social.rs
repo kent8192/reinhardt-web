@@ -10,6 +10,8 @@ mod config_test;
 mod contextual_backend_test;
 #[path = "social/error_test.rs"]
 mod error_test;
+#[path = "social/github_callback_test.rs"]
+mod github_callback_test;
 #[path = "social/jwks_cache_test.rs"]
 mod jwks_cache_test;
 #[path = "social/oidc_discovery_test.rs"]

@@ -344,6 +344,13 @@ pub mod core {
 	//! keeps the same import path available for shared code that names admin
 	//! core types in signatures erased by server functions or native-only macros.
 
+	/// Asynchronous save hooks for model admins.
+	///
+	/// The client target compiles the same plain-data types as the server so
+	/// shared `ModelAdmin` implementations can name them.
+	pub mod save_hooks;
+	pub use save_hooks::{AdminChange, AdminSaveContext};
+
 	pub use crate::types::{
 		AdminAction, AdminActionOutcome, AdminActionRequest, AdminActionTransaction, AdminDatabase,
 		AdminForm, AdminFormData, AdminFormError, AdminFormErrors, AdminFormMode, AdminFormResult,

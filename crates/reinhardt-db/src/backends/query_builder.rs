@@ -3,8 +3,8 @@
 use std::sync::Arc;
 
 use reinhardt_query::prelude::{
-	Alias, ColumnRef, Expr, ExprTrait, Query, QueryBuilder as RqQueryBuilder, SelectStatement,
-	Value,
+	Alias, ColumnRef, DeleteStatement, Expr, ExprTrait, InsertStatement, Query,
+	QueryBuilder as RqQueryBuilder, SelectStatement, SimpleExpr, UpdateStatement, Value, Values,
 };
 
 use super::{
@@ -12,20 +12,6 @@ use super::{
 	error::{DatabaseError, DatabaseErrorKind, Result},
 	types::{DatabaseType, QueryResult, QueryValue, Row},
 };
-
-/// Quote a SQL identifier for the given database type.
-///
-/// Embedded quote characters are escaped by doubling them to prevent SQL injection.
-fn quote_ident(name: &str, db_type: DatabaseType) -> String {
-	match db_type {
-		DatabaseType::Postgres | DatabaseType::Sqlite => {
-			format!("\"{}\"", name.replace('"', "\"\""))
-		}
-		DatabaseType::Mysql => {
-			format!("`{}`", name.replace('`', "``"))
-		}
-	}
-}
 
 /// Convert QueryValue to reinhardt-query Value
 fn query_value_to_sea_value(qv: &QueryValue) -> Value {
@@ -36,6 +22,7 @@ fn query_value_to_sea_value(qv: &QueryValue) -> Value {
 		QueryValue::Bool(b) => Value::Bool(Some(*b)),
 		QueryValue::Int32(i) => Value::Int(Some(*i)),
 		QueryValue::Int(i) => Value::BigInt(Some(*i)),
+		QueryValue::Uint(i) => Value::BigUnsigned(Some(*i)),
 		QueryValue::Float(f) => Value::Double(Some(*f)),
 		QueryValue::String(s) => Value::String(Some(Box::new(s.clone()))),
 		QueryValue::Bytes(b) => Value::Bytes(Some(Box::new(b.clone()))),
@@ -115,11 +102,172 @@ fn query_value_to_sea_value(qv: &QueryValue) -> Value {
 					.collect(),
 			)),
 		),
+		QueryValue::NullableStringArray(values) => Value::Array(
+			reinhardt_query::value::ArrayType::String,
+			Some(Box::new(
+				values
+					.iter()
+					.cloned()
+					.map(|value| Value::String(value.map(Box::new)))
+					.collect(),
+			)),
+		),
+		QueryValue::NullableIntArray(values) => Value::Array(
+			reinhardt_query::value::ArrayType::Int,
+			Some(Box::new(values.iter().copied().map(Value::Int).collect())),
+		),
+		QueryValue::NullableBigIntArray(values) => Value::Array(
+			reinhardt_query::value::ArrayType::BigInt,
+			Some(Box::new(
+				values.iter().copied().map(Value::BigInt).collect(),
+			)),
+		),
+		QueryValue::NullableBoolArray(values) => Value::Array(
+			reinhardt_query::value::ArrayType::Bool,
+			Some(Box::new(values.iter().copied().map(Value::Bool).collect())),
+		),
+		QueryValue::NullableFloatArray(values) => Value::Array(
+			reinhardt_query::value::ArrayType::Float,
+			Some(Box::new(values.iter().copied().map(Value::Float).collect())),
+		),
+		QueryValue::NullableDoubleArray(values) => Value::Array(
+			reinhardt_query::value::ArrayType::Double,
+			Some(Box::new(
+				values.iter().copied().map(Value::Double).collect(),
+			)),
+		),
+		QueryValue::NullableUuidArray(values) => Value::Array(
+			reinhardt_query::value::ArrayType::Uuid,
+			Some(Box::new(
+				values
+					.iter()
+					.copied()
+					.map(|value| Value::Uuid(value.map(Box::new)))
+					.collect(),
+			)),
+		),
 		// NOW() is handled specially in build() methods, should not reach here
 		QueryValue::Now => {
 			panic!("QueryValue::Now should be handled in build() method, not converted to Value")
 		}
 	}
+}
+
+fn query_value_expression(value: &QueryValue) -> SimpleExpr {
+	if matches!(value, QueryValue::Now) {
+		Expr::current_timestamp().into_simple_expr()
+	} else {
+		Expr::val(query_value_to_sea_value(value)).into_simple_expr()
+	}
+}
+
+fn native_builder_expression(value: &QueryValue, backend: DatabaseType) -> Result<SimpleExpr> {
+	// Preserve the raw builder's JSON-text array storage outside PostgreSQL.
+	if backend != DatabaseType::Postgres {
+		super::types::validate_json_array(value)?;
+	}
+	let json = if backend != DatabaseType::Postgres {
+		match value {
+			QueryValue::StringArray(values) => Some(serde_json::to_string(values)),
+			QueryValue::IntArray(values) => Some(serde_json::to_string(values)),
+			QueryValue::BigIntArray(values) => Some(serde_json::to_string(values)),
+			QueryValue::BoolArray(values) => Some(serde_json::to_string(values)),
+			QueryValue::FloatArray(values) => Some(serde_json::to_string(values)),
+			QueryValue::DoubleArray(values) => Some(serde_json::to_string(values)),
+			QueryValue::UuidArray(values) => Some(serde_json::to_string(values)),
+			QueryValue::NullableStringArray(values) => Some(serde_json::to_string(values)),
+			QueryValue::NullableIntArray(values) => Some(serde_json::to_string(values)),
+			QueryValue::NullableBigIntArray(values) => Some(serde_json::to_string(values)),
+			QueryValue::NullableBoolArray(values) => Some(serde_json::to_string(values)),
+			QueryValue::NullableFloatArray(values) => Some(serde_json::to_string(values)),
+			QueryValue::NullableDoubleArray(values) => Some(serde_json::to_string(values)),
+			QueryValue::NullableUuidArray(values) => Some(serde_json::to_string(values)),
+			_ => None,
+		}
+	} else {
+		None
+	};
+	if let Some(json) = json {
+		let json = json.map_err(|error| {
+			DatabaseError::new(
+				DatabaseErrorKind::Query,
+				format!("failed to encode builder array: {error}"),
+			)
+			.with_source(error)
+		})?;
+		return Ok(Expr::val(json).into_simple_expr());
+	}
+	Ok(query_value_expression(value))
+}
+
+enum BuilderPredicate {
+	Equal(String, QueryValue),
+	In(String, Vec<QueryValue>),
+}
+
+impl BuilderPredicate {
+	fn expression_with(
+		&self,
+		convert: &impl Fn(&QueryValue) -> Result<SimpleExpr>,
+	) -> Result<SimpleExpr> {
+		match self {
+			Self::Equal(column, value)
+				if !matches!(value, QueryValue::Now)
+					&& query_value_to_sea_value(value).is_null() =>
+			{
+				Ok(Expr::col(Alias::new(column)).is_null())
+			}
+			Self::Equal(column, value) => Ok(Expr::col(Alias::new(column)).eq(convert(value)?)),
+			Self::In(column, values) => Ok(Expr::col(Alias::new(column))
+				.is_in(values.iter().map(convert).collect::<Result<Vec<_>>>()?)),
+		}
+	}
+
+	fn values(&self) -> &[QueryValue] {
+		match self {
+			Self::Equal(_, value) => std::slice::from_ref(value),
+			Self::In(_, values) => values,
+		}
+	}
+}
+
+fn legacy_builder_parameters<'a>(values: impl Iterator<Item = &'a QueryValue>) -> Vec<QueryValue> {
+	values
+		.filter(|value| {
+			!matches!(value, QueryValue::Now) && !query_value_to_sea_value(value).is_null()
+		})
+		.cloned()
+		.collect()
+}
+
+enum NativeBuilderStatement {
+	Insert(Box<InsertStatement>),
+	Update(UpdateStatement),
+	Select(Box<SelectStatement>),
+	Delete(DeleteStatement),
+}
+
+fn native_builder_pair(
+	backend: DatabaseType,
+	statement: NativeBuilderStatement,
+) -> Result<(String, Values)> {
+	use reinhardt_query::prelude::{MySqlQueryBuilder, PostgresQueryBuilder, SqliteQueryBuilder};
+	macro_rules! build {
+		($statement:expr, $method:ident) => {
+			match backend {
+				DatabaseType::Postgres => PostgresQueryBuilder.$method($statement),
+				DatabaseType::Mysql => MySqlQueryBuilder.$method($statement),
+				DatabaseType::Sqlite => SqliteQueryBuilder.$method($statement),
+			}
+		};
+	}
+	match &statement {
+		NativeBuilderStatement::Insert(stmt) => build!(stmt, build_insert_checked),
+		NativeBuilderStatement::Update(stmt) => build!(stmt, build_update_checked),
+		NativeBuilderStatement::Select(stmt) => build!(stmt, build_select_checked),
+		NativeBuilderStatement::Delete(stmt) => build!(stmt, build_delete_checked),
+	}
+	.map_err(|error| DatabaseError::new(DatabaseErrorKind::Query, error.to_string()).into())
 }
 
 /// Conflict target specifying which constraint or columns trigger the conflict
@@ -142,7 +290,8 @@ pub enum OnConflictAction {
 	},
 	/// Update on conflict (PostgreSQL: ON CONFLICT DO UPDATE, MySQL: ON DUPLICATE KEY UPDATE)
 	DoUpdate {
-		/// Conflict columns (PostgreSQL only)
+		/// Conflict columns (PostgreSQL and SQLite). SQLite 3.35.0+ accepts
+		/// `None` to match any unique constraint.
 		conflict_columns: Option<Vec<String>>,
 		/// Columns to update on conflict
 		update_columns: Vec<String>,
@@ -242,14 +391,18 @@ impl OnConflictClause {
 
 	/// Create a new ON CONFLICT clause with no specific target
 	///
-	/// This matches any unique constraint violation. Note that for SQLite
-	/// with DO UPDATE, a target is required.
+	/// This matches any unique constraint violation. SQLite 3.35.0+ supports
+	/// targetless `DO UPDATE`; PostgreSQL requires a target for `DO UPDATE`.
+	/// See the [SQLite UPSERT documentation](https://www.sqlite.org/lang_upsert.html).
 	///
 	/// # Example
 	///
-	/// ```rust,ignore
-	/// OnConflictClause::any()
-	///     .do_nothing()
+	/// ```rust
+	/// use reinhardt_db::backends::query_builder::OnConflictClause;
+	///
+	/// let ignore = OnConflictClause::any().do_nothing();
+	/// // Update on any unique constraint violation on SQLite 3.35.0+.
+	/// let upsert = OnConflictClause::any().do_update(vec!["name"]);
 	/// ```
 	pub fn any() -> Self {
 		Self {
@@ -260,6 +413,10 @@ impl OnConflictClause {
 	}
 
 	/// Set the action to DO NOTHING on conflict
+	///
+	/// PostgreSQL and SQLite preserve the specified uniqueness target. With
+	/// `any()`, any uniqueness conflict is ignored. SQLite still reports NOT NULL,
+	/// CHECK, and foreign-key violations. MySQL uses `INSERT IGNORE`.
 	///
 	/// # Example
 	///
@@ -336,6 +493,128 @@ impl OnConflictClause {
 	}
 }
 
+// The fluent configuration takes precedence over the legacy conflict API.
+fn apply_insert_conflict(
+	statement: &mut InsertStatement,
+	backend: DatabaseType,
+	legacy: Option<&OnConflictAction>,
+	fluent: Option<&OnConflictClause>,
+	insert_from_select: bool,
+) -> Result<()> {
+	use reinhardt_query::OnConflict;
+	let legacy_target;
+	let (target, update_columns, condition) = if let Some(clause) = fluent {
+		let updates = match &clause.action {
+			OnConflictClauseAction::DoNothing => None,
+			OnConflictClauseAction::DoUpdate { update_columns } => Some(update_columns),
+		};
+		(
+			clause.target.as_ref(),
+			updates,
+			clause.where_condition.as_ref(),
+		)
+	} else if let Some(action) = legacy {
+		let (columns, updates) = match action {
+			OnConflictAction::DoNothing { conflict_columns } => (conflict_columns, None),
+			OnConflictAction::DoUpdate {
+				conflict_columns,
+				update_columns,
+			} => (conflict_columns, Some(update_columns)),
+		};
+		legacy_target = columns
+			.as_ref()
+			.filter(|columns| {
+				// The legacy SELECT API accepts an empty SQLite target as targetless.
+				!insert_from_select || backend != DatabaseType::Sqlite || !columns.is_empty()
+			})
+			.map(|columns| ConflictTarget::Columns(columns.clone()));
+		(legacy_target.as_ref(), updates, None)
+	} else {
+		return Ok(());
+	};
+
+	if matches!(target, Some(ConflictTarget::Constraint(_))) && backend != DatabaseType::Postgres {
+		return Err(DatabaseError::new(
+			DatabaseErrorKind::Unsupported,
+			match backend {
+				DatabaseType::Mysql => "MySQL does not support named conflict targets",
+				DatabaseType::Sqlite => "SQLite does not support ON CONFLICT ON CONSTRAINT syntax",
+				DatabaseType::Postgres => {
+					unreachable!("PostgreSQL constraint targets are supported")
+				}
+			},
+		)
+		.into());
+	}
+	if condition.is_some() && backend == DatabaseType::Mysql {
+		return Err(DatabaseError::new(
+			DatabaseErrorKind::Unsupported,
+			"MySQL does not support conditional ON DUPLICATE KEY UPDATE",
+		)
+		.into());
+	}
+	if condition.is_some() && update_columns.is_none() {
+		return Err(DatabaseError::new(
+			DatabaseErrorKind::Syntax,
+			"ON CONFLICT DO NOTHING cannot have an update condition",
+		)
+		.into());
+	}
+	if update_columns.is_none() {
+		match backend {
+			DatabaseType::Mysql => {
+				statement.mysql_ignore();
+				return Ok(());
+			}
+			DatabaseType::Sqlite if fluent.is_none() => {
+				statement.sqlite_or_ignore();
+				return Ok(());
+			}
+			DatabaseType::Postgres | DatabaseType::Sqlite => {}
+		}
+	}
+	if backend == DatabaseType::Sqlite
+		&& matches!(target, Some(ConflictTarget::Columns(columns)) if columns.is_empty())
+	{
+		return Err(DatabaseError::new(
+			DatabaseErrorKind::Syntax,
+			if update_columns.is_some() {
+				"SQLite ON CONFLICT requires non-empty conflict_columns for DO UPDATE"
+			} else {
+				"SQLite ON CONFLICT requires non-empty conflict_columns for DO NOTHING"
+			},
+		)
+		.into());
+	}
+	if update_columns.is_some_and(|columns| columns.is_empty()) {
+		return Err(DatabaseError::new(
+			DatabaseErrorKind::Syntax,
+			if fluent.is_some() {
+				"update_columns cannot be empty for OnConflictClauseAction::DoUpdate"
+			} else {
+				"update_columns cannot be empty for OnConflictAction::DoUpdate"
+			},
+		)
+		.into());
+	}
+	let mut conflict = match target {
+		Some(ConflictTarget::Columns(columns)) => {
+			OnConflict::columns(columns.iter().map(Alias::new))
+		}
+		Some(ConflictTarget::Constraint(name)) => OnConflict::constraint(Alias::new(name)),
+		None => OnConflict::new(),
+	};
+	if let Some(columns) = update_columns {
+		conflict = conflict.update_columns(columns.iter().map(Alias::new));
+	}
+	if let Some(condition) = condition {
+		// This explicit public API accepts caller-owned SQL, never a framework template.
+		conflict = conflict.action_and_where(Expr::cust(condition));
+	}
+	statement.on_conflict(conflict);
+	Ok(())
+}
+
 /// INSERT query builder
 pub struct InsertBuilder {
 	backend: Arc<dyn DatabaseBackend>,
@@ -396,7 +675,8 @@ impl InsertBuilder {
 	///
 	/// # Arguments
 	///
-	/// * `conflict_columns` - Columns to check for conflict (PostgreSQL only)
+	/// * `conflict_columns` - Columns to check for conflict (PostgreSQL and SQLite).
+	///   `None` matches any unique constraint on SQLite 3.35.0+.
 	/// * `update_columns` - Columns to update on conflict
 	///
 	/// # Example
@@ -456,372 +736,86 @@ impl InsertBuilder {
 		self
 	}
 
-	/// Builds the final result.
-	pub fn build(&self) -> Result<(String, Vec<QueryValue>)> {
-		use super::types::DatabaseType;
-		use reinhardt_query::prelude::{
-			MySqlQueryBuilder, PostgresQueryBuilder, SqliteQueryBuilder,
-		};
-
-		let mut stmt = Query::insert()
+	fn statement_with(
+		&self,
+		convert: impl Fn(&QueryValue) -> Result<SimpleExpr>,
+	) -> Result<InsertStatement> {
+		let mut statement = Query::insert()
 			.into_table(Alias::new(&self.table))
 			.to_owned();
-
-		// Add columns
-		let column_refs: Vec<Alias> = self.columns.iter().map(Alias::new).collect();
-		stmt.columns(column_refs);
-
-		// Add values
+		statement.columns(self.columns.iter().map(Alias::new));
 		if !self.values.is_empty() {
-			let sea_values: Vec<Value> = self.values.iter().map(query_value_to_sea_value).collect();
-			stmt.values(sea_values).map_err(|e| {
+			let values = self
+				.values
+				.iter()
+				.map(convert)
+				.collect::<Result<Vec<_>>>()?;
+			statement.values_expr(values).map_err(|error| {
 				DatabaseError::new(
 					DatabaseErrorKind::Query,
-					format!("failed to set insert values (column/value count mismatch): {e}"),
+					format!("failed to set insert values (column/value count mismatch): {error}"),
 				)
 			})?;
 		}
-
-		// Add RETURNING clause if supported
-		if let Some(ref cols) = self.returning {
-			let col_refs: Vec<Alias> = cols.iter().map(Alias::new).collect();
-			stmt.returning(col_refs);
+		if let Some(columns) = &self.returning {
+			statement.returning(columns.iter().map(Alias::new));
 		}
-
-		// Build SQL based on database type
-		let mut sql = match self.backend.database_type() {
-			DatabaseType::Postgres => PostgresQueryBuilder.build_insert(&stmt).0,
-			DatabaseType::Mysql => MySqlQueryBuilder.build_insert(&stmt).0,
-			DatabaseType::Sqlite => SqliteQueryBuilder.build_insert(&stmt).0,
-		};
-
-		// Add ON CONFLICT clause if specified
-		// Prefer the new OnConflictClause over the legacy OnConflictAction
-		if let Some(ref clause) = self.on_conflict_clause {
-			sql = self.apply_new_on_conflict_clause(sql, clause)?;
-		} else if let Some(ref on_conflict) = self.on_conflict {
-			sql = self.apply_on_conflict_clause(sql, on_conflict)?;
-		}
-
-		Ok((sql, self.values.clone()))
+		apply_insert_conflict(
+			&mut statement,
+			self.backend.database_type(),
+			self.on_conflict.as_ref(),
+			self.on_conflict_clause.as_ref(),
+			false,
+		)?;
+		Ok(statement)
 	}
 
-	/// Apply ON CONFLICT clause to SQL string based on database type
-	fn apply_on_conflict_clause(
-		&self,
-		mut sql: String,
-		action: &OnConflictAction,
-	) -> Result<String> {
-		let db_type = self.backend.database_type();
-
-		match db_type {
-			DatabaseType::Postgres => match action {
-				OnConflictAction::DoNothing { conflict_columns } => {
-					if let Some(cols) = conflict_columns {
-						let cols_str = cols
-							.iter()
-							.map(|c| quote_ident(c, db_type))
-							.collect::<Vec<_>>()
-							.join(", ");
-						sql.push_str(&format!(" ON CONFLICT ({}) DO NOTHING", cols_str));
-					} else {
-						sql.push_str(" ON CONFLICT DO NOTHING");
-					}
-				}
-				OnConflictAction::DoUpdate {
-					conflict_columns,
-					update_columns,
-				} => {
-					let conflict_str = if let Some(cols) = conflict_columns {
-						let quoted = cols
-							.iter()
-							.map(|c| quote_ident(c, db_type))
-							.collect::<Vec<_>>()
-							.join(", ");
-						format!("({})", quoted)
-					} else {
-						String::new()
-					};
-
-					let update_str = update_columns
-						.iter()
-						.map(|col| {
-							let q = quote_ident(col, db_type);
-							format!("{} = EXCLUDED.{}", q, q)
-						})
-						.collect::<Vec<_>>()
-						.join(", ");
-
-					sql.push_str(&format!(
-						" ON CONFLICT {} DO UPDATE SET {}",
-						conflict_str, update_str
-					));
-				}
-			},
-			DatabaseType::Mysql => {
-				match action {
-					OnConflictAction::DoNothing { .. } => {
-						// MySQL: INSERT IGNORE
-						sql = sql.replacen("INSERT", "INSERT IGNORE", 1);
-					}
-					OnConflictAction::DoUpdate {
-						conflict_columns: _,
-						update_columns,
-					} => {
-						// MySQL: ON DUPLICATE KEY UPDATE
-						let update_str = update_columns
-							.iter()
-							.map(|col| {
-								let q = quote_ident(col, db_type);
-								format!("{} = VALUES({})", q, q)
-							})
-							.collect::<Vec<_>>()
-							.join(", ");
-
-						sql.push_str(&format!(" ON DUPLICATE KEY UPDATE {}", update_str));
-					}
-				}
-			}
-			DatabaseType::Sqlite => {
-				match action {
-					OnConflictAction::DoNothing { .. } => {
-						// SQLite: INSERT OR IGNORE
-						sql = sql.replacen("INSERT", "INSERT OR IGNORE", 1);
-					}
-					OnConflictAction::DoUpdate {
-						conflict_columns,
-						update_columns,
-					} => {
-						// SQLite: ON CONFLICT DO UPDATE (SQLite 3.24.0+)
-						let conflict_str = if let Some(cols) = conflict_columns {
-							if cols.is_empty() {
-								return Err(DatabaseError::new(
-									DatabaseErrorKind::Syntax,
-									"SQLite ON CONFLICT requires non-empty conflict_columns for DO UPDATE".to_string(),
-								)
-								.into());
-							}
-							let quoted = cols
-								.iter()
-								.map(|c| quote_ident(c, db_type))
-								.collect::<Vec<_>>()
-								.join(", ");
-							format!("({})", quoted)
-						} else {
-							// SQLite requires conflict target - skip ON CONFLICT clause
-							return Ok(sql);
-						};
-
-						if update_columns.is_empty() {
-							return Err(DatabaseError::new(
-								DatabaseErrorKind::Syntax,
-								"update_columns cannot be empty for OnConflictAction::DoUpdate"
-									.to_string(),
-							)
-							.into());
-						}
-
-						let update_str = update_columns
-							.iter()
-							.map(|col| {
-								let q = quote_ident(col, db_type);
-								// SQLite uses lowercase 'excluded'
-								format!("{} = excluded.{}", q, q)
-							})
-							.collect::<Vec<_>>()
-							.join(", ");
-
-						sql.push_str(&format!(
-							" ON CONFLICT {} DO UPDATE SET {}",
-							conflict_str, update_str
-						));
-					}
-				}
-			}
-		}
-
-		Ok(sql)
+	fn build_native(&self) -> Result<(String, Values)> {
+		let backend = self.backend.database_type();
+		native_builder_pair(
+			backend,
+			NativeBuilderStatement::Insert(Box::new(
+				self.statement_with(|value| native_builder_expression(value, backend))?,
+			)),
+		)
 	}
 
-	/// Apply new OnConflictClause to SQL string based on database type
-	///
-	/// This method handles the enhanced ON CONFLICT clause with support for:
-	/// - Column-based conflict targets
-	/// - Constraint-based conflict targets (PostgreSQL only)
-	/// - WHERE clauses for conditional updates
-	fn apply_new_on_conflict_clause(
-		&self,
-		mut sql: String,
-		clause: &OnConflictClause,
-	) -> Result<String> {
-		let db_type = self.backend.database_type();
-
-		match db_type {
-			DatabaseType::Postgres => {
-				// Build conflict target with quoted identifiers
-				let target_str = match &clause.target {
-					Some(ConflictTarget::Columns(cols)) => {
-						let quoted = cols
-							.iter()
-							.map(|c| quote_ident(c, db_type))
-							.collect::<Vec<_>>()
-							.join(", ");
-						format!("({})", quoted)
-					}
-					Some(ConflictTarget::Constraint(name)) => {
-						format!("ON CONSTRAINT {}", quote_ident(name, db_type))
-					}
-					None => String::new(),
-				};
-
-				match &clause.action {
-					OnConflictClauseAction::DoNothing => {
-						if target_str.is_empty() {
-							sql.push_str(" ON CONFLICT DO NOTHING");
-						} else {
-							sql.push_str(&format!(" ON CONFLICT {} DO NOTHING", target_str));
-						}
-					}
-					OnConflictClauseAction::DoUpdate { update_columns } => {
-						let update_str = update_columns
-							.iter()
-							.map(|col| {
-								let q = quote_ident(col, db_type);
-								format!("{} = EXCLUDED.{}", q, q)
-							})
-							.collect::<Vec<_>>()
-							.join(", ");
-
-						let mut clause_str =
-							format!(" ON CONFLICT {} DO UPDATE SET {}", target_str, update_str);
-
-						// Add WHERE clause if specified
-						if let Some(ref where_cond) = clause.where_condition {
-							clause_str.push_str(&format!(" WHERE {}", where_cond));
-						}
-
-						sql.push_str(&clause_str);
-					}
-				}
-			}
-			DatabaseType::Mysql => {
-				// MySQL does not support conflict targets or WHERE clauses
-				// Warn if constraint-based target is used
-				if let Some(ConflictTarget::Constraint(_)) = &clause.target {
-					// MySQL doesn't support ON CONFLICT ON CONSTRAINT
-					// Fall back to standard MySQL behavior
-				}
-
-				match &clause.action {
-					OnConflictClauseAction::DoNothing => {
-						sql = sql.replacen("INSERT", "INSERT IGNORE", 1);
-					}
-					OnConflictClauseAction::DoUpdate { update_columns } => {
-						let update_str = update_columns
-							.iter()
-							.map(|col| {
-								let q = quote_ident(col, db_type);
-								format!("{} = VALUES({})", q, q)
-							})
-							.collect::<Vec<_>>()
-							.join(", ");
-
-						sql.push_str(&format!(" ON DUPLICATE KEY UPDATE {}", update_str));
-						// Note: MySQL does not support WHERE clause in ON DUPLICATE KEY UPDATE
-					}
-				}
-			}
-			DatabaseType::Sqlite => {
-				// SQLite uses similar syntax to PostgreSQL but with lowercase 'excluded'
-				match &clause.action {
-					OnConflictClauseAction::DoNothing => {
-						sql = sql.replacen("INSERT", "INSERT OR IGNORE", 1);
-					}
-					OnConflictClauseAction::DoUpdate { update_columns } => {
-						// SQLite requires conflict columns for DO UPDATE
-						let conflict_str = match &clause.target {
-							Some(ConflictTarget::Columns(cols)) => {
-								if cols.is_empty() {
-									return Err(DatabaseError::new(
-										DatabaseErrorKind::Syntax,
-										"SQLite ON CONFLICT requires non-empty conflict_columns for DO UPDATE".to_string(),
-									)
-									.into());
-								}
-								let quoted = cols
-									.iter()
-									.map(|c| quote_ident(c, db_type))
-									.collect::<Vec<_>>()
-									.join(", ");
-								format!("({})", quoted)
-							}
-							Some(ConflictTarget::Constraint(_)) => {
-								// SQLite doesn't support ON CONSTRAINT syntax
-								return Err(DatabaseError::new(
-									DatabaseErrorKind::Unsupported,
-									"SQLite does not support ON CONFLICT ON CONSTRAINT syntax"
-										.to_string(),
-								)
-								.into());
-							}
-							None => {
-								// SQLite requires conflict target for DO UPDATE
-								return Ok(sql);
-							}
-						};
-
-						if update_columns.is_empty() {
-							return Err(DatabaseError::new(
-								DatabaseErrorKind::Syntax,
-								"update_columns cannot be empty for OnConflictClauseAction::DoUpdate".to_string(),
-							)
-							.into());
-						}
-
-						let update_str = update_columns
-							.iter()
-							.map(|col| {
-								let q = quote_ident(col, db_type);
-								// SQLite uses lowercase 'excluded'
-								format!("{} = excluded.{}", q, q)
-							})
-							.collect::<Vec<_>>()
-							.join(", ");
-
-						let mut clause_str =
-							format!(" ON CONFLICT {} DO UPDATE SET {}", conflict_str, update_str);
-
-						// Add WHERE clause if specified
-						if let Some(ref where_cond) = clause.where_condition {
-							clause_str.push_str(&format!(" WHERE {}", where_cond));
-						}
-
-						sql.push_str(&clause_str);
-					}
-				}
-			}
-		}
-
-		Ok(sql)
+	/// Build SQL and legacy parameters for callers of the raw API.
+	/// NULL and current-time expressions do not consume argument slots.
+	pub fn build(&self) -> Result<(String, Vec<QueryValue>)> {
+		let statement = self.statement_with(|value| Ok(query_value_expression(value)))?;
+		let (sql, _) = native_builder_pair(
+			self.backend.database_type(),
+			NativeBuilderStatement::Insert(Box::new(statement)),
+		)?;
+		Ok((sql, legacy_builder_parameters(self.values.iter())))
 	}
 
-	/// Executes the operation.
+	/// Execute the checked typed statement and its exact renderer arguments.
 	pub async fn execute(&self) -> Result<QueryResult> {
-		let (sql, params) = self.build()?;
-		self.backend.execute(&sql, params).await
+		self.backend
+			.execute_generated(self.build_native()?, None)
+			.await
 	}
 
-	/// Fetches one.
+	/// Fetch a row from the checked typed statement and exact renderer arguments.
 	pub async fn fetch_one(&self) -> Result<Row> {
-		let (sql, params) = self.build()?;
-		self.backend.fetch_one(&sql, params).await
+		self.backend
+			.fetch_one_generated(self.build_native()?, None)
+			.await
 	}
 
 	/// Convert to INSERT FROM SELECT builder
 	///
 	/// This method is mutually exclusive with `value()`. When `from_select()` is
 	/// called, all previously added values are discarded and the SELECT statement
-	/// is used as the source of data.
+	/// is used as the source of data. RETURNING and both legacy and fluent conflict
+	/// settings are retained. A fluent `OnConflictClause` takes precedence over
+	/// legacy conflict settings, as it does for a VALUES insert.
+	///
+	/// SQLite UPSERT sources are wrapped in a derived table with `WHERE TRUE` to
+	/// disambiguate the conflict clause while preserving SELECT filters, ordering,
+	/// limits, and compound queries.
 	///
 	/// # Arguments
 	///
@@ -830,13 +824,30 @@ impl InsertBuilder {
 	///
 	/// # Example
 	///
-	/// ```rust,ignore
-	/// let select = Query::select()
-	///     .columns([Alias::new("id"), Alias::new("name")])
-	///     .from(Alias::new("source_table"))
-	///     .to_owned();
+	/// ```rust
+	/// # #[cfg(feature = "sqlite")]
+	/// # #[tokio::main]
+	/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+	/// use std::sync::Arc;
+	/// use reinhardt_db::backends::{
+	///     dialect::SqliteBackend,
+	///     query_builder::{InsertBuilder, OnConflictClause},
+	/// };
+	/// use reinhardt_query::prelude::{Expr, Query};
 	///
-	/// builder.from_select(vec!["id", "name"], select)
+	/// let pool = sqlx::SqlitePool::connect("sqlite::memory:").await?;
+	/// let backend = Arc::new(SqliteBackend::new(pool));
+	/// let select = Query::select().expr(Expr::val(4_i64)).to_owned();
+	/// let (sql, params) = InsertBuilder::new(backend, "users")
+	///     .on_conflict(OnConflictClause::columns(vec!["id"]).do_update(vec!["id"]))
+	///     .from_select(vec!["id"], select)
+	///     .build();
+	/// assert_eq!(sql, "INSERT INTO \"users\" (\"id\") SELECT 4 ON CONFLICT (\"id\") DO UPDATE SET \"id\" = EXCLUDED.\"id\"");
+	/// assert!(params.is_empty());
+	/// # Ok(())
+	/// # }
+	/// # #[cfg(not(feature = "sqlite"))]
+	/// # fn main() {}
 	/// ```
 	pub fn from_select(
 		self,
@@ -846,6 +857,7 @@ impl InsertBuilder {
 		InsertFromSelectBuilder::new(self.backend, &self.table, columns, select_stmt)
 			.with_returning(self.returning)
 			.with_on_conflict(self.on_conflict)
+			.with_on_conflict_clause(self.on_conflict_clause)
 	}
 }
 
@@ -880,6 +892,7 @@ pub struct InsertFromSelectBuilder {
 	select_stmt: SelectStatement,
 	returning: Option<Vec<String>>,
 	on_conflict: Option<OnConflictAction>,
+	on_conflict_clause: Option<OnConflictClause>,
 }
 
 impl InsertFromSelectBuilder {
@@ -897,6 +910,7 @@ impl InsertFromSelectBuilder {
 			select_stmt,
 			returning: None,
 			on_conflict: None,
+			on_conflict_clause: None,
 		}
 	}
 
@@ -907,6 +921,17 @@ impl InsertFromSelectBuilder {
 
 	fn with_on_conflict(mut self, on_conflict: Option<OnConflictAction>) -> Self {
 		self.on_conflict = on_conflict;
+		self
+	}
+
+	fn with_on_conflict_clause(mut self, clause: Option<OnConflictClause>) -> Self {
+		self.on_conflict_clause = clause;
+		self
+	}
+
+	/// Configure a fluent conflict target, action and optional caller SQL condition.
+	pub fn on_conflict(mut self, clause: OnConflictClause) -> Self {
+		self.on_conflict_clause = Some(clause);
 		self
 	}
 
@@ -924,7 +949,13 @@ impl InsertFromSelectBuilder {
 		self
 	}
 
-	/// Performs the on conflict do update operation.
+	/// Set ON CONFLICT DO UPDATE behavior.
+	///
+	/// On SQLite 3.35.0+, `None` or an empty conflict column list matches any
+	/// unique constraint. PostgreSQL requires a conflict target.
+	/// SQLite SELECT sources use a typed always-true WHERE guard to avoid the
+	/// [UPSERT parsing ambiguity](https://www.sqlite.org/lang_upsert.html#parsing_ambiguity),
+	/// including targetless updates. Conflict actions precede RETURNING.
 	pub fn on_conflict_do_update(
 		mut self,
 		conflict_columns: Option<Vec<String>>,
@@ -937,162 +968,65 @@ impl InsertFromSelectBuilder {
 		self
 	}
 
-	/// Builds the final result.
+	fn statement(&self) -> Result<InsertStatement> {
+		let mut statement = Query::insert()
+			.into_table(Alias::new(&self.table))
+			.columns(self.columns.iter().map(Alias::new))
+			.from_subquery(self.select_stmt.clone())
+			.to_owned();
+		if let Some(columns) = &self.returning {
+			statement.returning(columns.iter().map(Alias::new));
+		}
+		apply_insert_conflict(
+			&mut statement,
+			self.backend.database_type(),
+			self.on_conflict.as_ref(),
+			self.on_conflict_clause.as_ref(),
+			true,
+		)?;
+		Ok(statement)
+	}
+
+	fn build_native(&self) -> Result<(String, Values)> {
+		native_builder_pair(
+			self.backend.database_type(),
+			NativeBuilderStatement::Insert(Box::new(self.statement()?)),
+		)
+	}
+
+	/// Render a standalone inline statement, preserving the legacy empty parameter list.
+	/// Runtime methods use checked, bound rendering instead.
+	///
+	/// # Panics
+	/// Panics for unsupported or invalid conflict configuration; runtime methods
+	/// return the corresponding checked error before database execution.
 	pub fn build(&self) -> (String, Vec<QueryValue>) {
-		use super::types::DatabaseType;
 		use reinhardt_query::prelude::{
 			MySqlQueryBuilder, PostgresQueryBuilder, QueryStatementBuilder, SqliteQueryBuilder,
 		};
-
-		// Build INSERT ... SELECT manually since InsertStatement doesn't support select_from
-		let db_type = self.backend.database_type();
-
-		let cols_str = self
-			.columns
-			.iter()
-			.map(|c| quote_ident(c, db_type))
-			.collect::<Vec<_>>()
-			.join(", ");
-
-		let select_sql = match db_type {
-			DatabaseType::Postgres => self.select_stmt.to_string(PostgresQueryBuilder),
-			DatabaseType::Mysql => self.select_stmt.to_string(MySqlQueryBuilder),
-			DatabaseType::Sqlite => self.select_stmt.to_string(SqliteQueryBuilder),
+		let statement = self
+			.statement()
+			.expect("invalid INSERT SELECT conflict configuration");
+		let sql = match self.backend.database_type() {
+			DatabaseType::Postgres => statement.to_string(PostgresQueryBuilder),
+			DatabaseType::Mysql => statement.to_string(MySqlQueryBuilder),
+			DatabaseType::Sqlite => statement.to_string(SqliteQueryBuilder),
 		};
-
-		let mut sql = format!(
-			"INSERT INTO {} ({}) {}",
-			quote_ident(&self.table, db_type),
-			cols_str,
-			select_sql
-		);
-
-		// Add RETURNING clause if supported
-		if let Some(ref cols) = self.returning {
-			let returning_str = cols
-				.iter()
-				.map(|c| quote_ident(c, db_type))
-				.collect::<Vec<_>>()
-				.join(", ");
-			sql.push_str(&format!(" RETURNING {}", returning_str));
-		}
-
-		if let Some(ref on_conflict) = self.on_conflict {
-			sql = self.apply_on_conflict_clause(sql, on_conflict);
-		}
-
 		(sql, Vec::new())
 	}
 
-	fn apply_on_conflict_clause(&self, mut sql: String, action: &OnConflictAction) -> String {
-		let db_type = self.backend.database_type();
-
-		match db_type {
-			DatabaseType::Postgres => match action {
-				OnConflictAction::DoNothing { conflict_columns } => {
-					if let Some(cols) = conflict_columns {
-						let cols_str = cols
-							.iter()
-							.map(|c| quote_ident(c, db_type))
-							.collect::<Vec<_>>()
-							.join(", ");
-						sql.push_str(&format!(" ON CONFLICT ({}) DO NOTHING", cols_str));
-					} else {
-						sql.push_str(" ON CONFLICT DO NOTHING");
-					}
-				}
-				OnConflictAction::DoUpdate {
-					conflict_columns,
-					update_columns,
-				} => {
-					let conflict_str = conflict_columns
-						.as_ref()
-						.map(|cols| {
-							let quoted = cols
-								.iter()
-								.map(|c| quote_ident(c, db_type))
-								.collect::<Vec<_>>()
-								.join(", ");
-							format!("({})", quoted)
-						})
-						.unwrap_or_default();
-					let update_str = update_columns
-						.iter()
-						.map(|col| {
-							let q = quote_ident(col, db_type);
-							format!("{} = EXCLUDED.{}", q, q)
-						})
-						.collect::<Vec<_>>()
-						.join(", ");
-					sql.push_str(&format!(
-						" ON CONFLICT {} DO UPDATE SET {}",
-						conflict_str, update_str
-					));
-				}
-			},
-			DatabaseType::Mysql => match action {
-				OnConflictAction::DoNothing { .. } => {
-					sql = sql.replacen("INSERT", "INSERT IGNORE", 1);
-				}
-				OnConflictAction::DoUpdate { update_columns, .. } => {
-					let update_str = update_columns
-						.iter()
-						.map(|col| {
-							let q = quote_ident(col, db_type);
-							format!("{} = VALUES({})", q, q)
-						})
-						.collect::<Vec<_>>()
-						.join(", ");
-					sql.push_str(&format!(" ON DUPLICATE KEY UPDATE {}", update_str));
-				}
-			},
-			DatabaseType::Sqlite => match action {
-				OnConflictAction::DoNothing { .. } => {
-					sql = sql.replacen("INSERT", "INSERT OR IGNORE", 1);
-				}
-				OnConflictAction::DoUpdate {
-					conflict_columns,
-					update_columns,
-				} => {
-					let conflict_str = match conflict_columns {
-						Some(cols) if !cols.is_empty() => {
-							let quoted = cols
-								.iter()
-								.map(|c| quote_ident(c, db_type))
-								.collect::<Vec<_>>()
-								.join(", ");
-							format!("({})", quoted)
-						}
-						_ => return sql,
-					};
-					let update_str = update_columns
-						.iter()
-						.map(|col| {
-							let q = quote_ident(col, db_type);
-							format!("{} = excluded.{}", q, q)
-						})
-						.collect::<Vec<_>>()
-						.join(", ");
-					sql.push_str(&format!(
-						" ON CONFLICT {} DO UPDATE SET {}",
-						conflict_str, update_str
-					));
-				}
-			},
-		}
-		sql
-	}
-
-	/// Executes the operation.
+	/// Execute the checked typed statement and exact renderer arguments.
 	pub async fn execute(&self) -> Result<QueryResult> {
-		let (sql, params) = self.build();
-		self.backend.execute(&sql, params).await
+		self.backend
+			.execute_generated(self.build_native()?, None)
+			.await
 	}
 
-	/// Fetches one.
+	/// Fetch a row from the checked typed statement and exact renderer arguments.
 	pub async fn fetch_one(&self) -> Result<Row> {
-		let (sql, params) = self.build();
-		self.backend.fetch_one(&sql, params).await
+		self.backend
+			.fetch_one_generated(self.build_native()?, None)
+			.await
 	}
 }
 
@@ -1101,7 +1035,7 @@ pub struct UpdateBuilder {
 	backend: Arc<dyn DatabaseBackend>,
 	table: String,
 	sets: Vec<(String, QueryValue)>,
-	wheres: Vec<(String, String, QueryValue)>,
+	wheres: Vec<BuilderPredicate>,
 }
 
 impl UpdateBuilder {
@@ -1115,84 +1049,79 @@ impl UpdateBuilder {
 		}
 	}
 
-	/// Performs the set operation.
+	/// Adds a bound SET value.
 	pub fn set(mut self, column: impl Into<String>, value: impl Into<QueryValue>) -> Self {
 		self.sets.push((column.into(), value.into()));
 		self
 	}
 
-	/// Sets the now.
+	/// Sets the column to the database's `CURRENT_TIMESTAMP` expression.
+	///
+	/// This expression does not consume a bound parameter.
 	pub fn set_now(mut self, column: impl Into<String>) -> Self {
 		self.sets.push((column.into(), QueryValue::Now));
 		self
 	}
 
-	/// Performs the where eq operation.
+	/// Adds an equality predicate, using `IS NULL` for `QueryValue::Null`.
 	pub fn where_eq(mut self, column: impl Into<String>, value: impl Into<QueryValue>) -> Self {
 		self.wheres
-			.push((column.into(), "=".to_string(), value.into()));
+			.push(BuilderPredicate::Equal(column.into(), value.into()));
 		self
 	}
 
-	/// Builds the final result.
+	fn statement_with(
+		&self,
+		convert: impl Fn(&QueryValue) -> Result<SimpleExpr>,
+	) -> Result<UpdateStatement> {
+		let mut stmt = Query::update().table(Alias::new(&self.table)).to_owned();
+		for (column, value) in &self.sets {
+			stmt.value_expr(Alias::new(column), convert(value)?);
+		}
+		for predicate in &self.wheres {
+			stmt.and_where(predicate.expression_with(&convert)?);
+		}
+		Ok(stmt)
+	}
+
+	fn build_native(&self) -> Result<(String, Values)> {
+		let backend = self.backend.database_type();
+		native_builder_pair(
+			backend,
+			NativeBuilderStatement::Update(
+				self.statement_with(|value| native_builder_expression(value, backend))?,
+			),
+		)
+	}
+
+	/// Builds SQL and legacy parameters for callers of the raw API.
 	pub fn build(&self) -> (String, Vec<QueryValue>) {
-		use super::types::DatabaseType;
 		use reinhardt_query::prelude::{
 			MySqlQueryBuilder, PostgresQueryBuilder, SqliteQueryBuilder,
 		};
-
-		// Sentinel placeholder for NOW() values (replaced in final SQL)
-		const NOW_PLACEHOLDER: &str = "__REINHARDT_NOW__";
-
-		let mut stmt = Query::update().table(Alias::new(&self.table)).to_owned();
-
-		// Add SET clauses
-		for (col, val) in &self.sets {
-			if matches!(val, QueryValue::Now) {
-				// Use a sentinel string that will be replaced with NOW() in the output
-				stmt.value(Alias::new(col), NOW_PLACEHOLDER);
-				continue;
-			}
-			stmt.value(Alias::new(col), query_value_to_sea_value(val));
-		}
-
-		// Add WHERE clauses
-		for (col, op, val) in &self.wheres {
-			if op == "=" {
-				stmt.and_where(
-					Expr::col(Alias::new(col)).eq(Expr::val(query_value_to_sea_value(val))),
-				);
-			}
-		}
-
-		// Build SQL based on database type
+		// This converter only constructs expressions and cannot return Err.
+		let stmt = self
+			.statement_with(|value| Ok(query_value_expression(value)))
+			.expect("legacy builder expressions are infallible");
 		let sql = match self.backend.database_type() {
 			DatabaseType::Postgres => PostgresQueryBuilder.build_update(&stmt).0,
 			DatabaseType::Mysql => MySqlQueryBuilder.build_update(&stmt).0,
 			DatabaseType::Sqlite => SqliteQueryBuilder.build_update(&stmt).0,
 		};
-
-		// Replace NOW() placeholder sentinel with actual function call
-		let sql = sql.replace(&format!("'{}'", NOW_PLACEHOLDER), "NOW()");
-
-		// Preserve parameter order: first SET values, then WHERE values
-		let mut params = Vec::new();
-		for (_, val) in &self.sets {
-			if !matches!(val, QueryValue::Now) {
-				params.push(val.clone());
-			}
-		}
-		for (_, _, val) in &self.wheres {
-			params.push(val.clone());
-		}
-
+		let params = legacy_builder_parameters(
+			self.sets
+				.iter()
+				.map(|(_, value)| value)
+				.chain(self.wheres.iter().flat_map(BuilderPredicate::values)),
+		);
 		(sql, params)
 	}
 
-	/// Executes the operation.
+	/// Executes the typed statement and exact renderer arguments.
 	pub async fn execute(&self) -> Result<QueryResult> {
-		let (sql, params) = self.build();
-		self.backend.execute(&sql, params).await
+		self.backend
+			.execute_generated(self.build_native()?, None)
+			.await
 	}
 }
 
@@ -1201,7 +1130,7 @@ pub struct SelectBuilder {
 	backend: Arc<dyn DatabaseBackend>,
 	columns: Vec<String>,
 	table: String,
-	wheres: Vec<(String, String, QueryValue)>,
+	wheres: Vec<BuilderPredicate>,
 	limit: Option<i64>,
 }
 
@@ -1210,95 +1139,103 @@ impl SelectBuilder {
 	pub fn new(backend: Arc<dyn DatabaseBackend>) -> Self {
 		Self {
 			backend,
-			columns: vec!["*".to_string()],
+			columns: vec!["*".into()],
 			table: String::new(),
 			wheres: Vec::new(),
 			limit: None,
 		}
 	}
 
-	/// Performs the columns operation.
+	/// Selects the supplied column identifiers.
 	pub fn columns(mut self, columns: Vec<&str>) -> Self {
-		self.columns = columns.iter().map(|s| s.to_string()).collect();
+		self.columns = columns.iter().map(|column| (*column).into()).collect();
 		self
 	}
 
-	/// Performs the from operation.
+	/// Selects the source table.
 	pub fn from(mut self, table: impl Into<String>) -> Self {
 		self.table = table.into();
 		self
 	}
 
-	/// Performs the where eq operation.
+	/// Adds an equality predicate.
 	pub fn where_eq(mut self, column: impl Into<String>, value: impl Into<QueryValue>) -> Self {
 		self.wheres
-			.push((column.into(), "=".to_string(), value.into()));
+			.push(BuilderPredicate::Equal(column.into(), value.into()));
 		self
 	}
 
-	/// Performs the limit operation.
+	/// Sets a bound row limit; negative limits are omitted.
 	pub fn limit(mut self, limit: i64) -> Self {
 		self.limit = Some(limit);
 		self
 	}
 
-	/// Builds the final result.
+	fn statement_with(
+		&self,
+		convert: impl Fn(&QueryValue) -> Result<SimpleExpr>,
+	) -> Result<SelectStatement> {
+		let mut stmt = Query::select().from(Alias::new(&self.table)).to_owned();
+		if self.columns.as_slice() == ["*"] {
+			stmt.column(ColumnRef::asterisk());
+		} else {
+			for column in &self.columns {
+				stmt.column(Alias::new(column));
+			}
+		}
+		for predicate in &self.wheres {
+			stmt.and_where(predicate.expression_with(&convert)?);
+		}
+		if let Some(limit) = self.limit.and_then(|limit| u64::try_from(limit).ok()) {
+			stmt.limit(limit);
+		}
+		Ok(stmt)
+	}
+
+	fn build_native(&self) -> Result<(String, Values)> {
+		let backend = self.backend.database_type();
+		native_builder_pair(
+			backend,
+			NativeBuilderStatement::Select(Box::new(
+				self.statement_with(|value| native_builder_expression(value, backend))?,
+			)),
+		)
+	}
+
+	/// Builds SQL and legacy parameters for callers of the raw API.
 	pub fn build(&self) -> (String, Vec<QueryValue>) {
-		use super::types::DatabaseType;
 		use reinhardt_query::prelude::{
 			MySqlQueryBuilder, PostgresQueryBuilder, SqliteQueryBuilder,
 		};
-
-		let mut stmt = Query::select().from(Alias::new(&self.table)).to_owned();
-
-		// Add columns
-		if self.columns == vec!["*".to_string()] {
-			stmt.column(ColumnRef::asterisk());
-		} else {
-			for col in &self.columns {
-				stmt.column(Alias::new(col));
-			}
-		}
-
-		// Add WHERE clauses
-		for (col, op, val) in &self.wheres {
-			if op == "=" {
-				stmt.and_where(
-					Expr::col(Alias::new(col)).eq(Expr::val(query_value_to_sea_value(val))),
-				);
-			}
-		}
-
-		// Add LIMIT (only apply non-negative values)
-		if let Some(limit) = self.limit
-			&& let Ok(limit_u64) = u64::try_from(limit)
-		{
-			stmt.limit(limit_u64);
-		}
-
-		// Build parameterized SQL (consistent with InsertBuilder, UpdateBuilder, DeleteBuilder)
+		// This converter only constructs expressions and cannot return Err.
+		let stmt = self
+			.statement_with(|value| Ok(query_value_expression(value)))
+			.expect("legacy builder expressions are infallible");
 		let sql = match self.backend.database_type() {
 			DatabaseType::Postgres => PostgresQueryBuilder.build_select(&stmt).0,
 			DatabaseType::Mysql => MySqlQueryBuilder.build_select(&stmt).0,
 			DatabaseType::Sqlite => SqliteQueryBuilder.build_select(&stmt).0,
 		};
-
-		// Collect parameters
-		let params: Vec<QueryValue> = self.wheres.iter().map(|(_, _, val)| val.clone()).collect();
-
+		let mut params =
+			legacy_builder_parameters(self.wheres.iter().flat_map(BuilderPredicate::values));
+		if let Some(limit) = self.limit.filter(|limit| *limit >= 0) {
+			params.push(QueryValue::Int(limit));
+		}
 		(sql, params)
 	}
 
-	/// Fetches all.
+	/// Fetches all rows through the typed native provider.
 	pub async fn fetch_all(&self) -> Result<Vec<Row>> {
-		let (sql, params) = self.build();
-		self.backend.fetch_all(&sql, params).await
+		self.backend
+			.fetch_all_generated(self.build_native()?, None)
+			.await
 	}
 
-	/// Fetches one.
+	/// Fetches one row through the typed native provider.
 	pub async fn fetch_one(&self) -> Result<Row> {
-		let (sql, params) = self.build();
-		self.backend.fetch_one(&sql, params).await
+		self.backend
+			.fetch_one_generated(self.build_native()?, None)
+			.await
 	}
 }
 
@@ -1306,7 +1243,7 @@ impl SelectBuilder {
 pub struct DeleteBuilder {
 	backend: Arc<dyn DatabaseBackend>,
 	table: String,
-	wheres: Vec<(String, String, QueryValue)>,
+	wheres: Vec<BuilderPredicate>,
 }
 
 impl DeleteBuilder {
@@ -1319,68 +1256,94 @@ impl DeleteBuilder {
 		}
 	}
 
-	/// Performs the where eq operation.
+	/// Adds an equality predicate.
 	pub fn where_eq(mut self, column: impl Into<String>, value: impl Into<QueryValue>) -> Self {
 		self.wheres
-			.push((column.into(), "=".to_string(), value.into()));
+			.push(BuilderPredicate::Equal(column.into(), value.into()));
 		self
 	}
 
-	/// Performs the where in operation.
+	/// Adds one IN predicate containing the complete input set.
+	///
+	/// Repeated calls and equality predicates are combined with AND.
+	/// An empty set adds a false predicate, so no rows are deleted.
+	///
+	/// # Example
+	///
+	/// ```rust
+	/// # #[cfg(feature = "sqlite")]
+	/// # #[tokio::main]
+	/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+	/// use reinhardt_db::backends::{DatabaseConnection, QueryValue};
+	///
+	/// let db = DatabaseConnection::connect_sqlite("sqlite::memory:").await?;
+	/// let (sql, params) = db.delete("users")
+	///     .where_in("status", vec!["inactive".into(), "archived".into()])
+	///     .build();
+	///
+	/// assert_eq!(sql, "DELETE FROM \"users\" WHERE \"status\" IN (?, ?)");
+	/// assert_eq!(params, vec![
+	///     QueryValue::String("inactive".into()),
+	///     QueryValue::String("archived".into()),
+	/// ]);
+	/// # Ok(())
+	/// # }
+	/// # #[cfg(not(feature = "sqlite"))]
+	/// # fn main() {}
+	/// ```
 	pub fn where_in(mut self, column: impl Into<String> + Clone, values: Vec<QueryValue>) -> Self {
-		for value in values {
-			self.wheres
-				.push((column.clone().into(), "IN".to_string(), value));
-		}
+		self.wheres
+			.push(BuilderPredicate::In(column.into(), values));
 		self
 	}
 
-	/// Builds the final result.
-	pub fn build(&self) -> (String, Vec<QueryValue>) {
-		use super::types::DatabaseType;
-		use reinhardt_query::prelude::{
-			MySqlQueryBuilder, PostgresQueryBuilder, SqliteQueryBuilder,
-		};
-
+	fn statement_with(
+		&self,
+		convert: impl Fn(&QueryValue) -> Result<SimpleExpr>,
+	) -> Result<DeleteStatement> {
 		let mut stmt = Query::delete()
 			.from_table(Alias::new(&self.table))
 			.to_owned();
-
-		// Add WHERE clauses
-		for (col, op, val) in &self.wheres {
-			match op.as_str() {
-				"=" => {
-					stmt.and_where(
-						Expr::col(Alias::new(col)).eq(Expr::val(query_value_to_sea_value(val))),
-					);
-				}
-				"IN" => {
-					stmt.and_where(
-						Expr::col(Alias::new(col))
-							.is_in([Expr::val(query_value_to_sea_value(val))]),
-					);
-				}
-				_ => {}
-			}
+		for predicate in &self.wheres {
+			stmt.and_where(predicate.expression_with(&convert)?);
 		}
+		Ok(stmt)
+	}
 
-		// Build SQL
+	fn build_native(&self) -> Result<(String, Values)> {
+		let backend = self.backend.database_type();
+		native_builder_pair(
+			backend,
+			NativeBuilderStatement::Delete(
+				self.statement_with(|value| native_builder_expression(value, backend))?,
+			),
+		)
+	}
+
+	/// Builds SQL and legacy parameters for callers of the raw API.
+	pub fn build(&self) -> (String, Vec<QueryValue>) {
+		use reinhardt_query::prelude::{
+			MySqlQueryBuilder, PostgresQueryBuilder, SqliteQueryBuilder,
+		};
+		// This converter only constructs expressions and cannot return Err.
+		let stmt = self
+			.statement_with(|value| Ok(query_value_expression(value)))
+			.expect("legacy builder expressions are infallible");
 		let sql = match self.backend.database_type() {
 			DatabaseType::Postgres => PostgresQueryBuilder.build_delete(&stmt).0,
 			DatabaseType::Mysql => MySqlQueryBuilder.build_delete(&stmt).0,
 			DatabaseType::Sqlite => SqliteQueryBuilder.build_delete(&stmt).0,
 		};
-
-		// Collect parameters
-		let params: Vec<QueryValue> = self.wheres.iter().map(|(_, _, val)| val.clone()).collect();
-
+		let params =
+			legacy_builder_parameters(self.wheres.iter().flat_map(BuilderPredicate::values));
 		(sql, params)
 	}
 
-	/// Executes the operation.
+	/// Executes the typed statement and exact renderer arguments.
 	pub async fn execute(&self) -> Result<QueryResult> {
-		let (sql, params) = self.build();
-		self.backend.execute(&sql, params).await
+		self.backend
+			.execute_generated(self.build_native()?, None)
+			.await
 	}
 }
 
@@ -1394,16 +1357,18 @@ impl DeleteBuilder {
 /// | Database | Syntax | Notes |
 /// |----------|--------|-------|
 /// | PostgreSQL | `ANALYZE [VERBOSE] [table [(columns...)]]` | Supports verbose mode and column-level analysis |
-/// | MySQL | `ANALYZE TABLE table [, ...]` | Supports multiple tables |
+/// | MySQL | `ANALYZE TABLE table` | Requires an explicit, non-empty table name |
 /// | SQLite | `ANALYZE [table_or_index]` | Analyzes entire database if no target specified |
 /// | CockroachDB | `ANALYZE table` | PostgreSQL-compatible syntax |
 ///
 /// # Example
 ///
-/// ```rust,ignore
-/// use reinhardt_db::backends::AnalyzeBuilder;
+/// ```rust,no_run
+/// use reinhardt_db::backends::{AnalyzeBuilder, DatabaseBackend};
+/// use std::sync::Arc;
+/// # async fn example(backend: Arc<dyn DatabaseBackend>) -> Result<(), reinhardt_core::exception::Error> {
 ///
-/// // Analyze all tables
+/// // Analyze all tables (PostgreSQL and SQLite only)
 /// let builder = AnalyzeBuilder::new(backend.clone());
 /// builder.execute().await?;
 ///
@@ -1418,6 +1383,8 @@ impl DeleteBuilder {
 ///     .columns(vec!["email", "created_at"])
 ///     .verbose(true);
 /// builder.execute().await?;
+/// # Ok(())
+/// # }
 /// ```
 pub struct AnalyzeBuilder {
 	backend: Arc<dyn DatabaseBackend>,
@@ -1429,7 +1396,9 @@ pub struct AnalyzeBuilder {
 impl AnalyzeBuilder {
 	/// Create a new ANALYZE builder
 	///
-	/// Without specifying a table, this will analyze all tables in the database.
+	/// Without a table, PostgreSQL and SQLite analyze the entire database.
+	/// MySQL requires an explicit, non-empty table name set with [`Self::table`];
+	/// [`Self::execute`] returns a database error with kind [`DatabaseErrorKind::Unsupported`] otherwise.
 	pub fn new(backend: Arc<dyn DatabaseBackend>) -> Self {
 		Self {
 			backend,
@@ -1471,67 +1440,65 @@ impl AnalyzeBuilder {
 		self
 	}
 
-	/// Build the ANALYZE SQL statement
-	///
-	/// Returns the SQL string appropriate for the database backend.
-	pub fn build(&self) -> String {
-		use super::types::DatabaseType;
-
-		match self.backend.database_type() {
-			DatabaseType::Postgres => self.build_postgres(),
-			DatabaseType::Mysql => self.build_mysql(),
-			DatabaseType::Sqlite => self.build_sqlite(),
-		}
-	}
-
-	fn build_postgres(&self) -> String {
-		let mut sql = String::from("ANALYZE");
-
-		if self.verbose {
-			sql.push_str(" VERBOSE");
-		}
-
-		if let Some(ref table) = self.table {
-			sql.push_str(&format!(" \"{}\"", table));
-
-			if !self.columns.is_empty() {
-				let cols = self
-					.columns
-					.iter()
-					.map(|c| format!("\"{}\"", c))
-					.collect::<Vec<_>>()
-					.join(", ");
-				sql.push_str(&format!(" ({})", cols));
+	fn statement(&self) -> reinhardt_query::query::AnalyzeStatement {
+		let mut statement = Query::analyze().to_owned();
+		if let Some(table) = &self.table {
+			if self.backend.database_type() == DatabaseType::Postgres && !self.columns.is_empty() {
+				statement.table_columns(Alias::new(table), self.columns.iter().map(Alias::new));
+			} else {
+				statement.table(Alias::new(table));
 			}
 		}
-
-		sql
+		// Preserve this backend API's documented non-PostgreSQL option behavior.
+		if self.backend.database_type() == DatabaseType::Postgres && self.verbose {
+			statement.verbose();
+		}
+		statement
 	}
 
-	fn build_mysql(&self) -> String {
-		if let Some(ref table) = self.table {
-			format!("ANALYZE TABLE `{}`", table)
-		} else {
-			// MySQL requires at least one table; analyze all tables requires
-			// querying information_schema first. Return empty for database-wide.
-			// Users should call with specific tables.
-			String::from("ANALYZE TABLE")
+	fn build_native(&self) -> Result<(String, Values)> {
+		use reinhardt_query::prelude::{
+			MySqlQueryBuilder, PostgresQueryBuilder, SqliteQueryBuilder,
+		};
+		if self.backend.database_type() == DatabaseType::Mysql
+			&& self.table.as_ref().is_none_or(String::is_empty)
+		{
+			return Err(DatabaseError::new(
+				DatabaseErrorKind::Unsupported,
+				"MySQL ANALYZE requires an explicit table; use AnalyzeBuilder::table()",
+			)
+			.into());
+		}
+		let statement = self.statement();
+		let built = match self.backend.database_type() {
+			DatabaseType::Postgres => PostgresQueryBuilder.build_analyze_checked(&statement),
+			DatabaseType::Mysql => MySqlQueryBuilder.build_analyze_checked(&statement),
+			DatabaseType::Sqlite => SqliteQueryBuilder.build_analyze_checked(&statement),
+		};
+		built.map_err(|error| {
+			DatabaseError::new(DatabaseErrorKind::Unsupported, error.to_string()).into()
+		})
+	}
+
+	/// Render standalone ANALYZE SQL with typed identifier escaping.
+	/// Runtime execution also checks that the selected backend supports its target.
+	pub fn build(&self) -> String {
+		use reinhardt_query::prelude::{
+			MySqlQueryBuilder, PostgresQueryBuilder, SqliteQueryBuilder,
+		};
+		let statement = self.statement();
+		match self.backend.database_type() {
+			DatabaseType::Postgres => PostgresQueryBuilder.build_analyze(&statement).0,
+			DatabaseType::Mysql => MySqlQueryBuilder.build_analyze(&statement).0,
+			DatabaseType::Sqlite => SqliteQueryBuilder.build_analyze(&statement).0,
 		}
 	}
 
-	fn build_sqlite(&self) -> String {
-		if let Some(ref table) = self.table {
-			format!("ANALYZE \"{}\"", table)
-		} else {
-			// SQLite: ANALYZE without arguments analyzes the entire database
-			String::from("ANALYZE")
-		}
-	}
-
-	/// Execute the ANALYZE statement
+	/// Execute the checked typed ANALYZE statement and owned renderer arguments.
 	pub async fn execute(&self) -> Result<QueryResult> {
-		let sql = self.build();
-		self.backend.execute(&sql, Vec::new()).await
+		self.backend
+			.execute_generated(self.build_native()?, None)
+			.await
 	}
 }
 
@@ -1542,6 +1509,128 @@ mod tests {
 	use crate::backends::error::DatabaseErrorKind;
 	use crate::backends::types::{DatabaseType, QueryResult, QueryValue, Row, TransactionExecutor};
 	use rstest::rstest;
+
+	#[rstest]
+	#[case(
+		DatabaseType::Postgres,
+		"UPDATE \"users\" SET \"name\" = $1, \"updated_at\" = CURRENT_TIMESTAMP, \"nickname\" = NULL WHERE \"id\" = $2",
+		"SELECT * FROM \"users\" WHERE \"name\" = $1 LIMIT $2",
+		"DELETE FROM \"users\" WHERE \"id\" IN ($1, $2)"
+	)]
+	#[case(
+		DatabaseType::Mysql,
+		"UPDATE `users` SET `name` = ?, `updated_at` = CURRENT_TIMESTAMP, `nickname` = NULL WHERE `id` = ?",
+		"SELECT * FROM `users` WHERE `name` = ? LIMIT ?",
+		"DELETE FROM `users` WHERE `id` IN (?, ?)"
+	)]
+	#[case(
+		DatabaseType::Sqlite,
+		"UPDATE \"users\" SET \"name\" = ?, \"updated_at\" = CURRENT_TIMESTAMP, \"nickname\" = NULL WHERE \"id\" = ?",
+		"SELECT * FROM \"users\" WHERE \"name\" = ? LIMIT ?",
+		"DELETE FROM \"users\" WHERE \"id\" IN (?, ?)"
+	)]
+	fn native_builders_keep_null_time_limit_and_in_argument_order(
+		#[case] dialect: DatabaseType,
+		#[case] expected_update: &str,
+		#[case] expected_select: &str,
+		#[case] expected_delete: &str,
+	) {
+		// Arrange: no native driver is needed to verify each dialect's exact contract.
+		let backend: Arc<dyn DatabaseBackend> = match dialect {
+			DatabaseType::Postgres => Arc::new(MockBackend),
+			DatabaseType::Mysql => Arc::new(MockMysqlBackend),
+			DatabaseType::Sqlite => Arc::new(MockSqliteBackend),
+		};
+		let name = "quoted' ? $42";
+		// Act
+		let update = UpdateBuilder::new(backend.clone(), "users")
+			.set("name", name)
+			.set_now("updated_at")
+			.set("nickname", QueryValue::Null)
+			.where_eq("id", 7_i64)
+			.build_native()
+			.unwrap();
+		let select = SelectBuilder::new(backend.clone())
+			.from("users")
+			.where_eq("name", name)
+			.limit(1)
+			.build_native()
+			.unwrap();
+		let delete = DeleteBuilder::new(backend, "users")
+			.where_in("id", vec![7_i64.into(), 8_i64.into()])
+			.build_native()
+			.unwrap();
+		// Assert: NULL and CURRENT_TIMESTAMP consume no slots; LIMIT owns its slot.
+		assert_eq!(
+			update,
+			(
+				expected_update.into(),
+				Values(vec![name.into(), 7_i64.into()])
+			)
+		);
+		assert_eq!(
+			select,
+			(
+				expected_select.into(),
+				Values(vec![name.into(), Value::BigUnsigned(Some(1))])
+			)
+		);
+		assert_eq!(
+			delete,
+			(
+				expected_delete.into(),
+				Values(vec![7_i64.into(), 8_i64.into()])
+			)
+		);
+	}
+
+	#[rstest]
+	#[case(DatabaseType::Postgres)]
+	#[case(DatabaseType::Mysql)]
+	#[case(DatabaseType::Sqlite)]
+	fn native_builder_arrays_retain_explicit_backend_storage(#[case] backend: DatabaseType) {
+		// Arrange
+		let input = QueryValue::StringArray(vec!["quoted' ? $42".into()]);
+		// Act
+		let expression = native_builder_expression(&input, backend).unwrap();
+		// Assert
+		let expected = if backend == DatabaseType::Postgres {
+			query_value_to_sea_value(&input)
+		} else {
+			Value::from(r#"["quoted' ? $42"]"#)
+		};
+		assert!(matches!(expression, SimpleExpr::Value(value) if value == expected));
+	}
+
+	#[rstest]
+	#[case::string(QueryValue::NullableStringArray(vec![None, Some("kept".to_owned()), None]), reinhardt_query::value::ArrayType::String, vec![Value::String(None), Value::from("kept"), Value::String(None)])]
+	#[case::int(QueryValue::NullableIntArray(vec![None, Some(i32::MAX), None]), reinhardt_query::value::ArrayType::Int, vec![Value::Int(None), Value::Int(Some(i32::MAX)), Value::Int(None)])]
+	#[case::bigint(QueryValue::NullableBigIntArray(vec![None, Some(i64::MAX), None]), reinhardt_query::value::ArrayType::BigInt, vec![Value::BigInt(None), Value::BigInt(Some(i64::MAX)), Value::BigInt(None)])]
+	#[case::bool(QueryValue::NullableBoolArray(vec![None, Some(false), None]), reinhardt_query::value::ArrayType::Bool, vec![Value::Bool(None), Value::Bool(Some(false)), Value::Bool(None)])]
+	#[case::float(QueryValue::NullableFloatArray(vec![None, Some(1.5), None]), reinhardt_query::value::ArrayType::Float, vec![Value::Float(None), Value::Float(Some(1.5)), Value::Float(None)])]
+	#[case::double(QueryValue::NullableDoubleArray(vec![None, Some(-2.5), None]), reinhardt_query::value::ArrayType::Double, vec![Value::Double(None), Value::Double(Some(-2.5)), Value::Double(None)])]
+	#[case::uuid(QueryValue::NullableUuidArray(vec![None, Some(uuid::Uuid::nil()), None]), reinhardt_query::value::ArrayType::Uuid, vec![Value::Uuid(None), Value::Uuid(Some(Box::new(uuid::Uuid::nil()))), Value::Uuid(None)])]
+	#[case::empty_string(QueryValue::NullableStringArray(vec![]), reinhardt_query::value::ArrayType::String, vec![])]
+	#[case::empty_int(QueryValue::NullableIntArray(vec![]), reinhardt_query::value::ArrayType::Int, vec![])]
+	#[case::empty_bigint(QueryValue::NullableBigIntArray(vec![]), reinhardt_query::value::ArrayType::BigInt, vec![])]
+	#[case::empty_bool(QueryValue::NullableBoolArray(vec![]), reinhardt_query::value::ArrayType::Bool, vec![])]
+	#[case::empty_float(QueryValue::NullableFloatArray(vec![]), reinhardt_query::value::ArrayType::Float, vec![])]
+	#[case::empty_double(QueryValue::NullableDoubleArray(vec![]), reinhardt_query::value::ArrayType::Double, vec![])]
+	#[case::empty_uuid(QueryValue::NullableUuidArray(vec![]), reinhardt_query::value::ArrayType::Uuid, vec![])]
+	fn query_builder_preserves_nullable_array_types(
+		#[case] input: QueryValue,
+		#[case] array_type: reinhardt_query::value::ArrayType,
+		#[case] expected_elements: Vec<Value>,
+	) {
+		// Act
+		let value = query_value_to_sea_value(&input);
+
+		// Assert
+		assert_eq!(
+			value,
+			Value::Array(array_type, Some(Box::new(expected_elements)))
+		);
+	}
 
 	#[rstest]
 	#[case::int32_min(QueryValue::Int32(i32::MIN), Value::Int(Some(i32::MIN)))]
@@ -1679,21 +1768,19 @@ mod tests {
 		assert!(matches!(params[0], QueryValue::Int(1)));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_delete_builder_where_in() {
+		// Arrange
 		let backend = Arc::new(MockBackend);
 		let builder = DeleteBuilder::new(backend, "users")
 			.where_in("id", vec![QueryValue::Int(1), QueryValue::Int(2)]);
+
+		// Act
 		let (sql, params) = builder.build();
 
-		// reinhardt-query uses parameterized queries with placeholders
-		assert_eq!(
-			sql,
-			"DELETE FROM \"users\" WHERE \"id\" IN ($1) AND \"id\" IN ($2)"
-		);
-		assert_eq!(params.len(), 2);
-		assert!(matches!(params[0], QueryValue::Int(1)));
-		assert!(matches!(params[1], QueryValue::Int(2)));
+		// Assert
+		assert_eq!(sql, "DELETE FROM \"users\" WHERE \"id\" IN ($1, $2)");
+		assert_eq!(params, vec![QueryValue::Int(1), QueryValue::Int(2)]);
 	}
 
 	#[test]
@@ -1819,6 +1906,125 @@ mod tests {
 	// ==========================================
 	// PostgreSQL Tests - Exact SQL Verification
 	// ==========================================
+
+	#[rstest]
+	#[case(
+		DatabaseType::Postgres,
+		"INSERT INTO \"users\" (\"nullable\", \"id\", \"touched\", \"name\") VALUES (NULL, $1, CURRENT_TIMESTAMP, $2)"
+	)]
+	#[case(
+		DatabaseType::Mysql,
+		"INSERT INTO `users` (`nullable`, `id`, `touched`, `name`) VALUES (NULL, ?, CURRENT_TIMESTAMP, ?)"
+	)]
+	#[case(
+		DatabaseType::Sqlite,
+		"INSERT INTO \"users\" (\"nullable\", \"id\", \"touched\", \"name\") VALUES (NULL, ?, CURRENT_TIMESTAMP, ?)"
+	)]
+	fn native_insert_null_time_argument_order(
+		#[case] dialect: DatabaseType,
+		#[case] expected: &str,
+	) {
+		// Arrange
+		let backend: Arc<dyn DatabaseBackend> = match dialect {
+			DatabaseType::Postgres => Arc::new(MockBackend),
+			DatabaseType::Mysql => Arc::new(MockMysqlBackend),
+			DatabaseType::Sqlite => Arc::new(MockSqliteBackend),
+		};
+		let builder = InsertBuilder::new(backend, "users")
+			.value("nullable", QueryValue::Null)
+			.value("id", 1_i64)
+			.value("touched", QueryValue::Now)
+			.value("name", "payload' ? $9");
+		// Act
+		let native = builder.build_native().unwrap();
+		let public = builder.build().unwrap();
+		// Assert
+		assert_eq!(
+			native,
+			(
+				expected.into(),
+				Values(vec![1_i64.into(), "payload' ? $9".into()])
+			)
+		);
+		assert_eq!(
+			public,
+			(
+				expected.into(),
+				vec![
+					QueryValue::Int(1),
+					QueryValue::String("payload' ? $9".into())
+				]
+			)
+		);
+	}
+
+	#[rstest]
+	#[case(
+		DatabaseType::Postgres,
+		"INSERT INTO \"users\" (\"id\", \"name\") SELECT $1, $2 ON CONFLICT (\"id\") DO UPDATE SET \"name\" = EXCLUDED.\"name\""
+	)]
+	#[case(
+		DatabaseType::Mysql,
+		"INSERT INTO `users` (`id`, `name`) SELECT ?, ? ON DUPLICATE KEY UPDATE `name` = VALUES(`name`)"
+	)]
+	#[case(
+		DatabaseType::Sqlite,
+		"INSERT INTO \"users\" (\"id\", \"name\") SELECT ?, ? ON CONFLICT (\"id\") DO UPDATE SET \"name\" = EXCLUDED.\"name\""
+	)]
+	fn insert_select_conversion_keeps_fluent_conflict_and_values(
+		#[case] dialect: DatabaseType,
+		#[case] expected: &str,
+	) {
+		// Arrange
+		let backend: Arc<dyn DatabaseBackend> = match dialect {
+			DatabaseType::Postgres => Arc::new(MockBackend),
+			DatabaseType::Mysql => Arc::new(MockMysqlBackend),
+			DatabaseType::Sqlite => Arc::new(MockSqliteBackend),
+		};
+		let builder = InsertBuilder::new(backend, "users")
+			.on_conflict(OnConflictClause::columns(vec!["id"]).do_update(vec!["name"]))
+			.from_select(
+				vec!["id", "name"],
+				Query::select()
+					.expr(Expr::val(1_i64))
+					.expr(Expr::val("source' ? $9"))
+					.to_owned(),
+			);
+		// Act
+		let native = builder.build_native().unwrap();
+		let (inline, legacy) = builder.build();
+		// Assert
+		assert_eq!(
+			native,
+			(
+				expected.into(),
+				Values(vec![1_i64.into(), "source' ? $9".into()])
+			)
+		);
+		assert!(inline.contains("'source'' ? $9'"));
+		assert!(legacy.is_empty());
+	}
+
+	#[rstest]
+	#[case::legacy(false)]
+	#[case::fluent(true)]
+	fn sqlite_insert_preserves_targetless_update(#[case] fluent: bool) {
+		// Arrange
+		let builder = InsertBuilder::new(Arc::new(MockSqliteBackend), "users").value("id", 1_i64);
+		let builder = if fluent {
+			builder.on_conflict(OnConflictClause::any().do_update(vec!["id"]))
+		} else {
+			builder.on_conflict_do_update(None, vec!["id".into()])
+		};
+		// Act
+		let (sql, values) = builder.build_native().unwrap();
+		// Assert
+		assert_eq!(
+			sql,
+			"INSERT INTO \"users\" (\"id\") VALUES (?) ON CONFLICT DO UPDATE SET \"id\" = EXCLUDED.\"id\""
+		);
+		assert_eq!(values, Values(vec![1_i64.into()]));
+	}
 
 	#[test]
 	fn test_on_conflict_clause_columns_do_nothing_postgres_exact_sql() {
@@ -2025,12 +2231,12 @@ mod tests {
 		);
 	}
 
-	#[test]
-	fn test_on_conflict_clause_where_ignored_mysql() {
+	#[rstest]
+	fn test_on_conflict_clause_where_rejected_mysql() {
 		// Arrange
 		let backend = Arc::new(MockMysqlBackend);
 
-		// Act - MySQL does not support WHERE clause, but should not error
+		// Act
 		let builder = InsertBuilder::new(backend, "users")
 			.value("email", QueryValue::String("test@example.com".to_string()))
 			.on_conflict(
@@ -2038,14 +2244,15 @@ mod tests {
 					.do_update(vec!["name"])
 					.where_clause("users.version < VALUES(version)"),
 			);
-		let (sql, _) = builder.build().unwrap();
+		let error = builder.build().unwrap_err();
 
-		// Assert - WHERE clause is ignored for MySQL (reinhardt-query uses parameterized queries)
-		assert_eq!(
-			sql,
-			"INSERT INTO `users` (`email`) VALUES (?) ON DUPLICATE KEY UPDATE `name` = VALUES(`name`)"
+		// Assert
+		assert_eq!(error.database_kind(), Some(DatabaseErrorKind::Unsupported));
+		assert!(
+			error
+				.to_string()
+				.contains("MySQL does not support conditional ON DUPLICATE KEY UPDATE")
 		);
-		assert!(!sql.contains("WHERE"));
 	}
 
 	// ==========================================
@@ -2063,10 +2270,10 @@ mod tests {
 			.on_conflict(OnConflictClause::columns(vec!["email"]).do_nothing());
 		let (sql, _) = builder.build().unwrap();
 
-		// Assert - SQLite uses INSERT OR IGNORE syntax (reinhardt-query uses parameterized queries)
+		// Assert - the fluent API retains its SQLite conflict target.
 		assert_eq!(
 			sql,
-			"INSERT OR IGNORE INTO \"users\" (\"email\") VALUES (?)"
+			"INSERT INTO \"users\" (\"email\") VALUES (?) ON CONFLICT (\"email\") DO NOTHING"
 		);
 	}
 
@@ -2081,10 +2288,10 @@ mod tests {
 			.on_conflict(OnConflictClause::columns(vec!["email"]).do_update(vec!["name"]));
 		let (sql, _) = builder.build().unwrap();
 
-		// Assert - SQLite uses lowercase 'excluded' pseudo-table (reinhardt-query uses parameterized queries)
+		// Assert - typed SQLite EXCLUDED identifiers preserve the upsert assignment.
 		assert_eq!(
 			sql,
-			"INSERT INTO \"users\" (\"email\") VALUES (?) ON CONFLICT (\"email\") DO UPDATE SET \"name\" = excluded.\"name\""
+			"INSERT INTO \"users\" (\"email\") VALUES (?) ON CONFLICT (\"email\") DO UPDATE SET \"name\" = EXCLUDED.\"name\""
 		);
 	}
 
@@ -2106,7 +2313,7 @@ mod tests {
 		// Assert - SQLite supports WHERE clause (reinhardt-query uses parameterized queries)
 		assert_eq!(
 			sql,
-			"INSERT INTO \"users\" (\"email\") VALUES (?) ON CONFLICT (\"email\") DO UPDATE SET \"version\" = excluded.\"version\" WHERE users.version < excluded.version"
+			"INSERT INTO \"users\" (\"email\") VALUES (?) ON CONFLICT (\"email\") DO UPDATE SET \"version\" = EXCLUDED.\"version\" WHERE users.version < excluded.version"
 		);
 	}
 
@@ -2127,7 +2334,7 @@ mod tests {
 		// Assert - verify multiple conflict columns (reinhardt-query uses parameterized queries)
 		assert_eq!(
 			sql,
-			"INSERT INTO \"users\" (\"tenant_id\", \"email\") VALUES (?, ?) ON CONFLICT (\"tenant_id\", \"email\") DO UPDATE SET \"name\" = excluded.\"name\""
+			"INSERT INTO \"users\" (\"tenant_id\", \"email\") VALUES (?, ?) ON CONFLICT (\"tenant_id\", \"email\") DO UPDATE SET \"name\" = EXCLUDED.\"name\""
 		);
 	}
 
@@ -2142,10 +2349,10 @@ mod tests {
 			.on_conflict(OnConflictClause::any().do_nothing());
 		let (sql, _) = builder.build().unwrap();
 
-		// Assert - SQLite uses INSERT OR IGNORE even with any() target (reinhardt-query uses parameterized queries)
+		// Assert - an omitted target handles any uniqueness conflict.
 		assert_eq!(
 			sql,
-			"INSERT OR IGNORE INTO \"users\" (\"email\") VALUES (?)"
+			"INSERT INTO \"users\" (\"email\") VALUES (?) ON CONFLICT DO NOTHING"
 		);
 	}
 
@@ -2231,7 +2438,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_on_conflict_clause_with_returning() {
 		// Arrange
 		let backend = Arc::new(MockBackend);
@@ -2243,12 +2450,14 @@ mod tests {
 			.on_conflict(OnConflictClause::columns(vec!["email"]).do_update(vec!["name"]));
 		let (sql, _) = builder.build().unwrap();
 
-		// Assert - RETURNING should come before ON CONFLICT in reinhardt-query output
-		assert!(sql.contains("RETURNING"));
-		assert!(sql.contains("ON CONFLICT"));
+		// Assert
+		assert_eq!(
+			sql,
+			"INSERT INTO \"users\" (\"email\") VALUES ($1) ON CONFLICT (\"email\") DO UPDATE SET \"name\" = EXCLUDED.\"name\" RETURNING \"id\", \"created_at\""
+		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_on_conflict_clause_with_null_value() {
 		// Arrange
 		let backend = Arc::new(MockBackend);
@@ -2261,9 +2470,11 @@ mod tests {
 		let (sql, params) = builder.build().unwrap();
 
 		// Assert
-		assert!(sql.contains("ON CONFLICT (\"email\") DO UPDATE SET"));
-		assert_eq!(params.len(), 2);
-		assert!(matches!(params[1], QueryValue::Null));
+		assert_eq!(
+			sql,
+			"INSERT INTO \"users\" (\"email\", \"name\") VALUES ($1, NULL) ON CONFLICT (\"email\") DO UPDATE SET \"name\" = EXCLUDED.\"name\""
+		);
+		assert_eq!(params, vec![QueryValue::from("test@example.com")]);
 	}
 
 	#[test]
@@ -2485,6 +2696,78 @@ mod tests {
 		assert_eq!(sql, "ANALYZE TABLE");
 	}
 
+	#[cfg(feature = "mysql")]
+	#[rstest]
+	#[case::unspecified(None)]
+	#[case::empty(Some(""))]
+	#[tokio::test]
+	async fn test_analyze_builder_mysql_rejects_missing_table_before_execution(
+		#[case] table: Option<&str>,
+	) {
+		// Arrange: a closed native pool would fail if SQL execution were attempted.
+		let pool = sqlx::mysql::MySqlPoolOptions::new()
+			.connect_lazy("mysql://localhost/analyze_test")
+			.unwrap();
+		pool.close().await;
+		let backend = Arc::new(crate::backends::MySqlBackend::new(pool));
+		let mut builder = AnalyzeBuilder::new(backend);
+		if let Some(table) = table {
+			builder = builder.table(table);
+		}
+
+		// Act
+		let error = builder.execute().await.unwrap_err();
+
+		// Assert
+		assert_eq!(error.database_kind(), Some(DatabaseErrorKind::Unsupported));
+		assert!(
+			error
+				.to_string()
+				.contains("MySQL ANALYZE requires an explicit table; use AnalyzeBuilder::table()")
+		);
+	}
+
+	#[cfg(feature = "mysql")]
+	#[rstest]
+	#[tokio::test]
+	async fn test_analyze_builder_mysql_explicit_table_reaches_executor() {
+		// Arrange
+		let pool = sqlx::mysql::MySqlPoolOptions::new()
+			.connect_lazy("mysql://localhost/analyze_test")
+			.unwrap();
+		pool.close().await;
+		let backend = Arc::new(crate::backends::MySqlBackend::new(pool));
+
+		// Act
+		let error = AnalyzeBuilder::new(backend)
+			.table("users")
+			.execute()
+			.await
+			.unwrap_err();
+
+		// Assert: a valid target passes validation and reaches the closed pool.
+		assert_eq!(error.database_kind(), Some(DatabaseErrorKind::Connection));
+	}
+
+	#[rstest]
+	#[case::postgres(DatabaseType::Postgres)]
+	#[case::sqlite(DatabaseType::Sqlite)]
+	#[tokio::test]
+	async fn test_analyze_builder_database_wide_supported_backends(#[case] database: DatabaseType) {
+		// Arrange
+		let backend: Arc<dyn DatabaseBackend> = match database {
+			DatabaseType::Postgres => Arc::new(MockBackend),
+			DatabaseType::Sqlite => Arc::new(MockSqliteBackend),
+			DatabaseType::Mysql => unreachable!("covered by MySQL target tests"),
+		};
+
+		// Act
+		let result = AnalyzeBuilder::new(backend).execute().await.unwrap();
+
+		// Assert
+		assert_eq!(result.rows_affected, 1);
+	}
+
 	#[test]
 	fn test_analyze_builder_sqlite_database_wide() {
 		let backend = Arc::new(MockSqliteBackend);
@@ -2501,9 +2784,97 @@ mod tests {
 		assert_eq!(sql, "ANALYZE \"users\"");
 	}
 
+	#[rstest]
+	#[case::postgres(
+		DatabaseType::Postgres,
+		"ANALYZE VERBOSE \"safe\"\"; INSERT INTO audit_probe (id) VALUES (7); --\" (\"col\"\"; DROP TABLE users; --\", \"tick`col\")"
+	)]
+	#[case::mysql(
+		DatabaseType::Mysql,
+		"ANALYZE TABLE `safe\"; INSERT INTO audit_probe (id) VALUES (7); --`"
+	)]
+	#[case::sqlite(
+		DatabaseType::Sqlite,
+		"ANALYZE \"safe\"\"; INSERT INTO audit_probe (id) VALUES (7); --\""
+	)]
+	fn test_analyze_builder_escapes_embedded_quotes_in_identifiers(
+		#[case] db_type: DatabaseType,
+		#[case] expected_sql: &str,
+	) {
+		// Arrange
+		let backend: Arc<dyn DatabaseBackend> = match db_type {
+			DatabaseType::Postgres => Arc::new(MockBackend),
+			DatabaseType::Mysql => Arc::new(MockMysqlBackend),
+			DatabaseType::Sqlite => Arc::new(MockSqliteBackend),
+		};
+		let builder = AnalyzeBuilder::new(backend)
+			.table("safe\"; INSERT INTO audit_probe (id) VALUES (7); --")
+			.columns(vec!["col\"; DROP TABLE users; --", "tick`col"])
+			.verbose(true);
+
+		// Act
+		let sql = builder.build();
+
+		// Assert: every name stays inside one quoted identifier.
+		assert_eq!(sql, expected_sql);
+	}
+
+	#[test]
+	fn test_analyze_builder_mysql_escapes_embedded_backticks() {
+		// Arrange
+		let backend = Arc::new(MockMysqlBackend);
+		let builder = AnalyzeBuilder::new(backend).table("safe`; DROP TABLE users; -- ");
+
+		// Act
+		let sql = builder.build();
+
+		// Assert
+		assert_eq!(sql, "ANALYZE TABLE `safe``; DROP TABLE users; -- `");
+	}
+
 	// ==========================================
 	// INSERT FROM SELECT Tests
 	// ==========================================
+
+	#[rstest]
+	#[case::postgres(
+		DatabaseType::Postgres,
+		"INSERT INTO \"target_table\" (\"id\", \"name\") SELECT \"id\", \"name\" FROM \"source_table\" ON CONFLICT (\"id\") DO UPDATE SET \"name\" = EXCLUDED.\"name\""
+	)]
+	#[case::mysql(
+		DatabaseType::Mysql,
+		"INSERT INTO `target_table` (`id`, `name`) SELECT `id`, `name` FROM `source_table` ON DUPLICATE KEY UPDATE `name` = VALUES(`name`)"
+	)]
+	#[case::sqlite(
+		DatabaseType::Sqlite,
+		"INSERT INTO \"target_table\" (\"id\", \"name\") SELECT \"id\", \"name\" FROM \"source_table\" WHERE TRUE ON CONFLICT (\"id\") DO UPDATE SET \"name\" = EXCLUDED.\"name\""
+	)]
+	fn insert_from_select_upsert_sql(#[case] db_type: DatabaseType, #[case] expected_sql: &str) {
+		// Arrange
+		let backend: Arc<dyn DatabaseBackend> = match db_type {
+			DatabaseType::Postgres => Arc::new(MockBackend),
+			DatabaseType::Mysql => Arc::new(MockMysqlBackend),
+			DatabaseType::Sqlite => Arc::new(MockSqliteBackend),
+		};
+		let source = Query::select()
+			.columns(["id", "name"])
+			.from("source_table")
+			.to_owned();
+		let builder = InsertFromSelectBuilder::new(
+			backend,
+			"target_table",
+			vec!["id".into(), "name".into()],
+			source,
+		)
+		.on_conflict_do_update(Some(vec!["id".into()]), vec!["name".into()]);
+
+		// Act
+		let (sql, params) = builder.build();
+
+		// Assert
+		assert_eq!(sql, expected_sql);
+		assert_eq!(params, vec![]);
+	}
 
 	#[test]
 	fn test_insert_from_select_basic_postgres() {
@@ -2765,6 +3136,169 @@ mod tests {
 
 		// Assert
 		assert!(sql.contains("ON CONFLICT (\"id\") DO NOTHING"));
+	}
+
+	#[rstest]
+	#[case::postgres_update(
+		DatabaseType::Postgres,
+		OnConflictClause::columns(vec!["id"]).do_update(vec!["id"]),
+		"INSERT INTO \"users\" (\"id\") SELECT 4 ON CONFLICT (\"id\") DO UPDATE SET \"id\" = EXCLUDED.\"id\""
+	)]
+	#[case::postgres_nothing(
+		DatabaseType::Postgres,
+		OnConflictClause::columns(vec!["id"]).do_nothing(),
+		"INSERT INTO \"users\" (\"id\") SELECT 4 ON CONFLICT (\"id\") DO NOTHING"
+	)]
+	#[case::postgres_any(
+		DatabaseType::Postgres,
+		OnConflictClause::any().do_nothing(),
+		"INSERT INTO \"users\" (\"id\") SELECT 4 ON CONFLICT DO NOTHING"
+	)]
+	#[case::postgres_constraint(
+		DatabaseType::Postgres,
+		OnConflictClause::constraint("users_pkey").do_update(vec!["id"]),
+		"INSERT INTO \"users\" (\"id\") SELECT 4 ON CONFLICT ON CONSTRAINT \"users_pkey\" DO UPDATE SET \"id\" = EXCLUDED.\"id\""
+	)]
+	#[case::postgres_condition(
+		DatabaseType::Postgres,
+		OnConflictClause::columns(vec!["id"]).do_update(vec!["id"])
+			.where_clause("users.id < EXCLUDED.id"),
+		"INSERT INTO \"users\" (\"id\") SELECT 4 ON CONFLICT (\"id\") DO UPDATE SET \"id\" = EXCLUDED.\"id\" WHERE users.id < EXCLUDED.id"
+	)]
+	#[case::mysql_update(
+		DatabaseType::Mysql,
+		OnConflictClause::columns(vec!["id"]).do_update(vec!["id"]),
+		"INSERT INTO `users` (`id`) SELECT 4 ON DUPLICATE KEY UPDATE `id` = VALUES(`id`)"
+	)]
+	#[case::mysql_nothing(
+		DatabaseType::Mysql,
+		OnConflictClause::any().do_nothing(),
+		"INSERT IGNORE INTO `users` (`id`) SELECT 4"
+	)]
+	#[case::sqlite_update(
+		DatabaseType::Sqlite,
+		OnConflictClause::columns(vec!["id"]).do_update(vec!["id"]),
+		"INSERT INTO \"users\" (\"id\") SELECT 4 ON CONFLICT (\"id\") DO UPDATE SET \"id\" = EXCLUDED.\"id\""
+	)]
+	#[case::sqlite_condition(
+		DatabaseType::Sqlite,
+		OnConflictClause::columns(vec!["id"]).do_update(vec!["id"])
+			.where_clause("users.id < excluded.id"),
+		"INSERT INTO \"users\" (\"id\") SELECT 4 ON CONFLICT (\"id\") DO UPDATE SET \"id\" = EXCLUDED.\"id\" WHERE users.id < excluded.id"
+	)]
+	#[case::sqlite_nothing(
+		DatabaseType::Sqlite,
+		OnConflictClause::any().do_nothing(),
+		"INSERT INTO \"users\" (\"id\") SELECT 4 ON CONFLICT DO NOTHING"
+	)]
+	#[case::sqlite_targeted_nothing(
+		DatabaseType::Sqlite,
+		OnConflictClause::columns(vec!["id"]).do_nothing(),
+		"INSERT INTO \"users\" (\"id\") SELECT 4 ON CONFLICT (\"id\") DO NOTHING"
+	)]
+	fn test_insert_builder_from_select_preserves_fluent_conflict(
+		#[case] db_type: DatabaseType,
+		#[case] clause: OnConflictClause,
+		#[case] expected_sql: &str,
+	) {
+		// Arrange
+		let backend: Arc<dyn DatabaseBackend> = match db_type {
+			DatabaseType::Postgres => Arc::new(MockBackend),
+			DatabaseType::Mysql => Arc::new(MockMysqlBackend),
+			DatabaseType::Sqlite => Arc::new(MockSqliteBackend),
+		};
+		let select = Query::select().expr(Expr::val(4)).to_owned();
+		let builder = InsertBuilder::new(backend, "users").on_conflict(clause);
+
+		// Act
+		let (sql, params) = builder.from_select(vec!["id"], select).build();
+
+		// Assert
+		assert_eq!(sql, expected_sql);
+		assert_eq!(params, Vec::new());
+	}
+
+	#[rstest]
+	#[case::legacy_first(true)]
+	#[case::fluent_first(false)]
+	fn test_insert_builder_from_select_fluent_conflict_overrides_legacy(
+		#[case] legacy_first: bool,
+	) {
+		// Arrange
+		let backend = Arc::new(MockBackend);
+		let select = Query::select().expr(Expr::val(4)).to_owned();
+		let clause = OnConflictClause::columns(vec!["id"]).do_update(vec!["id"]);
+		let builder = InsertBuilder::new(backend, "users");
+		let builder = if legacy_first {
+			builder.on_conflict_do_nothing(None).on_conflict(clause)
+		} else {
+			builder.on_conflict(clause).on_conflict_do_nothing(None)
+		};
+
+		// Act
+		let (sql, params) = builder.from_select(vec!["id"], select).build();
+
+		// Assert
+		assert_eq!(
+			sql,
+			"INSERT INTO \"users\" (\"id\") SELECT 4 ON CONFLICT (\"id\") DO UPDATE SET \"id\" = EXCLUDED.\"id\""
+		);
+		assert_eq!(params, Vec::new());
+	}
+
+	#[rstest]
+	fn test_insert_builder_from_select_fluent_conflict_precedes_returning() {
+		// Arrange
+		let backend = Arc::new(MockBackend);
+		let select = Query::select().expr(Expr::val(4)).to_owned();
+		let builder = InsertBuilder::new(backend, "users")
+			.returning(vec!["id"])
+			.on_conflict(OnConflictClause::columns(vec!["id"]).do_update(vec!["id"]));
+
+		// Act
+		let (sql, params) = builder.from_select(vec!["id"], select).build();
+
+		// Assert
+		assert_eq!(
+			sql,
+			"INSERT INTO \"users\" (\"id\") SELECT 4 ON CONFLICT (\"id\") DO UPDATE SET \"id\" = EXCLUDED.\"id\" RETURNING \"id\""
+		);
+		assert_eq!(params, Vec::new());
+	}
+
+	#[rstest]
+	fn test_insert_builder_from_select_legacy_conflict_precedes_returning() {
+		// Arrange
+		let backend = Arc::new(MockBackend);
+		let select = Query::select().expr(Expr::val(4)).to_owned();
+		let builder = InsertBuilder::new(backend, "users")
+			.returning(vec!["id"])
+			.on_conflict_do_nothing(Some(vec!["id".into()]));
+
+		// Act
+		let (sql, params) = builder.from_select(vec!["id"], select).build();
+
+		// Assert
+		assert_eq!(
+			sql,
+			"INSERT INTO \"users\" (\"id\") SELECT 4 ON CONFLICT (\"id\") DO NOTHING RETURNING \"id\""
+		);
+		assert_eq!(params, Vec::new());
+	}
+
+	#[rstest]
+	#[should_panic(expected = "invalid INSERT SELECT conflict configuration")]
+	fn test_insert_builder_from_select_build_rejects_invalid_fluent_conflict() {
+		// Arrange
+		let backend = Arc::new(MockSqliteBackend);
+		let select = Query::select().expr(Expr::val(4)).to_owned();
+		let builder = InsertBuilder::new(backend, "users")
+			.on_conflict(OnConflictClause::columns(Vec::<String>::new()).do_update(vec!["id"]))
+			.from_select(vec!["id"], select);
+
+		// Act
+		// Assert: the infallible build API reports the rendering error through a panic.
+		builder.build();
 	}
 
 	// ==========================================

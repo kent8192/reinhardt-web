@@ -1483,6 +1483,21 @@ impl Drop for TemporaryFileCleanup {
 	}
 }
 
+/// Preview generated code without writing to disk.
+///
+/// Useful for `--dry-run` mode.
+pub fn preview_output(output: &GeneratedOutput) -> String {
+	let mut preview = String::new();
+
+	for file in &output.files {
+		preview.push_str(&format!("// === {} ===\n", file.path.display()));
+		preview.push_str(&file.content);
+		preview.push_str("\n\n");
+	}
+
+	preview
+}
+
 #[cfg(test)]
 mod atomic_write_tests {
 	use super::*;
@@ -2067,19 +2082,4 @@ mod atomic_write_tests {
 		expected_entries.sort();
 		assert_eq!(entries(temp_dir.path()), expected_entries);
 	}
-}
-
-/// Preview generated code without writing to disk.
-///
-/// Useful for `--dry-run` mode.
-pub fn preview_output(output: &GeneratedOutput) -> String {
-	let mut preview = String::new();
-
-	for file in &output.files {
-		preview.push_str(&format!("// === {} ===\n", file.path.display()));
-		preview.push_str(&file.content);
-		preview.push_str("\n\n");
-	}
-
-	preview
 }

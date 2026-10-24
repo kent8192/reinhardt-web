@@ -1,9 +1,12 @@
-//! PostgreSQL state store. The migration is registered with Reinhardt's migration engine.
+//! PostgreSQL state store. The migrations are registered with Reinhardt's migration engine.
 
 use super::protocol::TokenPrincipal;
 use super::store::{
 	AuthorizationCommit, ClientRegistration, CodeInspection, CodeRedemption, CodeRedemptionRequest,
-	OAuthServerStore, PendingRecord, ResourceRegistration, StoredCode, StoredToken,
+	CodeRedemptionWithRefresh, DeviceAuthorizationStatus, DeviceDecisionCommit, DevicePoll,
+	DeviceRedemption, DeviceRedemptionRequest, OAuthServerStore, PendingRecord, RefreshInspection,
+	RefreshRotation, RefreshRotationRequest, ResourceRegistration, StoredCode,
+	StoredDeviceAuthorization, StoredRefreshToken, StoredToken, StoredTokenFamily,
 	token_matches_code,
 };
 use crate::database_query::{json_text_path, prepare, schema_operation};
@@ -12,8 +15,13 @@ use reinhardt_db::migrations::Migration;
 use reinhardt_query::prelude::{
 	Alias, ColumnDef, Expr, ExprTrait, IntoIden, OnConflict, Query, Value,
 };
+use reinhardt_query::types::ForeignKeyAction;
 use serde::Serialize;
 use sqlx::{PgPool, Postgres, Transaction, types::Json};
+
+const DEVICE_TABLE: &str = "oauth_server_device_authorizations";
+const FAMILIES: &str = "oauth_server_token_families";
+const REFRESH_TOKENS: &str = "oauth_server_refresh_tokens";
 
 /// OAuth state store shared by PostgreSQL-backed server instances.
 #[derive(Clone)]
@@ -25,8 +33,87 @@ impl PostgresOAuthStore {
 	pub fn new(pool: PgPool) -> Self {
 		Self { pool }
 	}
-	/// Return the initial PostgreSQL migration for the host's migration graph.
-	pub fn migration() -> Migration {
+	/// Return the PostgreSQL migrations for the host's migration graph, in apply order.
+	///
+	/// The initial migration keeps its published identity. The second migration
+	/// depends on it and adds the Device Authorization table; the third depends on the
+	/// second and adds token families and refresh tokens. The store requires all of them.
+	pub fn migrations() -> Vec<Migration> {
+		vec![
+			Self::initial_migration(),
+			Self::device_authorization_migration(),
+			Self::refresh_token_migration(),
+		]
+	}
+	fn device_authorization_migration() -> Migration {
+		[
+			schema_operation(
+				Query::create_table()
+					.table(DEVICE_TABLE)
+					.col(
+						ColumnDef::new("device_code_digest")
+							.text()
+							.primary_key(true),
+					)
+					.col(ColumnDef::new("id").text().not_null(true))
+					.col(ColumnDef::new("user_code_digest").text().not_null(true))
+					.col(ColumnDef::new("payload").jsonb().not_null(true))
+					.col(ColumnDef::new("client_id").text().not_null(true))
+					.col(ColumnDef::new("expires_at").big_integer().not_null(true))
+					.take(),
+				Query::drop_table().table(DEVICE_TABLE).take(),
+			),
+			schema_operation(
+				Query::create_index()
+					.name("oauth_server_device_authorizations_id")
+					.table(DEVICE_TABLE)
+					.unique()
+					.col("id")
+					.take(),
+				Query::drop_index()
+					.name("oauth_server_device_authorizations_id")
+					.take(),
+			),
+			schema_operation(
+				Query::create_index()
+					.name("oauth_server_device_authorizations_user_code")
+					.table(DEVICE_TABLE)
+					.unique()
+					.col("user_code_digest")
+					.take(),
+				Query::drop_index()
+					.name("oauth_server_device_authorizations_user_code")
+					.take(),
+			),
+			schema_operation(
+				Query::create_index()
+					.name("oauth_server_device_authorizations_client")
+					.table(DEVICE_TABLE)
+					.col("client_id")
+					.take(),
+				Query::drop_index()
+					.name("oauth_server_device_authorizations_client")
+					.take(),
+			),
+			schema_operation(
+				Query::create_index()
+					.name("oauth_server_device_authorizations_expiry")
+					.table(DEVICE_TABLE)
+					.col("expires_at")
+					.take(),
+				Query::drop_index()
+					.name("oauth_server_device_authorizations_expiry")
+					.take(),
+			),
+		]
+		.into_iter()
+		.fold(
+			Migration::new("0002_oauth_server_device_authorizations", "oauth_server")
+				.add_dependency("oauth_server", "0001_oauth_server"),
+			|migration, operation| migration.add_operation(operation),
+		)
+	}
+	fn initial_migration() -> Migration {
 		// Keep the published identity and one statement per operation: PostgreSQL
 		// prepares RunSQL operations individually, and rollback runs in reverse order.
 		[
@@ -177,34 +264,304 @@ impl PostgresOAuthStore {
 		)
 	}
 
+	/// Refresh-token migration (`0003_oauth_server_refresh_tokens`): token families,
+	/// refresh tokens, and the family link of access tokens. It depends on the Device
+	/// Authorization migration so the app's migration graph stays linear.
+	fn refresh_token_migration() -> Migration {
+		// One statement per operation, as in the initial migration.
+		[
+			schema_operation(
+				Query::create_table()
+					.table(FAMILIES)
+					.col(ColumnDef::new("family_id").text().primary_key(true))
+					.col(ColumnDef::new("client_id").text().not_null(true))
+					.col(ColumnDef::new("user_id").text().not_null(true))
+					.col(ColumnDef::new("scopes").jsonb().not_null(true))
+					.col(ColumnDef::new("audience").text().not_null(true))
+					.col(ColumnDef::new("code_digest").text().not_null(true))
+					.col(ColumnDef::new("created_at").big_integer().not_null(true))
+					.col(
+						ColumnDef::new("absolute_expires_at")
+							.big_integer()
+							.not_null(true),
+					)
+					.col(
+						ColumnDef::new("revoked")
+							.boolean()
+							.not_null(true)
+							.default(Expr::constant_false().into_simple_expr()),
+					)
+					.foreign_key(
+						["code_digest"],
+						"oauth_server_codes",
+						["digest"],
+						None,
+						None,
+					)
+					.take(),
+				Query::drop_table().table(FAMILIES).take(),
+			),
+			schema_operation(
+				Query::create_index()
+					.name("oauth_server_families_client")
+					.table(FAMILIES)
+					.col("client_id")
+					.take(),
+				Query::drop_index()
+					.name("oauth_server_families_client")
+					.take(),
+			),
+			schema_operation(
+				Query::create_index()
+					.name("oauth_server_families_user")
+					.table(FAMILIES)
+					.col("user_id")
+					.take(),
+				Query::drop_index()
+					.name("oauth_server_families_user")
+					.take(),
+			),
+			schema_operation(
+				Query::create_index()
+					.name("oauth_server_families_code")
+					.table(FAMILIES)
+					.col("code_digest")
+					.take(),
+				Query::drop_index()
+					.name("oauth_server_families_code")
+					.take(),
+			),
+			schema_operation(
+				Query::create_index()
+					.name("oauth_server_families_expiry")
+					.table(FAMILIES)
+					.col("absolute_expires_at")
+					.take(),
+				Query::drop_index()
+					.name("oauth_server_families_expiry")
+					.take(),
+			),
+			schema_operation(
+				Query::create_table()
+					.table(REFRESH_TOKENS)
+					.col(ColumnDef::new("digest").text().primary_key(true))
+					.col(ColumnDef::new("family_id").text().not_null(true))
+					.col(ColumnDef::new("parent_digest").text())
+					.col(ColumnDef::new("issued_at").big_integer().not_null(true))
+					.col(
+						ColumnDef::new("idle_expires_at")
+							.big_integer()
+							.not_null(true),
+					)
+					.col(
+						ColumnDef::new("rotated")
+							.boolean()
+							.not_null(true)
+							.default(Expr::constant_false().into_simple_expr()),
+					)
+					.foreign_key(
+						["family_id"],
+						FAMILIES,
+						["family_id"],
+						Some(ForeignKeyAction::Cascade),
+						None,
+					)
+					.take(),
+				Query::drop_table().table(REFRESH_TOKENS).take(),
+			),
+			schema_operation(
+				Query::create_index()
+					.name("oauth_server_refresh_tokens_family")
+					.table(REFRESH_TOKENS)
+					.col("family_id")
+					.take(),
+				Query::drop_index()
+					.name("oauth_server_refresh_tokens_family")
+					.take(),
+			),
+			schema_operation(
+				Query::alter_table()
+					.table("oauth_server_tokens")
+					.add_column(ColumnDef::new("family_id").text().clone())
+					.take(),
+				Query::alter_table()
+					.table("oauth_server_tokens")
+					.drop_column("family_id")
+					.take(),
+			),
+			schema_operation(
+				Query::create_index()
+					.name("oauth_server_tokens_family")
+					.table("oauth_server_tokens")
+					.col("family_id")
+					.r#where(Expr::col("family_id").is_not_null())
+					.take(),
+				Query::drop_index()
+					.name("oauth_server_tokens_family")
+					.take(),
+			),
+		]
+		.into_iter()
+		.fold(
+			Migration::new("0003_oauth_server_refresh_tokens", "oauth_server")
+				.add_dependency("oauth_server", "0002_oauth_server_device_authorizations"),
+			|migration, operation| migration.add_operation(operation),
+		)
+	}
+
 	/// Access the underlying pool for host-managed migrations and operations.
 	pub fn pool(&self) -> &PgPool {
 		&self.pool
 	}
-	/// Delete expired pending requests, codes, and tokens in one transaction.
-	/// Run this periodically from a host maintenance job.
+	/// Redeem a code and store its token, optionally starting a token family.
+	async fn redeem_code(
+		&self,
+		request: CodeRedemptionRequest<'_>,
+		family: Option<(&StoredTokenFamily, &StoredRefreshToken)>,
+	) -> Result<CodeRedemption, String> {
+		let CodeRedemptionRequest {
+			digest,
+			client_id,
+			redirect_uri,
+			challenge,
+			resource,
+			expect_oidc,
+			now,
+			token,
+		} = request;
+		if let Some((family, refresh_token)) = family {
+			// A malformed request is a caller bug, not an invalid client grant.
+			if family.code_digest != digest
+				|| family.client_id != client_id
+				|| token.family_id.as_deref() != Some(family.family_id.as_str())
+				|| refresh_token.family_id != family.family_id
+				|| refresh_token.parent_digest.is_some()
+				|| refresh_token.rotated
+				|| family.revoked
+			{
+				return Err("inconsistent token family redemption".to_owned());
+			}
+		} else if token.family_id.is_some() {
+			return Err("family-linked tokens require family redemption".to_owned());
+		}
+		let mut tx = self.pool.begin().await.map_err(|e| e.to_string())?;
+		let (sql, arguments) = prepare(
+			Query::select()
+				.columns(["payload", "redeemed", "expires_at"])
+				.from(Alias::new("oauth_server_codes"))
+				.and_where(Expr::col(Alias::new("digest").into_iden()).eq(digest))
+				.lock_exclusive()
+				.take(),
+		)?;
+		let row: Option<(Json<StoredCode>, bool, i64)> = sqlx::query_as_with(&sql, arguments)
+			.fetch_optional(&mut *tx)
+			.await
+			.map_err(|e| e.to_string())?;
+		let Some((Json(mut code), redeemed, expiry)) = row else {
+			return Ok(CodeRedemption::Invalid);
+		};
+		if code.client_id != client_id
+			|| code.redirect_uri != redirect_uri
+			|| code.challenge != challenge
+			|| resource.is_some_and(|r| r != code.audience)
+			|| code.oidc != expect_oidc
+		{
+			return Ok(CodeRedemption::Invalid);
+		}
+		if redeemed {
+			let (sql, arguments) = update_flag("oauth_server_codes", "replayed", "digest", digest)?;
+			sqlx::query_with(&sql, arguments)
+				.execute(&mut *tx)
+				.await
+				.map_err(|e| e.to_string())?;
+			let (sql, arguments) =
+				update_flag("oauth_server_tokens", "revoked", "code_digest", digest)?;
+			sqlx::query_with(&sql, arguments)
+				.execute(&mut *tx)
+				.await
+				.map_err(|e| e.to_string())?;
+			revoke_code_families(&mut tx, digest).await?;
+			tx.commit().await.map_err(|e| e.to_string())?;
+			return Ok(CodeRedemption::Replay);
+		}
+		if expiry <= now || !token_matches_code(&token, &code) {
+			return Ok(CodeRedemption::Invalid);
+		}
+		if let Some((family, _)) = family
+			&& (family.user_id != code.user_id
+				|| family.scopes != code.scopes
+				|| family.audience != code.audience
+				|| code.oidc)
+		{
+			return Ok(CodeRedemption::Invalid);
+		}
+		let (sql, arguments) = update_flag("oauth_server_codes", "redeemed", "digest", digest)?;
+		sqlx::query_with(&sql, arguments)
+			.execute(&mut *tx)
+			.await
+			.map_err(|e| e.to_string())?;
+		code.redeemed = true;
+		if let Some((family, refresh_token)) = family {
+			insert_family(&mut tx, family).await?;
+			insert_refresh_token(&mut tx, refresh_token).await?;
+		}
+		insert_token(&mut tx, &token).await?;
+		tx.commit().await.map_err(|e| e.to_string())?;
+		Ok(CodeRedemption::Valid(code))
+	}
+	/// Delete expired pending requests, tokens, token families, codes, and Device
+	/// Authorizations in one transaction. Run this periodically from a host maintenance job.
+	///
+	/// A token family is deleted once its absolute lifetime has passed, together with
+	/// its refresh tokens (rotated ones are kept until then for reuse detection). Codes
+	/// referenced by a remaining token or family are retained.
 	pub async fn purge_expired(&self, now: i64) -> Result<u64, String> {
 		let mut tx = self.pool.begin().await.map_err(|e| e.to_string())?;
 		let mut deleted = 0;
 		for table in [
 			"oauth_server_pending",
 			"oauth_server_tokens",
+			REFRESH_TOKENS,
+			FAMILIES,
 			"oauth_server_codes",
+			DEVICE_TABLE,
 		] {
 			let mut query = Query::delete();
-			query
-				.from_table(Alias::new(table))
-				.and_where(Expr::col(Alias::new("expires_at").into_iden()).lte(now));
-			if table == "oauth_server_codes" {
-				let mut subquery = Query::select();
-				subquery
-					.column(Alias::new("digest"))
-					.from(Alias::new("oauth_server_tokens"))
-					.and_where(
-						Expr::col(("oauth_server_tokens", "code_digest"))
-							.eq(Expr::col(("oauth_server_codes", "digest"))),
+			query.from_table(Alias::new(table));
+			match table {
+				REFRESH_TOKENS => {
+					let mut expired = Query::select();
+					expired
+						.column(Alias::new("family_id"))
+						.from(Alias::new(FAMILIES))
+						.and_where(
+							Expr::col(Alias::new("absolute_expires_at").into_iden()).lte(now),
+						);
+					query.and_where(
+						Expr::col(Alias::new("family_id").into_iden()).in_subquery(expired),
 					);
-				query.and_where(Expr::not_exists(subquery));
+				}
+				FAMILIES => {
+					query.and_where(
+						Expr::col(Alias::new("absolute_expires_at").into_iden()).lte(now),
+					);
+				}
+				_ => {
+					query.and_where(Expr::col(Alias::new("expires_at").into_iden()).lte(now));
+				}
+			}
+			if table == "oauth_server_codes" {
+				for referencing in ["oauth_server_tokens", FAMILIES] {
+					let mut subquery = Query::select();
+					subquery
+						.column(Alias::new("code_digest"))
+						.from(Alias::new(referencing))
+						.and_where(
+							Expr::col((referencing, "code_digest"))
+								.eq(Expr::col(("oauth_server_codes", "digest"))),
+						);
+					query.and_where(Expr::not_exists(subquery));
+				}
 			}
 			let (sql, arguments) = prepare(query)?;
 			deleted += sqlx::query_with(&sql, arguments)
@@ -258,6 +615,7 @@ async fn insert_token(
 				"code_digest",
 				"expires_at",
 				"revoked",
+				"family_id",
 			])
 			.values(vec![
 				token.digest.clone().into(),
@@ -267,6 +625,7 @@ async fn insert_token(
 				Value::String(token.code_digest.clone().map(Box::new)),
 				token.expires_at.into(),
 				token.revoked.into(),
+				Value::String(token.family_id.clone().map(Box::new)),
 			])?
 			.take(),
 	)?;
@@ -293,6 +652,324 @@ async fn insert_code(tx: &mut Transaction<'_, Postgres>, code: &StoredCode) -> R
 		.execute(&mut **tx)
 		.await
 		.map_err(|e| e.to_string())?;
+	Ok(())
+}
+
+async fn execute(
+	tx: &mut Transaction<'_, Postgres>,
+	(sql, arguments): crate::database_query::Prepared,
+) -> Result<u64, String> {
+	sqlx::query_with(&sql, arguments)
+		.execute(&mut **tx)
+		.await
+		.map(|result| result.rows_affected())
+		.map_err(|e| e.to_string())
+}
+
+async fn insert_family(
+	tx: &mut Transaction<'_, Postgres>,
+	family: &StoredTokenFamily,
+) -> Result<(), String> {
+	let prepared = prepare(
+		Query::insert()
+			.into_table(Alias::new(FAMILIES))
+			.columns(FAMILY_COLUMNS)
+			.values(vec![
+				family.family_id.clone().into(),
+				family.client_id.clone().into(),
+				family.user_id.clone().into(),
+				json_value(&family.scopes)?,
+				family.audience.clone().into(),
+				family.code_digest.clone().into(),
+				family.created_at.into(),
+				family.absolute_expires_at.into(),
+				family.revoked.into(),
+			])?
+			.take(),
+	)?;
+	execute(tx, prepared).await.map(drop)
+}
+
+async fn insert_refresh_token(
+	tx: &mut Transaction<'_, Postgres>,
+	token: &StoredRefreshToken,
+) -> Result<(), String> {
+	let prepared = prepare(
+		Query::insert()
+			.into_table(Alias::new(REFRESH_TOKENS))
+			.columns(REFRESH_TOKEN_COLUMNS)
+			.values(vec![
+				token.digest.clone().into(),
+				token.family_id.clone().into(),
+				Value::String(token.parent_digest.clone().map(Box::new)),
+				token.issued_at.into(),
+				token.idle_expires_at.into(),
+				token.rotated.into(),
+			])?
+			.take(),
+	)?;
+	execute(tx, prepared).await.map(drop)
+}
+
+const FAMILY_COLUMNS: [&str; 9] = [
+	"family_id",
+	"client_id",
+	"user_id",
+	"scopes",
+	"audience",
+	"code_digest",
+	"created_at",
+	"absolute_expires_at",
+	"revoked",
+];
+const REFRESH_TOKEN_COLUMNS: [&str; 6] = [
+	"digest",
+	"family_id",
+	"parent_digest",
+	"issued_at",
+	"idle_expires_at",
+	"rotated",
+];
+
+type FamilyRow = (
+	String,
+	String,
+	String,
+	Json<Vec<String>>,
+	String,
+	String,
+	i64,
+	i64,
+	bool,
+);
+type RefreshTokenRow = (String, String, Option<String>, i64, i64, bool);
+
+fn family_from_row(row: FamilyRow) -> StoredTokenFamily {
+	let (
+		family_id,
+		client_id,
+		user_id,
+		Json(scopes),
+		audience,
+		code_digest,
+		created_at,
+		absolute_expires_at,
+		revoked,
+	) = row;
+	StoredTokenFamily {
+		family_id,
+		client_id,
+		user_id,
+		scopes,
+		audience,
+		code_digest,
+		created_at,
+		absolute_expires_at,
+		revoked,
+	}
+}
+
+fn refresh_token_from_row(row: RefreshTokenRow) -> StoredRefreshToken {
+	let (digest, family_id, parent_digest, issued_at, idle_expires_at, rotated) = row;
+	StoredRefreshToken {
+		digest,
+		family_id,
+		parent_digest,
+		issued_at,
+		idle_expires_at,
+		rotated,
+	}
+}
+
+/// Load a refresh token and its family, holding the family row lock until the
+/// transaction ends. Every rotation, reuse revocation, and family revocation locks
+/// the family first, so concurrent operations on one family are serialized and a
+/// waiter re-reads the committed state after the lock is granted.
+async fn lock_refresh_token(
+	tx: &mut Transaction<'_, Postgres>,
+	digest: &str,
+) -> Result<Option<(StoredRefreshToken, StoredTokenFamily)>, String> {
+	let (sql, arguments) = prepare(
+		Query::select()
+			.column(Alias::new("family_id"))
+			.from(Alias::new(REFRESH_TOKENS))
+			.and_where(Expr::col(Alias::new("digest").into_iden()).eq(digest))
+			.take(),
+	)?;
+	let family_id: Option<(String,)> = sqlx::query_as_with(&sql, arguments)
+		.fetch_optional(&mut **tx)
+		.await
+		.map_err(|e| e.to_string())?;
+	let Some((family_id,)) = family_id else {
+		return Ok(None);
+	};
+	let (sql, arguments) = prepare(
+		Query::select()
+			.columns(FAMILY_COLUMNS)
+			.from(Alias::new(FAMILIES))
+			.and_where(Expr::col(Alias::new("family_id").into_iden()).eq(family_id.as_str()))
+			.lock_exclusive()
+			.take(),
+	)?;
+	let family: Option<FamilyRow> = sqlx::query_as_with(&sql, arguments)
+		.fetch_optional(&mut **tx)
+		.await
+		.map_err(|e| e.to_string())?;
+	let Some(family) = family else {
+		return Ok(None);
+	};
+	let (sql, arguments) = prepare(
+		Query::select()
+			.columns(REFRESH_TOKEN_COLUMNS)
+			.from(Alias::new(REFRESH_TOKENS))
+			.and_where(Expr::col(Alias::new("digest").into_iden()).eq(digest))
+			.lock_exclusive()
+			.take(),
+	)?;
+	let token: Option<RefreshTokenRow> = sqlx::query_as_with(&sql, arguments)
+		.fetch_optional(&mut **tx)
+		.await
+		.map_err(|e| e.to_string())?;
+	Ok(token.map(|token| (refresh_token_from_row(token), family_from_row(family))))
+}
+
+/// Mark one family revoked and revoke every access token issued from it.
+async fn revoke_family(tx: &mut Transaction<'_, Postgres>, family_id: &str) -> Result<(), String> {
+	let prepared = update_flag(FAMILIES, "revoked", "family_id", family_id)?;
+	execute(tx, prepared).await?;
+	let prepared = update_flag("oauth_server_tokens", "revoked", "family_id", family_id)?;
+	execute(tx, prepared).await.map(drop)
+}
+
+/// Revoke the families started by a code, and the access tokens issued from them.
+async fn revoke_code_families(
+	tx: &mut Transaction<'_, Postgres>,
+	code_digest: &str,
+) -> Result<(), String> {
+	let prepared = update_flag(FAMILIES, "revoked", "code_digest", code_digest)?;
+	execute(tx, prepared).await?;
+	let mut family_ids = Query::select();
+	family_ids
+		.column(Alias::new("family_id"))
+		.from(Alias::new(FAMILIES))
+		.and_where(Expr::col(Alias::new("code_digest").into_iden()).eq(code_digest));
+	let prepared = prepare(
+		Query::update()
+			.table(Alias::new("oauth_server_tokens"))
+			.value(Alias::new("revoked"), true)
+			.and_where(Expr::col(Alias::new("family_id").into_iden()).in_subquery(family_ids))
+			.take(),
+	)?;
+	execute(tx, prepared).await.map(drop)
+}
+
+/// Revoke the token families of one owner (`client_id` or `user_id`).
+async fn revoke_owner_families(
+	tx: &mut Transaction<'_, Postgres>,
+	owner_column: &'static str,
+	owner: &str,
+) -> Result<(), String> {
+	let prepared = update_flag(FAMILIES, "revoked", owner_column, owner)?;
+	execute(tx, prepared).await.map(drop)
+}
+async fn lock_device_authorization(
+	tx: &mut Transaction<'_, Postgres>,
+	column: &'static str,
+	value: &str,
+) -> Result<Option<StoredDeviceAuthorization>, String> {
+	let (sql, arguments) = prepare(
+		Query::select()
+			.column(Alias::new("payload"))
+			.from(Alias::new(DEVICE_TABLE))
+			.and_where(Expr::col(Alias::new(column).into_iden()).eq(value))
+			.lock_exclusive()
+			.take(),
+	)?;
+	let row: Option<(Json<StoredDeviceAuthorization>,)> = sqlx::query_as_with(&sql, arguments)
+		.fetch_optional(&mut **tx)
+		.await
+		.map_err(|e| e.to_string())?;
+	Ok(row.map(|(Json(record),)| record))
+}
+async fn save_device_authorization(
+	tx: &mut Transaction<'_, Postgres>,
+	record: &StoredDeviceAuthorization,
+) -> Result<(), String> {
+	let (sql, arguments) = prepare(
+		Query::update()
+			.table(Alias::new(DEVICE_TABLE))
+			.value(Alias::new("payload"), json_value(record)?)
+			.and_where(
+				Expr::col(Alias::new("device_code_digest").into_iden())
+					.eq(record.device_code_digest.as_str()),
+			)
+			.take(),
+	)?;
+	sqlx::query_with(&sql, arguments)
+		.execute(&mut **tx)
+		.await
+		.map_err(|e| e.to_string())?;
+	Ok(())
+}
+/// Lock the Device Authorizations matching `filter` and invalidate them.
+/// With `only_approved`, records in any other state are left untouched.
+async fn invalidate_device_authorizations(
+	tx: &mut Transaction<'_, Postgres>,
+	filter: reinhardt_query::SimpleExpr,
+	only_approved: bool,
+) -> Result<(), String> {
+	let (sql, arguments) = prepare(
+		Query::select()
+			.column(Alias::new("payload"))
+			.from(Alias::new(DEVICE_TABLE))
+			.and_where(filter)
+			.lock_exclusive()
+			.take(),
+	)?;
+	let rows: Vec<(Json<StoredDeviceAuthorization>,)> = sqlx::query_as_with(&sql, arguments)
+		.fetch_all(&mut **tx)
+		.await
+		.map_err(|e| e.to_string())?;
+	for (Json(mut record),) in rows {
+		if only_approved && record.status != DeviceAuthorizationStatus::Approved {
+			continue;
+		}
+		if record.invalidate() {
+			save_device_authorization(tx, &record).await?;
+		}
+	}
+	Ok(())
+}
+async fn read_device_authorization(
+	pool: &PgPool,
+	column: &'static str,
+	value: &str,
+) -> Result<Option<StoredDeviceAuthorization>, String> {
+	let (sql, arguments) = prepare(
+		Query::select()
+			.column(Alias::new("payload"))
+			.from(Alias::new(DEVICE_TABLE))
+			.and_where(Expr::col(Alias::new(column).into_iden()).eq(value))
+			.take(),
+	)?;
+	let row: Option<(Json<StoredDeviceAuthorization>,)> = sqlx::query_as_with(&sql, arguments)
+		.fetch_optional(pool)
+		.await
+		.map_err(|e| e.to_string())?;
+	Ok(row.map(|(Json(record),)| record))
+}
+async fn revoke_device_token(
+	tx: &mut Transaction<'_, Postgres>,
+	record: &StoredDeviceAuthorization,
+) -> Result<(), String> {
+	if let Some(token_digest) = &record.token_digest {
+		let (sql, arguments) =
+			update_flag("oauth_server_tokens", "revoked", "digest", token_digest)?;
+		sqlx::query_with(&sql, arguments)
+			.execute(&mut **tx)
+			.await
+			.map_err(|e| e.to_string())?;
+	}
 	Ok(())
 }
 
@@ -421,6 +1098,13 @@ impl OAuthServerStore for PostgresOAuthStore {
 			.execute(&mut *tx)
 			.await
 			.map_err(|e| e.to_string())?;
+		revoke_owner_families(&mut tx, "client_id", id).await?;
+		invalidate_device_authorizations(
+			&mut tx,
+			Expr::col(Alias::new("client_id").into_iden()).eq(id),
+			false,
+		)
+		.await?;
 		let (sql, arguments) = prepare(
 			Query::update()
 				.table(Alias::new("oauth_server_tokens"))
@@ -780,6 +1464,7 @@ impl OAuthServerStore for PostgresOAuthStore {
 				.execute(&mut *tx)
 				.await
 				.map_err(|e| e.to_string())?;
+			revoke_code_families(&mut tx, request.digest).await?;
 			tx.commit().await.map_err(|e| e.to_string())?;
 			return Ok(None);
 		}
@@ -789,67 +1474,7 @@ impl OAuthServerStore for PostgresOAuthStore {
 		&self,
 		request: CodeRedemptionRequest<'_>,
 	) -> Result<CodeRedemption, String> {
-		let CodeRedemptionRequest {
-			digest,
-			client_id,
-			redirect_uri,
-			challenge,
-			resource,
-			expect_oidc,
-			now,
-			token,
-		} = request;
-		let mut tx = self.pool.begin().await.map_err(|e| e.to_string())?;
-		let (sql, arguments) = prepare(
-			Query::select()
-				.columns(["payload", "redeemed", "expires_at"])
-				.from(Alias::new("oauth_server_codes"))
-				.and_where(Expr::col(Alias::new("digest").into_iden()).eq(digest))
-				.lock_exclusive()
-				.take(),
-		)?;
-		let row: Option<(Json<StoredCode>, bool, i64)> = sqlx::query_as_with(&sql, arguments)
-			.fetch_optional(&mut *tx)
-			.await
-			.map_err(|e| e.to_string())?;
-		let Some((Json(mut code), redeemed, expiry)) = row else {
-			return Ok(CodeRedemption::Invalid);
-		};
-		if code.client_id != client_id
-			|| code.redirect_uri != redirect_uri
-			|| code.challenge != challenge
-			|| resource.is_some_and(|r| r != code.audience)
-			|| code.oidc != expect_oidc
-		{
-			return Ok(CodeRedemption::Invalid);
-		}
-		if redeemed {
-			let (sql, arguments) = update_flag("oauth_server_codes", "replayed", "digest", digest)?;
-			sqlx::query_with(&sql, arguments)
-				.execute(&mut *tx)
-				.await
-				.map_err(|e| e.to_string())?;
-			let (sql, arguments) =
-				update_flag("oauth_server_tokens", "revoked", "code_digest", digest)?;
-			sqlx::query_with(&sql, arguments)
-				.execute(&mut *tx)
-				.await
-				.map_err(|e| e.to_string())?;
-			tx.commit().await.map_err(|e| e.to_string())?;
-			return Ok(CodeRedemption::Replay);
-		}
-		if expiry <= now || !token_matches_code(&token, &code) {
-			return Ok(CodeRedemption::Invalid);
-		}
-		let (sql, arguments) = update_flag("oauth_server_codes", "redeemed", "digest", digest)?;
-		sqlx::query_with(&sql, arguments)
-			.execute(&mut *tx)
-			.await
-			.map_err(|e| e.to_string())?;
-		code.redeemed = true;
-		insert_token(&mut tx, &token).await?;
-		tx.commit().await.map_err(|e| e.to_string())?;
-		Ok(CodeRedemption::Valid(code))
+		self.redeem_code(request, None).await
 	}
 	async fn put_token(&self, token: StoredToken) -> Result<(), String> {
 		if token.code_digest.is_some() {
@@ -906,6 +1531,9 @@ impl OAuthServerStore for PostgresOAuthStore {
 			.execute(&mut *tx)
 			.await
 			.map_err(|e| e.to_string())?;
+		revoke_owner_families(&mut tx, "user_id", user_id).await?;
+		invalidate_device_authorizations(&mut tx, json_text_path(&["user_id"]).eq(user_id), true)
+			.await?;
 		let (sql, arguments) = prepare(
 			Query::update()
 				.table(Alias::new("oauth_server_tokens"))
@@ -935,6 +1563,9 @@ impl OAuthServerStore for PostgresOAuthStore {
 			.execute(&mut *tx)
 			.await
 			.map_err(|e| e.to_string())?;
+		revoke_owner_families(&mut tx, "user_id", user_id).await?;
+		invalidate_device_authorizations(&mut tx, json_text_path(&["user_id"]).eq(user_id), true)
+			.await?;
 		let (sql, arguments) = prepare(
 			Query::update()
 				.table(Alias::new("oauth_server_tokens"))
@@ -950,6 +1581,8 @@ impl OAuthServerStore for PostgresOAuthStore {
 		Ok(())
 	}
 	async fn revoke_client(&self, client_id: &str) -> Result<u64, String> {
+		let mut tx = self.pool.begin().await.map_err(|e| e.to_string())?;
+		revoke_owner_families(&mut tx, "client_id", client_id).await?;
 		let (sql, arguments) = prepare(
 			Query::update()
 				.table(Alias::new("oauth_server_tokens"))
@@ -958,10 +1591,248 @@ impl OAuthServerStore for PostgresOAuthStore {
 				.and_where(Expr::col(Alias::new("revoked").into_iden()).eq(false))
 				.take(),
 		)?;
-		let result = sqlx::query_with(&sql, arguments)
-			.execute(&self.pool)
+		let revoked = execute(&mut tx, (sql, arguments)).await?;
+		tx.commit().await.map_err(|e| e.to_string())?;
+		Ok(revoked)
+	}
+	async fn redeem_code_and_store_tokens(
+		&self,
+		request: CodeRedemptionWithRefresh<'_>,
+	) -> Result<CodeRedemption, String> {
+		let CodeRedemptionWithRefresh {
+			redemption,
+			family,
+			refresh_token,
+		} = request;
+		self.redeem_code(redemption, Some((&family, &refresh_token)))
+			.await
+	}
+	async fn inspect_refresh_token(
+		&self,
+		digest: &str,
+		client_id: &str,
+		now: i64,
+	) -> Result<RefreshInspection, String> {
+		let mut tx = self.pool.begin().await.map_err(|e| e.to_string())?;
+		let Some((token, family)) = lock_refresh_token(&mut tx, digest).await? else {
+			return Ok(RefreshInspection::Invalid);
+		};
+		if family.revoked || family.absolute_expires_at <= now || family.client_id != client_id {
+			return Ok(RefreshInspection::Invalid);
+		}
+		if token.rotated {
+			revoke_family(&mut tx, &family.family_id).await?;
+			tx.commit().await.map_err(|e| e.to_string())?;
+			return Ok(RefreshInspection::Reused {
+				family_id: family.family_id,
+			});
+		}
+		if token.idle_expires_at <= now {
+			return Ok(RefreshInspection::Invalid);
+		}
+		Ok(RefreshInspection::Active(token, family))
+	}
+	async fn rotate_refresh_token(
+		&self,
+		request: RefreshRotationRequest<'_>,
+	) -> Result<RefreshRotation, String> {
+		let RefreshRotationRequest {
+			presented_digest,
+			client_id,
+			now,
+			replacement,
+			token,
+		} = request;
+		let mut tx = self.pool.begin().await.map_err(|e| e.to_string())?;
+		let Some((presented, family)) = lock_refresh_token(&mut tx, presented_digest).await? else {
+			return Ok(RefreshRotation::Invalid);
+		};
+		if family.revoked || family.absolute_expires_at <= now || family.client_id != client_id {
+			return Ok(RefreshRotation::Invalid);
+		}
+		if presented.rotated {
+			revoke_family(&mut tx, &family.family_id).await?;
+			tx.commit().await.map_err(|e| e.to_string())?;
+			return Ok(RefreshRotation::Reused {
+				family_id: family.family_id,
+			});
+		}
+		if presented.idle_expires_at <= now {
+			return Ok(RefreshRotation::Invalid);
+		}
+		// A replacement that does not extend this exact chain is a caller bug.
+		if replacement.family_id != family.family_id
+			|| replacement.parent_digest.as_deref() != Some(presented_digest)
+			|| replacement.rotated
+			|| token.family_id.as_deref() != Some(family.family_id.as_str())
+			|| token.client_id != client_id
+			|| token.principal != TokenPrincipal::User(family.user_id.clone())
+			|| token.audience != family.audience
+		{
+			return Err("inconsistent refresh token rotation".to_owned());
+		}
+		let prepared = update_flag(REFRESH_TOKENS, "rotated", "digest", presented_digest)?;
+		execute(&mut tx, prepared).await?;
+		insert_refresh_token(&mut tx, &replacement).await?;
+		insert_token(&mut tx, &token).await?;
+		tx.commit().await.map_err(|e| e.to_string())?;
+		Ok(RefreshRotation::Rotated)
+	}
+	async fn revoke_refresh_family(&self, digest: &str, client_id: &str) -> Result<bool, String> {
+		let mut tx = self.pool.begin().await.map_err(|e| e.to_string())?;
+		let Some((_, family)) = lock_refresh_token(&mut tx, digest).await? else {
+			return Ok(false);
+		};
+		if family.client_id != client_id {
+			return Ok(false);
+		}
+		revoke_family(&mut tx, &family.family_id).await?;
+		tx.commit().await.map_err(|e| e.to_string())?;
+		Ok(true)
+	}
+	async fn insert_device_authorization(
+		&self,
+		record: StoredDeviceAuthorization,
+		now: i64,
+	) -> Result<bool, String> {
+		let mut tx = self.pool.begin().await.map_err(|e| e.to_string())?;
+		// An expired record must not keep its User Code reserved.
+		let (sql, arguments) = prepare(
+			Query::delete()
+				.from_table(Alias::new(DEVICE_TABLE))
+				.and_where(
+					Expr::col(Alias::new("user_code_digest").into_iden())
+						.eq(record.user_code_digest.as_str()),
+				)
+				.and_where(Expr::col(Alias::new("expires_at").into_iden()).lte(now))
+				.take(),
+		)?;
+		sqlx::query_with(&sql, arguments)
+			.execute(&mut *tx)
 			.await
 			.map_err(|e| e.to_string())?;
-		Ok(result.rows_affected())
+		let (sql, arguments) = prepare(
+			Query::insert()
+				.into_table(Alias::new(DEVICE_TABLE))
+				.columns([
+					"device_code_digest",
+					"id",
+					"user_code_digest",
+					"payload",
+					"client_id",
+					"expires_at",
+				])
+				.values(vec![
+					record.device_code_digest.clone().into(),
+					record.id.clone().into(),
+					record.user_code_digest.clone().into(),
+					json_value(&record)?,
+					record.client_id.clone().into(),
+					record.expires_at.into(),
+				])?
+				.on_conflict(OnConflict::new().do_nothing())
+				.take(),
+		)?;
+		let result = sqlx::query_with(&sql, arguments)
+			.execute(&mut *tx)
+			.await
+			.map_err(|e| e.to_string())?;
+		tx.commit().await.map_err(|e| e.to_string())?;
+		Ok(result.rows_affected() == 1)
+	}
+	async fn device_authorization(
+		&self,
+		device_code_digest: &str,
+	) -> Result<Option<StoredDeviceAuthorization>, String> {
+		read_device_authorization(&self.pool, "device_code_digest", device_code_digest).await
+	}
+	async fn device_authorization_by_id(
+		&self,
+		id: &str,
+	) -> Result<Option<StoredDeviceAuthorization>, String> {
+		read_device_authorization(&self.pool, "id", id).await
+	}
+	async fn bind_device_user_code(
+		&self,
+		user_code_digest: &str,
+		session_digest: &str,
+		now: i64,
+	) -> Result<Option<StoredDeviceAuthorization>, String> {
+		let mut tx = self.pool.begin().await.map_err(|e| e.to_string())?;
+		let Some(mut record) =
+			lock_device_authorization(&mut tx, "user_code_digest", user_code_digest).await?
+		else {
+			return Ok(None);
+		};
+		let was_bound = record.session_digest.is_some();
+		if !record.bind_session(session_digest, now) {
+			return Ok(None);
+		}
+		if !was_bound {
+			save_device_authorization(&mut tx, &record).await?;
+		}
+		tx.commit().await.map_err(|e| e.to_string())?;
+		Ok(Some(record))
+	}
+	async fn decide_device_authorization(
+		&self,
+		commit: DeviceDecisionCommit<'_>,
+	) -> Result<bool, String> {
+		let mut tx = self.pool.begin().await.map_err(|e| e.to_string())?;
+		let Some(mut record) = lock_device_authorization(&mut tx, "id", commit.id).await? else {
+			return Ok(false);
+		};
+		if !record.decide(&commit) {
+			return Ok(false);
+		}
+		save_device_authorization(&mut tx, &record).await?;
+		tx.commit().await.map_err(|e| e.to_string())?;
+		Ok(true)
+	}
+	async fn poll_device_authorization(
+		&self,
+		device_code_digest: &str,
+		client_id: &str,
+		now: i64,
+	) -> Result<DevicePoll, String> {
+		let mut tx = self.pool.begin().await.map_err(|e| e.to_string())?;
+		let Some(mut record) =
+			lock_device_authorization(&mut tx, "device_code_digest", device_code_digest).await?
+		else {
+			return Ok(DevicePoll::Invalid);
+		};
+		let before = record.clone();
+		let outcome = record.poll(client_id, now);
+		if matches!(outcome, DevicePoll::Replay) {
+			revoke_device_token(&mut tx, &record).await?;
+		}
+		if record != before {
+			save_device_authorization(&mut tx, &record).await?;
+		}
+		tx.commit().await.map_err(|e| e.to_string())?;
+		Ok(outcome)
+	}
+	async fn redeem_device_authorization(
+		&self,
+		request: DeviceRedemptionRequest<'_>,
+	) -> Result<DeviceRedemption, String> {
+		let mut tx = self.pool.begin().await.map_err(|e| e.to_string())?;
+		let Some(mut record) =
+			lock_device_authorization(&mut tx, "device_code_digest", request.device_code_digest)
+				.await?
+		else {
+			return Ok(DeviceRedemption::Invalid);
+		};
+		let outcome = record.redeem(&request);
+		match &outcome {
+			DeviceRedemption::Valid(redeemed) => {
+				save_device_authorization(&mut tx, redeemed).await?;
+				insert_token(&mut tx, &request.token).await?;
+			}
+			DeviceRedemption::Replay => revoke_device_token(&mut tx, &record).await?,
+			DeviceRedemption::Invalid => return Ok(outcome),
+		}
+		tx.commit().await.map_err(|e| e.to_string())?;
+		Ok(outcome)
 	}
 }

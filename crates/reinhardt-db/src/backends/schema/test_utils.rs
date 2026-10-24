@@ -64,7 +64,7 @@ mod tests {
 
 	#[test]
 	fn test_mock_schema_editor_default() {
-		let editor = MockSchemaEditor::default();
+		let editor: MockSchemaEditor = Default::default();
 		assert_eq!(editor.database_type(), DatabaseType::Sqlite);
 	}
 }

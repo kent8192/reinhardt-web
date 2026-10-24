@@ -4,7 +4,7 @@
 
 use crate::{
 	backend::QueryBuilder,
-	types::{ColumnDef, DynIden, ForeignKeyAction, IntoIden, IntoTableRef, TableRef},
+	types::{ColumnDef, DynIden, ForeignKeyAction, IdentityDef, IntoIden, IntoTableRef, TableRef},
 };
 
 use super::traits::{QueryBuilderTrait, QueryStatementBuilder, QueryStatementWriter};
@@ -56,6 +56,25 @@ pub enum AlterTableOperation {
 	},
 	/// MODIFY COLUMN / ALTER COLUMN (type or constraints)
 	ModifyColumn(ColumnDef),
+	/// Adds PostgreSQL column-owned identity generation.
+	AddIdentity {
+		/// Existing integer column.
+		column: DynIden,
+		/// Identity generation and sequence options.
+		identity: IdentityDef,
+	},
+	/// Changes identity generation and configured options without restarting it.
+	SetIdentity {
+		/// Existing identity column.
+		column: DynIden,
+		/// Generation mode and options to change; sequence names are not accepted.
+		identity: IdentityDef,
+	},
+	/// Drops identity generation and its internal sequence.
+	DropIdentity {
+		/// Existing identity column.
+		column: DynIden,
+	},
 	/// ADD CONSTRAINT
 	AddConstraint(crate::types::TableConstraint),
 	/// DROP CONSTRAINT
@@ -210,6 +229,33 @@ impl AlterTableStatement {
 	pub fn modify_column(&mut self, column: ColumnDef) -> &mut Self {
 		self.operations
 			.push(AlterTableOperation::ModifyColumn(column));
+		self
+	}
+
+	/// Adds PostgreSQL identity generation to an existing integer column.
+	pub fn add_identity(&mut self, column: impl IntoIden, identity: IdentityDef) -> &mut Self {
+		self.operations.push(AlterTableOperation::AddIdentity {
+			column: column.into_iden(),
+			identity,
+		});
+		self
+	}
+
+	/// Changes generation and specified sequence options without restarting allocation.
+	/// Rename the internal sequence separately with `Query::alter_sequence()`.
+	pub fn set_identity(&mut self, column: impl IntoIden, identity: IdentityDef) -> &mut Self {
+		self.operations.push(AlterTableOperation::SetIdentity {
+			column: column.into_iden(),
+			identity,
+		});
+		self
+	}
+
+	/// Drops PostgreSQL identity generation and its internal sequence.
+	pub fn drop_identity(&mut self, column: impl IntoIden) -> &mut Self {
+		self.operations.push(AlterTableOperation::DropIdentity {
+			column: column.into_iden(),
+		});
 		self
 	}
 

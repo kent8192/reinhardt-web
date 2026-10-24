@@ -9,9 +9,11 @@ use super::handlers::ViewSetHandler;
 use super::types::{CompiledRoutes, RouteHandler};
 use crate::routers::pattern::PathPattern;
 use hyper::Method;
+use matchit::Router as MatchitRouter;
 #[cfg(feature = "viewsets")]
 use reinhardt_views::viewsets::Action;
 use std::borrow::Cow;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 fn extract_path_param_names(path: &str) -> Arc<[String]> {
@@ -42,26 +44,76 @@ fn uses_matchit_escape(path: &str) -> bool {
 	path.contains("{{") || path.contains("}}")
 }
 
+fn insert_route(
+	router: &mut MatchitRouter<RouteHandler>,
+	exact_routes: &mut HashMap<String, RouteHandler>,
+	route_path: &str,
+	route_handler: RouteHandler,
+) -> Result<(), matchit::InsertError> {
+	let exact_handler = (route_handler.param_names.is_empty() && !uses_matchit_escape(route_path))
+		.then(|| route_handler.clone());
+	router.insert(route_path, route_handler)?;
+	if let Some(route_handler) = exact_handler {
+		exact_routes.insert(route_path.to_string(), route_handler);
+	}
+	Ok(())
+}
+
 fn insert_compiled_route(
 	compiled: &mut CompiledRoutes,
 	method: &Method,
 	route_path: &str,
 	route_handler: RouteHandler,
-) -> Result<(), String> {
-	let exact_handler = (route_handler.param_names.is_empty() && !uses_matchit_escape(route_path))
-		.then(|| route_handler.clone());
-	compiled
-		.router_for_method_mut(method)
-		.ok_or_else(|| format!("unsupported HTTP method '{method}'"))?
-		.insert(route_path, route_handler)
-		.map_err(|error| error.to_string())?;
-	if let Some(route_handler) = exact_handler {
-		compiled
-			.exact_for_method_mut(method)
-			.ok_or_else(|| format!("unsupported HTTP method '{method}'"))?
-			.insert(route_path.to_string(), route_handler);
+) -> Result<(), matchit::InsertError> {
+	let (router, exact_routes) = compiled.tables_for_method_mut(method);
+	insert_route(router, exact_routes, route_path, route_handler)
+}
+
+/// Register a raw handler or view in every method table and the open-ended fallback.
+///
+/// Endpoints compile first, so every registered extension method already has a
+/// table; sharing those tables preserves matchit's path precedence and conflicts.
+/// Explicit HEAD and OPTIONS endpoints override method-agnostic handlers.
+fn insert_method_agnostic_route(
+	compiled: &mut CompiledRoutes,
+	route_path: &str,
+	route_handler: &RouteHandler,
+	explicit_head_options: &HashSet<(Method, String)>,
+) -> Vec<matchit::InsertError> {
+	let mut errors = Vec::new();
+	let custom_methods: Vec<Method> = compiled.custom.keys().cloned().collect();
+	for method in [
+		Method::GET,
+		Method::POST,
+		Method::PUT,
+		Method::DELETE,
+		Method::PATCH,
+		Method::HEAD,
+		Method::OPTIONS,
+	]
+	.into_iter()
+	.chain(custom_methods)
+	{
+		if let Err(error) =
+			insert_compiled_route(compiled, &method, route_path, route_handler.clone())
+		{
+			if matches!(&error, matchit::InsertError::Conflict { with }
+				if explicit_head_options.contains(&(method.clone(), with.clone())))
+			{
+				continue;
+			}
+			errors.push(error);
+		}
 	}
-	Ok(())
+	if let Err(error) = insert_route(
+		&mut compiled.any_method,
+		&mut compiled.exact_any_method,
+		route_path,
+		route_handler.clone(),
+	) {
+		errors.push(error);
+	}
+	errors
 }
 
 impl ServerRouter {
@@ -87,6 +139,7 @@ impl ServerRouter {
 
 	fn compile_routes_once(&self) -> CompiledRoutes {
 		let mut compiled = CompiledRoutes::default();
+		let mut explicit_head_options = HashSet::new();
 
 		// Compile endpoint routes
 		for func_route in &self.functions {
@@ -119,10 +172,12 @@ impl ServerRouter {
 					"Failed to compile route '{}' ({}): {}",
 					func_route.path, func_route.method, e
 				));
+			} else if matches!(func_route.method, Method::HEAD | Method::OPTIONS) {
+				explicit_head_options.insert((func_route.method.clone(), route_path));
 			}
 		}
 
-		// Compile view routes (views handle all methods internally)
+		// Compile view routes (views receive every method and enforce their own policy)
 		for view_route in &self.views {
 			let route_handler = RouteHandler {
 				path_type_params: Vec::new(),
@@ -138,26 +193,20 @@ impl ServerRouter {
 				.unwrap_or_else(|| Cow::Borrowed(&view_route.path));
 			let route_path: &str = &route_path_owned;
 
-			// Register view for all common HTTP methods
-			for method in [
-				Method::GET,
-				Method::POST,
-				Method::PUT,
-				Method::DELETE,
-				Method::PATCH,
-			] {
-				if let Err(e) =
-					insert_compiled_route(&mut compiled, &method, route_path, route_handler.clone())
-				{
-					compiled.errors.push(format!(
-						"Failed to compile view route '{}': {}",
-						view_route.path, e
-					));
-				}
+			for e in insert_method_agnostic_route(
+				&mut compiled,
+				route_path,
+				&route_handler,
+				&explicit_head_options,
+			) {
+				compiled.errors.push(format!(
+					"Failed to compile view route '{}': {}",
+					view_route.path, e
+				));
 			}
 		}
 
-		// Compile raw routes (routes handle all methods internally)
+		// Compile raw routes (handlers receive every method and enforce their own policy)
 		for route in &self.routes {
 			let route_handler = RouteHandler {
 				path_type_params: Vec::new(),
@@ -173,23 +222,16 @@ impl ServerRouter {
 				.unwrap_or_else(|| Cow::Borrowed(&route.path));
 			let route_path: &str = &route_path_owned;
 
-			// Register raw route for all common HTTP methods
-			for method in [
-				Method::GET,
-				Method::POST,
-				Method::PUT,
-				Method::DELETE,
-				Method::PATCH,
-				Method::OPTIONS,
-			] {
-				if let Err(e) =
-					insert_compiled_route(&mut compiled, &method, route_path, route_handler.clone())
-				{
-					compiled.errors.push(format!(
-						"Failed to compile raw route '{}': {}",
-						route.path, e
-					));
-				}
+			for e in insert_method_agnostic_route(
+				&mut compiled,
+				route_path,
+				&route_handler,
+				&explicit_head_options,
+			) {
+				compiled.errors.push(format!(
+					"Failed to compile raw route '{}': {}",
+					route.path, e
+				));
 			}
 		}
 

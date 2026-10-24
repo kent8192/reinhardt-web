@@ -10,6 +10,15 @@
 //!
 //! ## Features
 //!
+//! ### HTTP Method Dispatch
+//!
+//! On native targets, [`routers::ServerRouter`] forwards every HTTP method to raw handlers and
+//! class-based views, including HEAD, OPTIONS, and extension methods. Endpoints
+//! registered with `EndpointInfo` match their declared method. HEAD first checks
+//! HEAD routes across the router hierarchy, then falls back to GET routing while
+//! preserving the original HEAD request for the selected handler and middleware.
+//! HTTP servers suppress HEAD response content at the transport boundary.
+//!
 //! ### Route Middleware Support
 //!
 //! Per-route middleware configuration is now available. You can attach middleware

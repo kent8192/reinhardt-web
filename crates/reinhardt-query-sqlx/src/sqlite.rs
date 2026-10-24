@@ -4,17 +4,25 @@ use sqlx::Arguments;
 /// Adapt an owned renderer result without changing SQL or argument order.
 ///
 /// Unsupported types and overflowing integer conversions fail before execution.
+///
+/// # API parity
+///
+/// P0 (native-only): absent on `wasm32` targets.
 pub fn prepare_sqlite(
 	built: (String, Values),
 ) -> Result<PreparedQuery<sqlx::sqlite::SqliteArguments<'static>>, BindError> {
 	prepare_sqlite_impl(built, false)
 }
 
-/// Adapt generated arguments for existing UUID text columns (native-only, P0).
+/// Adapt generated arguments for existing UUID text columns.
 ///
 /// UUID values use canonical hyphenated text, including an explicitly supplied
 /// typed NULL. Other values use the same native codecs and checked errors as
 /// [`prepare_sqlite`]. SQL and argument order are unchanged.
+///
+/// # API parity
+///
+/// P0 (native-only): absent on `wasm32` targets.
 pub fn prepare_sqlite_with_text_uuid(
 	built: (String, Values),
 ) -> Result<PreparedQuery<sqlx::sqlite::SqliteArguments<'static>>, BindError> {

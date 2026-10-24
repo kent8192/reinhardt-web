@@ -15,7 +15,7 @@ use std::time::Duration;
 use notify::Event;
 #[cfg(feature = "pages")]
 use tokio::sync::broadcast;
-use tokio::sync::mpsc::Receiver;
+use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::oneshot;
 use tokio::time::{Instant, sleep, timeout_at};
 
@@ -68,7 +68,10 @@ pub fn is_relevant_change(event: &Event) -> bool {
 ///
 /// Returns the deduplicated, sorted set of paths from all coalesced events,
 /// or `None` if the channel closes before any relevant event arrives.
-pub async fn debounce_next(rx: &mut Receiver<Event>, window: Duration) -> Option<Vec<PathBuf>> {
+pub async fn debounce_next(
+	rx: &mut UnboundedReceiver<Event>,
+	window: Duration,
+) -> Option<Vec<PathBuf>> {
 	// Phase 1: wait for the first relevant event (drop noise silently).
 	let first = loop {
 		match rx.recv().await {
@@ -697,6 +700,57 @@ fn notify_component_stylesheet_update(hmr_tx: Option<&broadcast::Sender<String>>
 	}
 }
 
+/// Subscribe a recommended `notify` watcher to every existing source root.
+///
+/// Missing paths are skipped (workspace members may be referenced in
+/// `Cargo.toml` but not yet exist on disk). The returned watcher must outlive
+/// the receiver's consumer: dropping it unsubscribes every root.
+fn watch_source_roots(
+	roots: &SourceRoots,
+) -> Result<(notify::RecommendedWatcher, UnboundedReceiver<Event>), notify::Error> {
+	use notify::{Config, RecommendedWatcher, RecursiveMode, Watcher};
+
+	// The callback must never block: it runs on notify's event-loop thread,
+	// which also performs every `watch()` registration. On Linux the
+	// recursive inotify walk raises an access event for each directory it
+	// opens, and nothing drains the receiver until registration finishes, so
+	// a callback blocked on a full channel stalls `watch()` forever (#6812).
+	// Dropping irrelevant events here keeps the unbounded queue proportional
+	// to real source changes.
+	let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<Event>();
+
+	let mut watcher = RecommendedWatcher::new(
+		move |res: Result<Event, notify::Error>| {
+			if let Ok(event) = res
+				&& is_relevant_change(&event)
+			{
+				let _ = tx.send(event);
+			}
+		},
+		Config::default(),
+	)?;
+
+	for dir in &roots.src_dirs {
+		if dir.exists() {
+			watcher.watch(dir, RecursiveMode::Recursive)?;
+		}
+	}
+	for manifest in &roots.manifest_files {
+		if manifest.exists() {
+			watcher.watch(manifest, RecursiveMode::NonRecursive)?;
+		}
+	}
+	// Subscribe the workspace Cargo.lock so `cargo update` triggers a
+	// rebuild even when no path-dep source files change. See issue #4214.
+	if let Some(lockfile) = &roots.lockfile
+		&& lockfile.exists()
+	{
+		watcher.watch(lockfile, RecursiveMode::NonRecursive)?;
+	}
+
+	Ok((watcher, rx))
+}
+
 /// Run the hot-reload watcher loop until shutdown.
 ///
 /// The loop handles three concerns:
@@ -743,43 +797,8 @@ pub(crate) async fn run_watcher_for_package(
 	mut current_child: tokio::process::Child,
 	respawn: impl Fn() -> std::io::Result<tokio::process::Child> + Send + Sync,
 ) -> Result<(), notify::Error> {
-	use notify::{Config, RecommendedWatcher, RecursiveMode, Watcher};
-
-	// Bounded channel: notify is bursty and we never want a single backed-up
-	// watcher to wedge the runtime. 256 is an order of magnitude above
-	// observed IDE save bursts.
-	let (tx, mut rx) = tokio::sync::mpsc::channel::<Event>(256);
-
-	let mut watcher = RecommendedWatcher::new(
-		move |res: Result<Event, notify::Error>| {
-			if let Ok(event) = res {
-				// `blocking_send` is fine here: notify dispatches callbacks
-				// from a dedicated OS thread, not the tokio runtime.
-				let _ = tx.blocking_send(event);
-			}
-		},
-		Config::default(),
-	)?;
-
-	// Subscribe each root. Missing paths are skipped (workspace members may
-	// be referenced in `Cargo.toml` but not yet exist on disk).
-	for dir in &config.roots.src_dirs {
-		if dir.exists() {
-			watcher.watch(dir, RecursiveMode::Recursive)?;
-		}
-	}
-	for manifest in &config.roots.manifest_files {
-		if manifest.exists() {
-			watcher.watch(manifest, RecursiveMode::NonRecursive)?;
-		}
-	}
-	// Subscribe the workspace Cargo.lock so `cargo update` triggers a
-	// rebuild even when no path-dep source files change. See issue #4214.
-	if let Some(lockfile) = &config.roots.lockfile
-		&& lockfile.exists()
-	{
-		watcher.watch(lockfile, RecursiveMode::NonRecursive)?;
-	}
+	// Keep the watcher alive for the whole loop: dropping it unsubscribes.
+	let (_watcher, mut rx) = watch_source_roots(&config.roots)?;
 
 	let mut shutdown_rx = shutdown_rx;
 	#[cfg(feature = "pages")]
@@ -983,15 +1002,12 @@ mod tests {
 	async fn debounce_coalesces_burst_into_single_trigger() {
 		// Arrange: three rapid events, two of them on the same path so the
 		// dedup logic also gets exercised.
-		let (tx, mut rx) = mpsc::channel::<Event>(8);
+		let (tx, mut rx) = mpsc::unbounded_channel::<Event>();
 		tx.send(ev(EventKind::Modify(ModifyKind::Any), "/p/src/a.rs"))
-			.await
 			.unwrap();
 		tx.send(ev(EventKind::Modify(ModifyKind::Any), "/p/src/a.rs"))
-			.await
 			.unwrap();
 		tx.send(ev(EventKind::Modify(ModifyKind::Any), "/p/src/b.rs"))
-			.await
 			.unwrap();
 
 		// Act
@@ -1011,9 +1027,8 @@ mod tests {
 	#[tokio::test(flavor = "current_thread", start_paused = true)]
 	async fn debounce_waits_for_configured_window() {
 		// Arrange
-		let (tx, mut rx) = mpsc::channel::<Event>(8);
+		let (tx, mut rx) = mpsc::unbounded_channel::<Event>();
 		tx.send(ev(EventKind::Modify(ModifyKind::Any), "/p/src/a.rs"))
-			.await
 			.unwrap();
 		let started_at = Instant::now();
 		let window = Duration::from_millis(120);
@@ -1038,7 +1053,7 @@ mod tests {
 	async fn debounce_returns_none_when_channel_closed_without_events() {
 		// Arrange: drop the sender immediately so the channel closes with no
 		// pending messages.
-		let (tx, mut rx) = mpsc::channel::<Event>(1);
+		let (tx, mut rx) = mpsc::unbounded_channel::<Event>();
 		drop(tx);
 
 		// Act
@@ -1050,15 +1065,12 @@ mod tests {
 
 	#[tokio::test(flavor = "current_thread", start_paused = true)]
 	async fn debounce_returns_sorted_unique_paths_when_channel_closes_after_first_event() {
-		let (tx, mut rx) = mpsc::channel::<Event>(4);
+		let (tx, mut rx) = mpsc::unbounded_channel::<Event>();
 		tx.send(ev(EventKind::Modify(ModifyKind::Any), "/p/src/z.rs"))
-			.await
 			.expect("first event is queued");
 		tx.send(ev(EventKind::Modify(ModifyKind::Any), "/p/src/a.rs"))
-			.await
 			.expect("second event is queued");
 		tx.send(ev(EventKind::Modify(ModifyKind::Any), "/p/src/z.rs"))
-			.await
 			.expect("duplicate event is queued");
 		drop(tx);
 
@@ -1071,6 +1083,63 @@ mod tests {
 				PathBuf::from("/p/src/z.rs"),
 			]),
 		);
+	}
+
+	#[rstest]
+	#[tokio::test(flavor = "multi_thread")]
+	async fn watch_source_roots_subscribes_every_root_before_events_are_drained() {
+		// Arrange: on Linux, every directory the recursive inotify walk opens
+		// raises an access event on its watched parent. Four roots of 200
+		// directories queue far more events than a fixed-size channel holds
+		// while nothing drains it yet (#6812).
+		let temp = tempfile::tempdir().expect("create tempdir");
+		let src_dirs: Vec<PathBuf> = (0..4)
+			.map(|root| {
+				let src = temp.path().join(format!("crate_{root}")).join("src");
+				for dir in 0..200 {
+					std::fs::create_dir_all(src.join(format!("module_{dir}")))
+						.expect("create module directory");
+				}
+				src
+			})
+			.collect();
+		let last_root = src_dirs.last().expect("four roots").clone();
+		let roots = SourceRoots {
+			src_dirs,
+			manifest_files: Vec::new(),
+			lockfile: None,
+		};
+
+		// Act: register from a plain thread, without draining events, as
+		// `run_watcher_for_package` does. A regression then fails on the
+		// timeout instead of hanging the test binary.
+		let (registered_tx, registered_rx) = oneshot::channel();
+		std::thread::spawn(move || {
+			let _ = registered_tx.send(watch_source_roots(&roots));
+		});
+		let (_watcher, mut events) = tokio::time::timeout(Duration::from_secs(30), registered_rx)
+			.await
+			.expect("watch registration stalled before events were drained")
+			.expect("registration thread exited without a result")
+			.expect("watch registration failed");
+		std::fs::write(last_root.join("lib.rs"), "pub fn changed() {}\n")
+			.expect("write source file");
+		let delivered = tokio::time::timeout(Duration::from_secs(10), async {
+			while let Some(event) = events.recv().await {
+				let touches_lib_rs = event
+					.paths
+					.iter()
+					.any(|path| path.file_name() == Some(std::ffi::OsStr::new("lib.rs")));
+				if is_relevant_change(&event) && touches_lib_rs {
+					return true;
+				}
+			}
+			false
+		})
+		.await;
+
+		// Assert: the last root is subscribed and its change reaches the receiver.
+		assert_eq!(delivered, Ok(true));
 	}
 
 	#[test]

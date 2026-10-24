@@ -150,6 +150,11 @@ jobs:
           echo "Disk usage after additional cleanup:"
           df -h
 
+      # Offline consumer tests inspect alternate-target dependency graphs,
+      # which native builds do not fully cache. Fetch all targets after cleanup.
+      - name: Fetch dependencies for offline consumer tests
+        run: cargo fetch
+
       - name: Run UI tests (partition ${{ matrix.partition }}/${{ inputs.partition-count || '5' }})
         env:
           NEXTEST_FILTER_EXPR: ${{ inputs.nextest-filter }}

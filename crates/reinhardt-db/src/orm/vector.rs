@@ -300,7 +300,7 @@ mod tests {
 	use sqlx::{Postgres, Type, TypeInfo, postgres::PgTypeInfo};
 
 	fn raw_pgvector_payload(values: &[f32]) -> Vec<u8> {
-		let mut payload = Vec::with_capacity(4 + values.len() * size_of::<f32>());
+		let mut payload = Vec::with_capacity(4 + size_of_val(values));
 		payload.extend_from_slice(&(values.len() as i16).to_be_bytes());
 		payload.extend_from_slice(&0_i16.to_be_bytes());
 		for value in values {

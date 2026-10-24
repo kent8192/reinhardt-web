@@ -46,10 +46,48 @@ use crate::query::traits::{QueryBuilderTrait, QueryStatementBuilder, QueryStatem
 #[derive(Debug, Clone)]
 pub struct AlterSequenceStatement {
 	pub(crate) name: DynIden,
+	pub(crate) schema: Option<DynIden>,
+	pub(crate) rename_to: Option<DynIden>,
 	pub(crate) options: Vec<SequenceOption>,
 }
 
 impl AlterSequenceStatement {
+	/// Qualify the sequence with a separately quoted schema identifier.
+	pub fn schema<S: IntoIden>(&mut self, schema: S) -> &mut Self {
+		self.schema = Some(schema.into_iden());
+		self
+	}
+	/// Rename the sequence within its current schema. Rename must be a separate statement.
+	pub fn rename_to<N: IntoIden>(&mut self, name: N) -> &mut Self {
+		self.rename_to = Some(name.into_iden());
+		self
+	}
+	/// Change the integer width.
+	pub fn as_type(&mut self, data_type: crate::types::sequence::SequenceType) -> &mut Self {
+		self.options.push(SequenceOption::AsType(data_type));
+		self
+	}
+	/// Change the recorded start without restarting allocation.
+	pub fn start(&mut self, value: i64) -> &mut Self {
+		self.options.push(SequenceOption::StartWith(value));
+		self
+	}
+	/// Associate the sequence with a qualified physical column.
+	pub fn owned_by_schema_column<S: IntoIden, T: IntoIden, C: IntoIden>(
+		&mut self,
+		schema: S,
+		table: T,
+		column: C,
+	) -> &mut Self {
+		self.options
+			.push(SequenceOption::OwnedBy(OwnedBy::SchemaColumn {
+				schema: schema.into_iden(),
+				table: table.into_iden(),
+				column: column.into_iden(),
+			}));
+		self
+	}
+
 	/// Create a new ALTER SEQUENCE statement
 	///
 	/// # Examples
@@ -62,6 +100,8 @@ impl AlterSequenceStatement {
 	pub fn new() -> Self {
 		Self {
 			name: "".into_iden(),
+			schema: None,
+			rename_to: None,
 			options: Vec::new(),
 		}
 	}
@@ -70,6 +110,8 @@ impl AlterSequenceStatement {
 	pub fn take(&mut self) -> Self {
 		let taken = Self {
 			name: self.name.clone(),
+			schema: self.schema.take(),
+			rename_to: self.rename_to.take(),
 			options: self.options.clone(),
 		};
 		// Reset self to empty state

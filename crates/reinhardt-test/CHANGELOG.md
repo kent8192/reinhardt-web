@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-test@v0.4.0-alpha.20...reinhardt-test@v0.4.0-alpha.21) - 2026-10-18
+
+### Added
+
+- *(test)* add method-aware async stub router
+- *(testkit)* add ordered per-request headers and payloads
+
+### Documentation
+
+- *(test)* document async stub routes through test facades
+- *(test)* record SimpleHandler migration and removal timeline
+
+### Maintenance
+
+- *(test)* merge develop/0.4.0 into stub router branch
+- *(testkit)* merge develop client transport changes
+
+### Added
+
+- Native `stub::StubRouter` re-export for method-aware async test routes.
+
+### Deprecated
+
+- The `SimpleHandler` re-export is deprecated starting in `0.4.0-alpha.21`.
+  It remains available throughout `0.4.x`, with removal planned for `0.5.0`
+  through the breaking-change review process. Replace synchronous closures
+  and manual method checks with async closures registered through
+  `reinhardt_test::stub::StubRouter` or `reinhardt::test::stub::StubRouter`,
+  then pass the resulting router to the facade's `fixtures::test_server_guard`.
+  See the [before/after migration guide](../reinhardt-testkit/CHANGELOG.md#migration-simplehandler-to-stubrouter)
+  for examples and the compatibility timeline.
+
 ## [0.4.0-alpha.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-test@v0.4.0-alpha.3...reinhardt-test@v0.4.0-alpha.6) - 2026-08-06
 
 ### Documentation

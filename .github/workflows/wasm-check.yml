@@ -44,6 +44,8 @@ jobs:
           - { name: "reinhardt-web (minimal+pages+client-router)", pkg: "reinhardt-web", features: "minimal,pages,client-router",            no_default: "true",  all_features: "false" }
           - { name: "reinhardt-web (minimal+pages+di)",   pkg: "reinhardt-web",   features: "minimal,pages,di",                              no_default: "true",  all_features: "false" }
           - { name: "reinhardt-core (core-full)",         pkg: "reinhardt-core",  features: "core-full",                                     no_default: "true",  all_features: "false" }
+          # Shared utilities used by browser crates such as the reinhardt-admin client (#6766)
+          - { name: "reinhardt-utils (utils-core)",       pkg: "reinhardt-utils", features: "utils-core",                                    no_default: "true",  all_features: "false" }
     steps:
       - name: Free Disk Space (Ubuntu)
         if: ${{ !contains(inputs.runner || '', 'self-hosted') }}
@@ -262,6 +264,7 @@ jobs:
               --test model_form_file_upload_wasm_test \
               --test client_launcher_navigation_test \
               --test navigation_guard_wasm_test \
+              --test router_active_link_wasm_test \
               --test document_head_wasm_test \
               --test query_client_wasm_test \
               --test form_radio_input \
