@@ -262,15 +262,28 @@ async fn client_refuses_plaintext_endpoint(pki: Pki) {
 }
 
 #[rstest]
-fn debug_does_not_disclose_client_private_key() {
+#[case::client(false)]
+#[case::server(true)]
+fn debug_does_not_disclose_private_key(#[case] server: bool) {
 	// Arrange
 	let key = b"sensitive-private-key-material";
-	let config = GrpcClientTlsConfig::new(b"ca", b"cert", key, "auth.internal");
+	let config: Box<dyn std::fmt::Debug> = if server {
+		Box::new(GrpcServerTlsConfig::new(b"cert", key, b"ca"))
+	} else {
+		Box::new(GrpcClientTlsConfig::new(
+			b"ca",
+			b"cert",
+			key,
+			"auth.internal",
+		))
+	};
 
 	// Act
-	let diagnostic = format!("{config:?}");
+	let diagnostic = format!("{config:?}\n{config:#?}");
 
 	// Assert: Tonic stores the key as bytes, so check both likely representations.
 	assert!(!diagnostic.contains(std::str::from_utf8(key).unwrap()));
-	assert!(!diagnostic.contains(&format!("{key:?}")));
+	let normalized = diagnostic.split_whitespace().collect::<String>();
+	let key_bytes = format!("{key:?}").replace(' ', "");
+	assert!(!normalized.contains(&key_bytes));
 }
