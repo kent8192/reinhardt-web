@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-tasks@v0.3.25...reinhardt-tasks@v0.4.0) - 2026-10-24
+
+### Fixed
+
+- *(deps)* remove legacy aws tls from the stable line
+
 ### Fixed
 
 - Use the current AWS HTTPS transport for SQS without retaining the legacy rustls 0.21 client.
