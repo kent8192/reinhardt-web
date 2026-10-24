@@ -875,10 +875,28 @@ mod compatibility_tests {
 mod postgres_cache_tests {
 	use super::uncached_postgres_query;
 	use futures::StreamExt;
+	use reinhardt_query::{
+		ColumnDef, Expr, ExprTrait, Iden, IntoIden, Order, PostgresQueryBuilder, Query,
+		QueryBuilder, QueryStatementBuilder, SimpleExpr,
+	};
 	use rstest::{fixture, rstest};
 	use sqlx::{Arguments, Connection, Row};
 	use testcontainers::{ContainerAsync, runners::AsyncRunner};
 	use testcontainers_modules::postgres::Postgres;
+
+	#[derive(Debug, Iden)]
+	enum CachedRows {
+		Table,
+		Value,
+	}
+
+	#[derive(Debug, Iden)]
+	enum CacheProbe {
+		Input,
+		CachedWidth,
+		NativeType,
+		UnreadRows,
+	}
 
 	struct PostgresFixture {
 		// Drop the connection before the container that owns its database.
@@ -913,11 +931,27 @@ mod postgres_cache_tests {
 		// Arrange: the same SQL already has the opposite integer signature cached.
 		let mut fixture = postgres_fixture.await;
 		let connection = &mut fixture.connection;
-		let sql = "SELECT $1::BIGINT AS cached_width, pg_typeof($1)::TEXT AS native_type";
+		// A subquery lets both projections inspect the same single native parameter.
+		let input = Query::select().expr_as(7_i32, CachedRows::Value).to_owned();
+		let (sql, _) = Query::select()
+			.expr_as(
+				Expr::col((CacheProbe::Input, CachedRows::Value)).cast_as_signed_integer(),
+				CacheProbe::CachedWidth,
+			)
+			.expr_as(
+				SimpleExpr::FunctionCall(
+					"pg_typeof".into_iden(),
+					vec![Expr::col((CacheProbe::Input, CachedRows::Value)).into()],
+				)
+				.cast_as_text(),
+				CacheProbe::NativeType,
+			)
+			.from_subquery(input, CacheProbe::Input)
+			.build(PostgresQueryBuilder);
 		let seed = if wide {
-			sqlx::query(sql).bind(7_i32)
+			sqlx::query(&sql).bind(7_i32)
 		} else {
-			sqlx::query(sql).bind(7_i64)
+			sqlx::query(&sql).bind(7_i64)
 		};
 		let row = seed.fetch_one(&mut *connection).await.unwrap();
 		assert_eq!(row.get::<i64, _>("cached_width"), 7);
@@ -927,7 +961,7 @@ mod postgres_cache_tests {
 		);
 		assert!(connection.cached_statements_size() > 0);
 		if wide {
-			let error = sqlx::query(sql)
+			let error = sqlx::query(&sql)
 				.bind(expected)
 				.persistent(false)
 				.fetch_one(&mut *connection)
@@ -946,7 +980,7 @@ mod postgres_cache_tests {
 		}
 
 		// Act: clear the incompatible statement on the same dedicated connection.
-		let row = uncached_postgres_query(connection, sql, arguments)
+		let row = uncached_postgres_query(connection, &sql, arguments)
 			.await
 			.unwrap()
 			.fetch_one(&mut *connection)
@@ -957,7 +991,7 @@ mod postgres_cache_tests {
 		assert_eq!(row.get::<i64, _>("cached_width"), expected);
 		assert_eq!(row.get::<String, _>("native_type"), native_type);
 		assert_eq!(connection.cached_statements_size(), 0);
-		let row = sqlx::query(sql)
+		let row = sqlx::query(&sql)
 			.bind(9_i32)
 			.fetch_one(&mut *connection)
 			.await
@@ -975,8 +1009,18 @@ mod postgres_cache_tests {
 		// Arrange: three rows ensure dropping after the first row leaves unread rows.
 		let mut fixture = postgres_fixture.await;
 		let connection = &mut fixture.connection;
-		let sql = "SELECT $1::BIGINT AS cached_width FROM generate_series(1, 3)";
-		let seeded = sqlx::query(sql)
+		let mut unread_rows = Query::select().expr(Expr::constant_true()).to_owned();
+		for _ in 0..2 {
+			unread_rows.union_all(Query::select().expr(Expr::constant_true()).to_owned());
+		}
+		let (sql, _) = Query::select()
+			.expr_as(
+				Expr::val(7_i32).cast_as_signed_integer(),
+				CacheProbe::CachedWidth,
+			)
+			.from_subquery(unread_rows, CacheProbe::UnreadRows)
+			.build(PostgresQueryBuilder);
+		let seeded = sqlx::query(&sql)
 			.bind(7_i32)
 			.fetch_all(&mut *connection)
 			.await
@@ -988,7 +1032,7 @@ mod postgres_cache_tests {
 
 		// Act: drop a partially consumed stream while retaining its connection guard.
 		{
-			let mut rows = uncached_postgres_query(connection, sql, arguments)
+			let mut rows = uncached_postgres_query(connection, &sql, arguments)
 				.await
 				.unwrap()
 				.fetch(&mut *connection);
@@ -998,7 +1042,7 @@ mod postgres_cache_tests {
 
 		// Assert: the original INT4 query can drain pending messages and cache again.
 		assert_eq!(connection.cached_statements_size(), 0);
-		let rows = sqlx::query(sql)
+		let rows = sqlx::query(&sql)
 			.bind(8_i32)
 			.fetch_all(&mut *connection)
 			.await
@@ -1018,17 +1062,26 @@ mod postgres_cache_tests {
 		#[future] postgres_fixture: PostgresFixture,
 		#[case] commit: bool,
 	) {
-		// Arrange: seed an INT4 INSERT inside a transaction on a connection-local table.
+		// Arrange: the fixture's disposable database owns the table and its cleanup.
 		let mut fixture = postgres_fixture.await;
 		let connection = &mut fixture.connection;
-		sqlx::query("CREATE TEMP TABLE cached_rows (value BIGINT)")
+		let table = Query::create_table()
+			.table(CachedRows::Table.into_iden())
+			.col(ColumnDef::new(CachedRows::Value).big_integer())
+			.to_owned();
+		let (create, _) = PostgresQueryBuilder.build_create_table(&table);
+		sqlx::query(&create)
 			.execute(&mut *connection)
 			.await
 			.unwrap();
 		let mut transaction = connection.begin().await.unwrap();
-		let sql = "INSERT INTO cached_rows (value) VALUES ($1)";
+		let (sql, _) = Query::insert()
+			.into_table(CachedRows::Table.into_iden())
+			.columns([CachedRows::Value])
+			.values_panic([7_i32])
+			.build(PostgresQueryBuilder);
 		assert_eq!(
-			sqlx::query(sql)
+			sqlx::query(&sql)
 				.bind(7_i32)
 				.execute(&mut *transaction)
 				.await
@@ -1042,7 +1095,7 @@ mod postgres_cache_tests {
 
 		// Act: execute the INT8 INSERT without replacing or ending the transaction.
 		assert_eq!(
-			uncached_postgres_query(&mut transaction, sql, arguments)
+			uncached_postgres_query(&mut transaction, &sql, arguments)
 				.await
 				.unwrap()
 				.execute(&mut *transaction)
@@ -1051,8 +1104,12 @@ mod postgres_cache_tests {
 				.rows_affected(),
 			1
 		);
-		let select = "SELECT value FROM cached_rows ORDER BY value";
-		let values: Vec<i64> = sqlx::query_scalar(select)
+		let (select, _) = Query::select()
+			.column(CachedRows::Value)
+			.from(CachedRows::Table.into_iden())
+			.order_by(CachedRows::Value, Order::Asc)
+			.build(PostgresQueryBuilder);
+		let values: Vec<i64> = sqlx::query_scalar(&select)
 			.fetch_all(&mut *transaction)
 			.await
 			.unwrap();
@@ -1064,7 +1121,7 @@ mod postgres_cache_tests {
 		}
 
 		// Assert: both INSERTs share the enclosing transaction's commit/rollback result.
-		let values: Vec<i64> = sqlx::query_scalar(select)
+		let values: Vec<i64> = sqlx::query_scalar(&select)
 			.fetch_all(&mut *connection)
 			.await
 			.unwrap();
