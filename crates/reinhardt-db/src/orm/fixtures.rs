@@ -2803,9 +2803,9 @@ fn find_case_insensitive(
 #[cfg(test)]
 mod tests {
 	use super::*;
-	#[cfg(feature = "migrations")]
+	#[cfg(all(feature = "migrations", feature = "sqlite"))]
 	use crate::backends::DatabaseConnection as BackendsConnection;
-	#[cfg(feature = "migrations")]
+	#[cfg(all(feature = "migrations", feature = "sqlite"))]
 	use crate::orm::DatabaseConnectionLease;
 	#[cfg(feature = "migrations")]
 	use crate::orm::model::FieldSelector;
@@ -3649,13 +3649,13 @@ mod tests {
 		}
 	}
 
-	#[cfg(feature = "migrations")]
+	#[cfg(all(feature = "migrations", feature = "sqlite"))]
 	#[derive(Clone, Serialize, Deserialize)]
 	struct FixtureFieldPrimaryKeyM2mPost {
 		id: Option<i64>,
 	}
 
-	#[cfg(feature = "migrations")]
+	#[cfg(all(feature = "migrations", feature = "sqlite"))]
 	impl Model for FixtureFieldPrimaryKeyM2mPost {
 		type PrimaryKey = i64;
 		type Fields = FixturePostFields;
@@ -5492,7 +5492,7 @@ mod tests {
 		assert!(error.to_string().contains("missing_field"));
 	}
 
-	#[cfg(feature = "migrations")]
+	#[cfg(all(feature = "migrations", feature = "sqlite"))]
 	#[serial_test::serial(sqlx_drivers)]
 	#[tokio::test]
 	async fn fixture_dump_and_load_hydrates_sqlite_json_text() {
@@ -6142,7 +6142,7 @@ mod tests {
 		assert!(object.get("tags").is_none());
 	}
 
-	#[cfg(feature = "migrations")]
+	#[cfg(all(feature = "migrations", feature = "sqlite"))]
 	#[serial_test::serial(fixture_model_registry)]
 	#[tokio::test]
 	async fn field_primary_keys_drive_deferred_many_to_many_assignments() {
