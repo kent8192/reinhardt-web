@@ -16,19 +16,13 @@ git-fetch-with-cli = true
 unused-ignored-advisory = "allow"
 ignore = [
   { id = "RUSTSEC-2023-0071", reason = "rsa 0.9.10 is retained by sqlx-mysql and the advisory has no patched release." },
-  { id = "RUSTSEC-2026-0098", reason = "rustls-webpki 0.101.7 is retained by AWS SDK rustls 0.21 transports; the Kafka path is remediated and remaining work is tracked in issue #5492." },
-  { id = "RUSTSEC-2026-0099", reason = "rustls-webpki 0.101.7 is retained by AWS SDK rustls 0.21 transports; the Kafka path is remediated and remaining work is tracked in issue #5492." },
-  { id = "RUSTSEC-2026-0104", reason = "rustls-webpki 0.101.7 is retained by AWS SDK rustls 0.21 transports; the Kafka path is remediated and remaining work is tracked in issue #5492." },
-  # Temporary: rustls 0.21.12 is retained only by the AWS SDK legacy hyper 0.14
-  # transport (default `rustls` feature of aws-sdk-*), and both advisories are
-  # fixed only in rustls >=0.23.46. Neither applies to the 0.21 line here: it has
-  # no post-quantum key exchange groups to downgrade (0349), and no dependency
-  # in the graph implements ClientSessionStore (0346). See issue #6777.
-  # Remove both exceptions once rustls 0.21 leaves the full-feature graph.
-  # Ideal: aws-sdk-* declared with default-features = false plus
-  # default-https-client and rt-tokio, and no rustls 0.21 advisory entries.
-  { id = "RUSTSEC-2026-0346", reason = "rustls 0.21.12 is retained by the AWS SDK legacy transport and no dependency implements ClientSessionStore; removal of the legacy transport is tracked in issue #6777." },
-  { id = "RUSTSEC-2026-0349", reason = "rustls 0.21.12 is retained by the AWS SDK legacy transport and has no post-quantum key exchange groups to downgrade; removal of the legacy transport is tracked in issue #6777." },
+  # Temporary: AWS SigV4a and elliptic-curve 0.13 require crypto-bigint 0.5;
+  # the timing fixes exist only in >=0.7.6. This accepts the remaining risk,
+  # rather than asserting that secret-dependent arithmetic is unreachable (#6885).
+  # Remove once all signing/authentication parents support a patched version
+  # and fresh full-feature resolution passes without this exception.
+  # Ideal: upstream requirements select patched crypto-bigint without an ignore.
+  { id = "RUSTSEC-2026-0387", reason = "AWS SigV4a and authentication dependencies require crypto-bigint 0.5, with no compatible patched release; temporary timing-risk acceptance and removal conditions are tracked in issue #6885." },
   { id = "RUSTSEC-2025-0141", reason = "bincode 1 and 2 are retained by syntect and the optional authentication serializer; remediation is tracked in issue #5492." },
   { id = "RUSTSEC-2021-0141", reason = "dotenv remains a direct configuration dependency; migration is tracked in issue #5492." },
   { id = "RUSTSEC-2025-0057", reason = "fxhash is retained transitively by static asset processing dependencies; remediation is tracked in issue #5492." },
@@ -189,7 +183,6 @@ skip = [
   { crate = "hmac@0.12.1", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
   { crate = "http-body@0.4.6", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
   { crate = "http@0.2.12", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
-  { crate = "hyper-rustls@0.24.2", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
   { crate = "hyper@0.14.32", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
   { crate = "itertools@0.10.5", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
   { crate = "linux-raw-sys@0.4.15", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
@@ -211,15 +204,12 @@ skip = [
   { crate = "rustc-hash@1.1.0", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
   { crate = "rustix@0.38.44", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
   { crate = "rustls-native-certs@0.7.3", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
-  { crate = "rustls-webpki@0.101.7", reason = "AWS SDK rustls 0.21 transports retain this line; the Kafka path was remediated with rskafka 0.6." },
-  { crate = "rustls@0.21.12", reason = "AWS SDK rustls 0.21 transports retain this line; the Kafka path was remediated with rskafka 0.6." },
   { crate = "security-framework@2.11.1", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
   { crate = "sha2@0.10.9", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
   { crate = "socket2@0.5.10", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
   { crate = "syn@1.0.109", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
   { crate = "thiserror-impl@1.0.69", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
   { crate = "thiserror@1.0.69", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
-  { crate = "tokio-rustls@0.24.1", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
   { crate = "tokio-tungstenite@0.21.0", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
   { crate = "tungstenite@0.21.0", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
   { crate = "untrusted@0.7.1", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },

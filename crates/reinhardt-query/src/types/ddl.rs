@@ -99,7 +99,7 @@ pub enum ColumnType {
 pub struct ColumnDef {
 	pub(crate) name: DynIden,
 	pub(crate) column_type: Option<ColumnType>,
-	pub(crate) not_null: bool,
+	pub(crate) not_null: Option<bool>,
 	pub(crate) unique: bool,
 	pub(crate) primary_key: bool,
 	pub(crate) auto_increment: bool,
@@ -117,7 +117,7 @@ impl ColumnDef {
 		Self {
 			name: name.into_iden(),
 			column_type: None,
-			not_null: false,
+			not_null: None,
 			unique: false,
 			primary_key: false,
 			auto_increment: false,
@@ -133,9 +133,28 @@ impl ColumnDef {
 		self
 	}
 
-	/// Set NOT NULL constraint
+	/// Sets the column's nullability explicitly.
+	///
+	/// For PostgreSQL and CockroachDB `MODIFY COLUMN`, `true` emits `SET NOT NULL`
+	/// and `false` emits `DROP NOT NULL`. Omitting this method preserves the
+	/// existing constraint. On CREATE/ADD COLUMN, `false` and omission both
+	/// produce a nullable column. MySQL applies the complete column definition.
+	///
+	/// P2: the nullability setting has identical native and WASM semantics.
+	///
+	/// # Examples
+	///
+	/// ```rust
+	/// use reinhardt_query::prelude::*;
+	/// use reinhardt_query::types::ColumnDef;
+	///
+	/// let mut stmt = Query::alter_table();
+	/// stmt.table("users").modify_column(ColumnDef::new("email").not_null(false));
+	/// let (sql, _) = PostgresQueryBuilder::new().build_alter_table(&stmt);
+	/// assert_eq!(sql, "ALTER TABLE \"users\" ALTER COLUMN \"email\" DROP NOT NULL");
+	/// ```
 	pub fn not_null(mut self, not_null: bool) -> Self {
-		self.not_null = not_null;
+		self.not_null = Some(not_null);
 		self
 	}
 
@@ -469,7 +488,7 @@ mod tests {
 
 		// Assert
 		assert_eq!(col.column_type, Some(ColumnType::Integer));
-		assert!(col.not_null);
+		assert_eq!(col.not_null, Some(true));
 	}
 
 	#[rstest]
@@ -528,7 +547,7 @@ mod tests {
 
 		// Assert
 		assert_eq!(col.column_type, Some(ColumnType::String(Some(255))));
-		assert!(col.not_null);
+		assert_eq!(col.not_null, Some(true));
 		assert!(col.unique);
 	}
 
