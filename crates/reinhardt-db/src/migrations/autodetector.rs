@@ -6120,6 +6120,45 @@ impl MigrationAutodetector {
 		sorted
 	}
 
+	// A table can have only one primary key. Move demotions before promotions
+	// on the same table, leaving other operations in their existing order.
+	fn order_primary_key_changes(operations: &mut Vec<super::Operation>) {
+		for index in 0..operations.len() {
+			let super::Operation::AlterColumn {
+				table,
+				old_definition: Some(old),
+				new_definition,
+				..
+			} = &operations[index]
+			else {
+				continue;
+			};
+			if !old.primary_key || new_definition.primary_key {
+				continue;
+			}
+			let promotion = operations[..index]
+				.iter()
+				.position(|operation| match operation {
+					super::Operation::AlterColumn {
+						table: target,
+						old_definition: Some(old),
+						new_definition,
+						..
+					} => target == table && !old.primary_key && new_definition.primary_key,
+					super::Operation::AddColumn {
+						table: target,
+						column,
+						..
+					} => target == table && column.primary_key,
+					_ => false,
+				});
+			if let Some(promotion) = promotion {
+				let demotion = operations.remove(index);
+				operations.insert(promotion, demotion);
+			}
+		}
+	}
+
 	fn operation_targets_table(operation: &super::Operation, table_name: &str) -> bool {
 		match operation {
 			super::Operation::AddColumn { table, .. }
@@ -6441,6 +6480,7 @@ impl MigrationAutodetector {
 		// it. See reinhardt-web#4448.
 		Self::dedup_redundant_unique_add_constraints(&mut by_app);
 		for operations in by_app.values_mut() {
+			Self::order_primary_key_changes(operations);
 			Self::order_renamed_column_operations(operations);
 		}
 
@@ -7075,6 +7115,7 @@ impl MigrationAutodetector {
 		// it. See reinhardt-web#4448.
 		Self::dedup_redundant_unique_add_constraints(&mut migrations_by_app);
 		for operations in migrations_by_app.values_mut() {
+			Self::order_primary_key_changes(operations);
 			Self::order_create_tables_by_foreign_keys(operations);
 			Self::order_renamed_table_operations(operations);
 			Self::order_renamed_column_operations(operations);
@@ -10116,6 +10157,57 @@ mod tests {
 			changed,
 			"database default changes must be detected as schema-affecting field changes"
 		);
+	}
+
+	#[rstest]
+	#[case::existing_column(false)]
+	#[case::new_column(true)]
+	fn primary_key_replacement_drops_old_key_before_promotion(#[case] new_column: bool) {
+		// Arrange: alphabetical field ordering would promote a_id before demoting z_id.
+		let mut before = ModelState::new("app", "Event");
+		let mut after = before.clone();
+		for name in ["a_id", "z_id"] {
+			let mut old = FieldState::new(name, FieldType::Integer, false);
+			old.params
+				.insert("primary_key".to_owned(), (name == "z_id").to_string());
+			let mut new = old.clone();
+			new.params
+				.insert("primary_key".to_owned(), (name == "a_id").to_string());
+			if !new_column || name == "z_id" {
+				before.add_field(old);
+			}
+			after.add_field(new);
+		}
+		let mut from = ProjectState::new();
+		from.add_model(before);
+		let mut to = ProjectState::new();
+		to.add_model(after);
+		let detector = MigrationAutodetector::new(from, to);
+
+		// Act: both public generation paths must preserve execution order.
+		let operations = detector.generate_operations();
+		let migrations = detector.generate_migrations();
+
+		// Assert: a table can have only one primary key, including during rollback.
+		for operations in [&operations, &migrations[0].operations] {
+			let [
+				super::super::Operation::AlterColumn { column: old, .. },
+				promotion,
+			] = operations.as_slice()
+			else {
+				panic!("expected demotion followed by promotion, got {operations:?}");
+			};
+			assert_eq!(old, "z_id");
+			if new_column {
+				assert!(
+					matches!(promotion, super::super::Operation::AddColumn { column, .. } if column.name == "a_id")
+				);
+			} else {
+				assert!(
+					matches!(promotion, super::super::Operation::AlterColumn { column, .. } if column == "a_id")
+				);
+			}
+		}
 	}
 
 	#[rstest]
