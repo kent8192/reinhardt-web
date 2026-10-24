@@ -838,6 +838,7 @@ impl OidcProvider {
 	/// As permitted by OpenID Connect Core section 12.2 this response omits a new
 	/// ID Token. The original authenticated subject stays in the token family;
 	/// UserInfo continues returning that subject. Reuse revokes only this family.
+	/// The access token uses `OidcConfig::access_token_ttl`, as in the code exchange.
 	pub async fn refresh(
 		&self,
 		refresh_token: &str,
@@ -872,12 +873,12 @@ impl OidcProvider {
 		}
 		Ok(self
 			.oauth
-			.refresh(
+			.refresh_oidc(
 				refresh_token,
 				client_id,
-				Some(client_secret),
-				Some("openid"),
-				Some(&self.config.userinfo_endpoint),
+				client_secret,
+				&self.config.userinfo_endpoint,
+				self.config.access_token_ttl,
 			)
 			.await?)
 	}

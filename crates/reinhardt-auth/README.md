@@ -1025,10 +1025,11 @@ Enable `oidc-op` on `reinhardt-auth` (or `auth-oidc-op` on the root
 authorization server. The first profile supports first-party confidential web
 clients, Authorization Code with mandatory PKCE `S256`, `client_secret_basic`,
 the `openid` scope, RS256 ID Tokens, a UserInfo-only opaque access token,
-Discovery, and JWKS. The OIDC token endpoint never issues refresh tokens, even
-when the OAuth refresh token policy is enabled. It does not expose a logout,
-dynamic registration, or claims endpoint. The RP redirect URI must match its
-registration exactly and use HTTPS. `OidcConfig::for_loopback_development`
+Discovery, and JWKS. OIDC refresh credentials require both the shared OAuth
+refresh policy and the client's `refresh_token` registration flag. The provider
+does not expose a logout, dynamic registration, or claims endpoint. The RP
+redirect URI must match its registration exactly and use HTTPS.
+`OidcConfig::for_loopback_development`
 permits HTTP only for explicit loopback development.
 
 Use one root-path HTTPS issuer and mount these handlers at the exact URLs in
@@ -1075,6 +1076,14 @@ OIDC client. Set `ClientRegistration.oidc_enabled = true`, use
 redirect URI, and allow `openid` and the UserInfo audience. The OAuth and
 OIDC flows share this registration and token store. The ordinary OAuth
 authorization and token endpoints cannot complete or redeem an OIDC code.
+OIDC refresh credentials must use the OIDC token endpoint or
+`OidcProvider::refresh`; the generic OAuth refresh endpoint rejects them based
+on the issuing code's persisted profile. Refresh rechecks `OidcAccountStatus`
+and the live subject, rotates the credentials, and applies
+`OidcConfig::access_token_ttl` to both `expires_in` and the stored expiry.
+The refresh response omits a new ID Token; UserInfo preserves the published
+subject. Authorization-code records remain available for the lifetime of their
+families, including after the codes expire.
 Rotate a client secret with `rotate_client_secret_with_overlap` for at most
 24 hours of overlap; `revoke_previous_client_secret` ends the overlap, and
 `disable_client` invalidates its access tokens.

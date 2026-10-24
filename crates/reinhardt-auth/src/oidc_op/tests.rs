@@ -89,6 +89,10 @@ async fn issuer() -> TestIssuer {
 }
 
 async fn issuer_with_refresh(refresh: bool) -> TestIssuer {
+	issuer_with_refresh_ttl(refresh, 600).await
+}
+
+async fn issuer_with_refresh_ttl(refresh: bool, access_token_ttl: u64) -> TestIssuer {
 	let oauth_store = Arc::new(MemoryOAuthStore::new());
 	let oauth = Arc::new(
 		OAuthServer::for_development(
@@ -126,14 +130,18 @@ async fn issuer_with_refresh(refresh: bool) -> TestIssuer {
 	let state = Arc::new(MemoryOidcStore::new());
 	let provider = Arc::new(
 		OidcProvider::for_development(
-			OidcConfig::new(
-				ISSUER,
-				"https://auth.example/oidc/authorize",
-				"https://auth.example/oidc/token",
-				USERINFO,
-				"https://auth.example/oidc/jwks",
-			)
-			.unwrap(),
+			{
+				let mut config = OidcConfig::new(
+					ISSUER,
+					"https://auth.example/oidc/authorize",
+					"https://auth.example/oidc/token",
+					USERINFO,
+					"https://auth.example/oidc/jwks",
+				)
+				.unwrap();
+				config.access_token_ttl = Duration::from_secs(access_token_ttl);
+				config
+			},
 			oauth.clone(),
 			state.clone(),
 			Arc::new(HostAccounts(active.clone())),
@@ -1486,9 +1494,11 @@ fn rp_client() -> ClientRegistration {
 }
 
 #[rstest]
+#[case::default_ttl(600)]
+#[case::custom_ttl(73)]
 #[tokio::test]
-async fn opt_in_oidc_code_issues_refresh_credential() {
-	let test = issuer_with_refresh(true).await;
+async fn opt_in_oidc_code_issues_refresh_credential(#[case] ttl: u64) {
+	let test = issuer_with_refresh_ttl(true, ttl).await;
 	let code = authorize(&test).await;
 	let response = test
 		.provider
@@ -1511,6 +1521,14 @@ async fn opt_in_oidc_code_issues_refresh_credential() {
 		.refresh(refresh, "rp-a", &test.secret)
 		.await
 		.unwrap();
+	assert_eq!(refreshed.expires_in, ttl);
+	let stored = test
+		.oauth_store
+		.token(&hex::encode(Sha256::digest(&refreshed.access_token)))
+		.await
+		.unwrap()
+		.unwrap();
+	assert_eq!(stored.expires_at - stored.issued_at, ttl as i64);
 	assert_eq!(
 		test.provider
 			.userinfo(&refreshed.access_token)
@@ -1546,5 +1564,57 @@ async fn opt_in_oidc_code_issues_refresh_credential() {
 			.await
 			.unwrap()
 			.is_none()
+	);
+}
+
+#[rstest]
+#[case::active(true)]
+#[case::disabled(false)]
+#[tokio::test]
+async fn generic_oauth_endpoint_rejects_oidc_refresh_credentials(#[case] active: bool) {
+	use crate::oauth2_server::{OAuthEndpoint, OAuthHandler};
+
+	// Arrange: the generic user repository stays active independently of OIDC status.
+	let test = issuer_with_refresh(true).await;
+	let code = authorize(&test).await;
+	let issued = test
+		.provider
+		.exchange_code(&code, "rp-a", &test.secret, REDIRECT, VERIFIER)
+		.await
+		.unwrap();
+	let refresh = issued.refresh_token.as_deref().unwrap();
+	test.active.store(active, Ordering::SeqCst);
+	let form = url::form_urlencoded::Serializer::new(String::new())
+		.append_pair("grant_type", "refresh_token")
+		.append_pair("refresh_token", refresh)
+		.finish();
+	let basic = STANDARD.encode(format!("rp-a:{}", test.secret));
+
+	// Act
+	let response = OAuthHandler::new(test.oauth.clone(), OAuthEndpoint::Token)
+		.handle(
+			Request::builder()
+				.method(Method::POST)
+				.uri("/oauth/token")
+				.secure(true)
+				.header("Content-Type", "application/x-www-form-urlencoded")
+				.header("Authorization", format!("Basic {basic}"))
+				.body(Bytes::from(form))
+				.build()
+				.unwrap(),
+		)
+		.await
+		.unwrap();
+
+	// Assert: the foreign endpoint must not consume a valid OIDC credential.
+	assert_eq!(response.status, StatusCode::BAD_REQUEST);
+	let body: Value = serde_json::from_slice(&response.body).unwrap();
+	assert_eq!(body["error"], "invalid_grant");
+	test.active.store(true, Ordering::SeqCst);
+	assert!(
+		test.provider
+			.refresh(refresh, "rp-a", &test.secret)
+			.await
+			.is_ok()
 	);
 }

@@ -514,6 +514,7 @@ pub struct StoredTokenFamily {
 	/// Single resource audience of the original grant.
 	pub audience: String,
 	/// Digest of the authorization code that started the family.
+	/// Retain that code and its issuing profile for the family's lifetime.
 	pub code_digest: String,
 	/// UNIX creation time.
 	pub created_at: i64,
@@ -692,6 +693,7 @@ pub trait OAuthServerStore: Send + Sync {
 	/// Save an authorization code.
 	async fn put_code(&self, code: StoredCode) -> Result<(), String>;
 	/// Read code metadata before constructing a token; redemption rechecks it under lock.
+	/// Codes referenced by token families must remain readable after code expiry.
 	async fn code(&self, digest: &str) -> Result<Option<StoredCode>, String>;
 	/// Inspect bindings under the code lock without consuming an unused code.
 	/// A correctly bound replay atomically revokes linked tokens and the token family
