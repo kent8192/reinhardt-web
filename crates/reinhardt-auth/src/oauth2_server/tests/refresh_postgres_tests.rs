@@ -14,7 +14,7 @@ use reinhardt_db::backends::DatabaseConnection;
 use reinhardt_db::migrations::DatabaseMigrationExecutor;
 use rstest::{fixture, rstest};
 use sqlx::PgPool;
-use testcontainers::{ContainerAsync, runners::AsyncRunner};
+use testcontainers::{ContainerAsync, ImageExt, runners::AsyncRunner};
 use testcontainers_modules::postgres::Postgres;
 
 const CLIENT: &str = "client-a";
@@ -36,6 +36,7 @@ struct Harness {
 
 async fn start_postgres() -> (ContainerAsync<Postgres>, String) {
 	let container = Postgres::default()
+		.with_tag("17-alpine")
 		.start()
 		.await
 		.expect("PostgreSQL container");
@@ -356,6 +357,45 @@ async fn redemption_creates_family_refresh_token_and_linked_access_token(
 	let access = harness.second.token("access-0").await.unwrap().unwrap();
 	assert_eq!(access.family_id.as_deref(), Some("family-a"));
 	assert!(!access.revoked);
+}
+
+#[rstest]
+#[tokio::test]
+async fn oidc_redemption_creates_refresh_family_in_postgres(#[future] harness: Harness) {
+	let harness = harness.await;
+	let grant = Grant::default();
+	let mut code = grant.stored_code();
+	code.oidc = true;
+	code.scopes = vec!["openid".into()];
+	harness.first.put_code(code).await.unwrap();
+	let mut request = grant.family_redemption();
+	request.redemption.expect_oidc = true;
+	request.redemption.token.scopes = vec!["openid".into()];
+	request.family.scopes = vec!["openid".into()];
+
+	let outcome = harness
+		.first
+		.redeem_code_and_store_tokens(request)
+		.await
+		.unwrap();
+	assert!(matches!(outcome, CodeRedemption::Valid(_)));
+	let RefreshInspection::Active(_, family) = inspect(&harness.second, grant.refresh, 20).await
+	else {
+		panic!("OIDC code must persist its opted-in refresh family");
+	};
+	assert_eq!(family.scopes, vec!["openid"]);
+	assert_eq!(family.code_digest, grant.code);
+	assert_eq!(
+		harness
+			.second
+			.token(grant.access)
+			.await
+			.unwrap()
+			.unwrap()
+			.family_id
+			.as_deref(),
+		Some(grant.family)
+	);
 }
 
 #[rstest]

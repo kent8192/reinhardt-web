@@ -13,6 +13,7 @@
 //! - Protobuf message nesting depth limits
 //! - Protobuf field constraint validation
 //! - Dependency injection support (with `di` feature)
+//! - Mutual TLS transport and certificate service authorization (with `tls` feature)
 //!
 //! # Security
 //!
@@ -74,6 +75,17 @@ pub mod router;
 pub mod server;
 pub mod settings;
 pub mod validation;
+
+#[cfg(feature = "tls")]
+pub mod transport;
+
+/// Tonic protocol and generated-service types, available through the facade.
+pub use tonic;
+
+#[cfg(feature = "tls")]
+pub use transport::{
+	GrpcClientTlsConfig, GrpcServerTlsConfig, GrpcTlsError, PeerIdentity, PeerIdentityInterceptor,
+};
 
 #[cfg(feature = "di")]
 pub mod di;

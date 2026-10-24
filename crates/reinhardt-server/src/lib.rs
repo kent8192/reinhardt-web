@@ -3,6 +3,7 @@
 //!
 //! This crate provides HTTP server capabilities with support for:
 //! - Hyper-based HTTP/1.1 and HTTP/2
+//! - Per-server request body budgets with streaming size enforcement
 //! - GraphQL (optional)
 //! - WebSocket (optional)
 
