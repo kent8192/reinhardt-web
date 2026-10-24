@@ -194,6 +194,26 @@ impl OidcHandler {
 		};
 		match params.get("grant_type").map(String::as_str) {
 			Some("authorization_code") => {}
+			Some("refresh_token") => {
+				if !self.provider.supports_refresh_tokens() {
+					return oidc_error(OidcError::UnsupportedGrantType);
+				}
+				let Some(refresh) = params
+					.get("refresh_token")
+					.filter(|value| !value.is_empty())
+				else {
+					return oidc_error(OidcError::InvalidRequest);
+				};
+				if params.get("scope").is_some_and(|scope| scope != "openid")
+					|| params.contains_key("resource")
+				{
+					return oidc_error(OidcError::InvalidRequest);
+				}
+				return match self.provider.refresh(refresh, &client_id, &secret).await {
+					Ok(response) => json_response(StatusCode::OK, json!(response)),
+					Err(error) => oidc_error(error),
+				};
+			}
 			Some("") | None => return oidc_error(OidcError::InvalidRequest),
 			Some(_) => return oidc_error(OidcError::UnsupportedGrantType),
 		}

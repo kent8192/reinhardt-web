@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- *(auth)* [**breaking**] allow explicitly opted-in OpenID Provider clients to issue and rotate refresh tokens using the shared OAuth token-family policy. `OidcTokenResponse` now includes `refresh_token: Option<String>`; callers that construct response literals must add `refresh_token: None`. Refresh responses omit a new ID Token and retain the original UserInfo subject. Disabled host accounts cannot refresh, and inconsistent reuse revokes only the affected family.
+
 ## [0.4.0-alpha.22](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.4.0-alpha.21...reinhardt-web@v0.4.0-alpha.22) - 2026-10-22
 
 ### Documentation

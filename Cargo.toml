@@ -254,6 +254,7 @@ grpc = [
   "reinhardt-urls/grpc",
   "reinhardt-commands?/grpc",
 ]
+grpc-tls = ["grpc", "reinhardt-grpc/tls"]
 
 # Meta features
 full = [
