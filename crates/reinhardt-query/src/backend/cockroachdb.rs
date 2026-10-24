@@ -92,7 +92,9 @@ impl QueryBuilder for CockroachDBQueryBuilder {
 	}
 
 	fn build_alter_table(&self, stmt: &AlterTableStatement) -> (String, Values) {
-		self.postgres.build_alter_table(stmt)
+		// CockroachDB cannot combine a type change with other column changes.
+		self.postgres
+			.build_alter_table_with_mode(stmt, super::SqlWriter::new(), true)
 	}
 
 	fn build_drop_table(&self, stmt: &DropTableStatement) -> (String, Values) {

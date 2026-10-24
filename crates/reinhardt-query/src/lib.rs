@@ -22,6 +22,8 @@
 //! - **Advanced SQL features** - JOINs, GROUP BY, HAVING, DISTINCT, UNION, CTEs, Window functions
 //!
 //! ### DDL (Data Definition Language)
+//! - **Column nullability** - Explicit `SET NOT NULL` / `DROP NOT NULL` changes;
+//!   omitting `ColumnDef::not_null` preserves existing PostgreSQL-family constraints
 //! - **Indexes** - CREATE/DROP INDEX, including typed MySQL `TEXT`/`BLOB` column prefixes
 //! - **Schema management** - CREATE/ALTER/DROP SCHEMA (PostgreSQL, CockroachDB)
 //! - **Sequence operations** - CREATE/ALTER/DROP SEQUENCE (PostgreSQL, CockroachDB)
