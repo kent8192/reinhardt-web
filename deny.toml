@@ -98,6 +98,7 @@ skip = [
   # existing JWT consumers retain p256 0.13 and its RustCrypto API family (#6840).
   # Remove each allowance once fresh resolution no longer contains both lines.
   # Ideal: one RustCrypto release family and none of these bans.skip entries.
+  # Graph evidence and recheck procedure: docs/rustcrypto-convergence.md.
   { crate = "base16ct:>=0.2,<0.3", reason = "AWS signing and authentication dependencies retain incompatible RustCrypto API lines; tracked in issue #6840." },
   { crate = "crypto-bigint:>=0.5,<0.6", reason = "AWS signing and authentication dependencies retain incompatible RustCrypto API lines; tracked in issue #6840." },
   { crate = "der:>=0.7,<0.8", reason = "AWS signing and authentication dependencies retain incompatible RustCrypto API lines; tracked in issue #6840." },
