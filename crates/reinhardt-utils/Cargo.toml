@@ -57,7 +57,12 @@ oxc_minifier = { version = "0.96.0", optional = true }
 oxc_mangler = { version = "0.96.0", optional = true }
 oxc_codegen = { version = "0.96.0", optional = true }
 aws-config = { version = "1.0", optional = true }
-aws-sdk-s3 = { version = "1.0", optional = true }
+aws-sdk-s3 = { version = "1.0", default-features = false, features = [
+  "sigv4a",
+  "http-1x",
+  "default-https-client",
+  "rt-tokio",
+], optional = true }
 # Activate the workspace AWS compatibility constraint (reinhardt-web#6318).
 aws-smithy-types = { workspace = true, optional = true }
 time = { workspace = true, optional = true }
