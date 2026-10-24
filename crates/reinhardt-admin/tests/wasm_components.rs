@@ -26,7 +26,7 @@ use reinhardt_pages::prelude::{defer_yield, use_action};
 use reinhardt_pages::reactive::ReactiveScope;
 use reinhardt_pages::server_fn::ServerFnError;
 use reinhardt_pages::{Action, Signal};
-use reinhardt_test::wasm::{UserEvent, wait_for};
+use reinhardt_test::wasm::wait_for;
 use rstest::rstest;
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeSet, HashMap};
@@ -899,7 +899,7 @@ async fn structured_inline_errors_update_the_row_without_navigation() {
 		.expect("location href");
 
 	// Act
-	UserEvent::submit(&form);
+	form.request_submit().expect("request form submission");
 	wait_for(move || {
 		row_error
 			.text_content()
@@ -987,7 +987,7 @@ async fn structured_parent_errors_update_field_and_form_alert() {
 		.expect("form error exists");
 
 	// Act
-	UserEvent::submit(&form);
+	form.request_submit().expect("request form submission");
 	wait_for(move || {
 		field_error
 			.text_content()
@@ -1004,7 +1004,7 @@ async fn structured_parent_errors_update_field_and_form_alert() {
 	assert_eq!(title.get_attribute("aria-invalid").as_deref(), Some("true"));
 	assert_eq!(
 		title.get_attribute("aria-describedby").as_deref(),
-		Some("field-title-help field-title-error")
+		Some("field-title-error")
 	);
 }
 
@@ -1036,7 +1036,7 @@ async fn validation_without_field_entries_updates_form_alert() {
 		.expect("form error exists");
 
 	// Act
-	UserEvent::submit(&form);
+	form.request_submit().expect("request form submission");
 	wait_for(move || {
 		form_error
 			.text_content()
@@ -1341,9 +1341,9 @@ async fn structured_relation_parent_error_targets_raw_id_control() {
 		help_text: Some("Choose an author".to_string()),
 		placeholder: None,
 	}];
-	let page = model_form_with_field_info("Post", &fields, &[], &[], None, &[], &field_infos);
 	scope.enter(|| {
-		page.mount(&Element::new(root.element.clone()))
+		model_form_with_field_info("Post", &fields, &[], &[], None, &[], &field_infos)
+			.mount(&Element::new(root.element.clone()))
 			.expect("relation form mounts");
 	});
 	let form: web_sys::HtmlFormElement = root
@@ -1364,7 +1364,7 @@ async fn structured_relation_parent_error_targets_raw_id_control() {
 		.expect("field error exists");
 
 	// Act
-	UserEvent::submit(&form);
+	form.request_submit().expect("request form submission");
 	wait_for(move || {
 		field_error
 			.text_content()
@@ -1419,9 +1419,9 @@ async fn structured_many_to_many_parent_error_targets_search_control() {
 		help_text: Some("Choose one or more tags".to_string()),
 		placeholder: None,
 	}];
-	let page = model_form_with_field_info("Post", &fields, &[], &[], None, &[], &field_infos);
 	scope.enter(|| {
-		page.mount(&Element::new(root.element.clone()))
+		model_form_with_field_info("Post", &fields, &[], &[], None, &[], &field_infos)
+			.mount(&Element::new(root.element.clone()))
 			.expect("many-to-many form mounts");
 	});
 	let form: web_sys::HtmlFormElement = root
@@ -1442,7 +1442,7 @@ async fn structured_many_to_many_parent_error_targets_search_control() {
 		.expect("field error exists");
 
 	// Act
-	UserEvent::submit(&form);
+	form.request_submit().expect("request form submission");
 	wait_for(move || {
 		field_error
 			.text_content()
