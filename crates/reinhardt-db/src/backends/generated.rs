@@ -879,10 +879,10 @@ mod postgres_cache_tests {
 		ColumnDef, Expr, ExprTrait, Iden, IntoIden, Order, PostgresQueryBuilder, Query,
 		QueryBuilder, QueryStatementBuilder, SimpleExpr,
 	};
+	use reinhardt_testkit::fixtures::{ContainerAsync, GenericImage, postgres_container};
 	use rstest::{fixture, rstest};
 	use sqlx::{Arguments, Connection, Row};
-	use testcontainers::{ContainerAsync, runners::AsyncRunner};
-	use testcontainers_modules::postgres::Postgres;
+	use std::sync::Arc;
 
 	#[derive(Debug, Iden)]
 	enum CachedRows {
@@ -899,21 +899,25 @@ mod postgres_cache_tests {
 	}
 
 	struct PostgresFixture {
-		// Drop the connection before the container that owns its database.
+		// Drop the dedicated connection and shared pool before their database container.
 		connection: sqlx::PgConnection,
-		_container: ContainerAsync<Postgres>,
+		_pool: Arc<sqlx::PgPool>,
+		_container: ContainerAsync<GenericImage>,
 	}
 
 	#[fixture]
-	async fn postgres_fixture() -> PostgresFixture {
-		let container = Postgres::default().start().await.unwrap();
-		let url = format!(
-			"postgres://postgres:postgres@{}:{}/postgres",
-			container.get_host().await.unwrap(),
-			container.get_host_port_ipv4(5432).await.unwrap()
-		);
+	async fn postgres_fixture(
+		#[future] postgres_container: (
+			ContainerAsync<GenericImage>,
+			Arc<sqlx::PgPool>,
+			u16,
+			String,
+		),
+	) -> PostgresFixture {
+		let (container, pool, _port, url) = postgres_container.await;
 		PostgresFixture {
 			connection: sqlx::PgConnection::connect(&url).await.unwrap(),
+			_pool: pool,
 			_container: container,
 		}
 	}
