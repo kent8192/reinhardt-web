@@ -25,6 +25,7 @@ use super::{PreBodyAdmitted, RequestAdmission, RequestHead};
 /// or dependency injection integration. Full middleware and DI context
 /// integration is tracked separately.
 pub struct Http2Server {
+	max_body_size: u64,
 	handler: Arc<dyn Handler>,
 	request_admission: Option<Arc<dyn RequestAdmission>>,
 }
@@ -52,9 +53,22 @@ impl Http2Server {
 	/// ```
 	pub fn new<H: Handler + 'static>(handler: H) -> Self {
 		Self {
+			max_body_size: DEFAULT_MAX_BODY_SIZE,
 			handler: Arc::new(handler),
 			request_admission: None,
 		}
+	}
+
+	/// Sets the request body budget in bytes for this server's listeners.
+	///
+	/// Defaults to 10 MiB. Zero permits only empty bodies. Requests exceeding
+	/// the budget receive HTTP 413 before the handler runs, including bodies
+	/// without Content-Length. An installed `RequestAdmission` policy retains
+	/// control of its per-request budget and overrides this fallback.
+	/// Standalone static connection adapters retain their 10 MiB default.
+	pub fn with_max_body_size(mut self, max_body_size: u64) -> Self {
+		self.max_body_size = max_body_size;
+		self
 	}
 
 	/// Check request metadata and acquire an owned resource before reading the body.
@@ -100,6 +114,7 @@ impl Http2Server {
 			let (stream, remote_addr) = listener.accept().await?;
 			let handler = self.handler.clone();
 			let request_admission = self.request_admission.clone();
+			let max_body_size = self.max_body_size;
 
 			tokio::task::spawn(async move {
 				if let Err(err) = Self::handle_connection_admitted(
@@ -107,6 +122,7 @@ impl Http2Server {
 					remote_addr,
 					handler,
 					request_admission,
+					max_body_size,
 				)
 				.await
 				{
@@ -165,12 +181,13 @@ impl Http2Server {
 					let (stream, remote_addr) = result?;
 					let handler = self.handler.clone();
 					let request_admission = self.request_admission.clone();
+					let max_body_size = self.max_body_size;
 					let mut conn_shutdown = coordinator.subscribe();
 
 					tokio::task::spawn(async move {
 						// Handle connection with shutdown support
 						tokio::select! {
-							result = Self::handle_connection_admitted(stream, remote_addr, handler, request_admission) => {
+							result = Self::handle_connection_admitted(stream, remote_addr, handler, request_admission, max_body_size) => {
 								if let Err(err) = result {
 									eprintln!("Error handling HTTP/2 connection: {:?}", err);
 								}
@@ -234,7 +251,8 @@ impl Http2Server {
 		handler: Arc<dyn Handler>,
 	) -> Result<(), Box<dyn std::error::Error>> {
 		let remote_addr = stream.peer_addr()?;
-		Self::handle_connection_admitted(stream, remote_addr, handler, None).await
+		Self::handle_connection_admitted(stream, remote_addr, handler, None, DEFAULT_MAX_BODY_SIZE)
+			.await
 	}
 
 	/// Serve HTTP/2 requests on `stream`, attributing each one to `remote_addr`.
@@ -247,19 +265,14 @@ impl Http2Server {
 		remote_addr: SocketAddr,
 		handler: Arc<dyn Handler>,
 		request_admission: Option<Arc<dyn RequestAdmission>>,
+		max_body_size: u64,
 	) -> Result<(), Box<dyn std::error::Error>> {
 		let io = TokioIo::new(stream);
 		let service = service_fn(move |req| {
 			let handler = handler.clone();
 			let request_admission = request_admission.clone();
 
-			handle_request(
-				req,
-				handler,
-				request_admission,
-				remote_addr,
-				DEFAULT_MAX_BODY_SIZE,
-			)
+			handle_request(req, handler, request_admission, remote_addr, max_body_size)
 		});
 
 		http2::Builder::new(hyper_util::rt::TokioExecutor::new())
@@ -515,6 +528,7 @@ mod tests {
 					remote_addr,
 					Arc::new(CountedHandler(handled)),
 					Some(Arc::new(ThreeByteAdmission)),
+					1,
 				)
 				.await
 				.unwrap();
@@ -575,8 +589,14 @@ mod tests {
 				tokio::spawn(async move {
 					let _ = match entry {
 						Entry::AcceptedAddress => {
-							Http2Server::handle_connection_admitted(stream, accepted, handler, None)
-								.await
+							Http2Server::handle_connection_admitted(
+								stream,
+								accepted,
+								handler,
+								None,
+								DEFAULT_MAX_BODY_SIZE,
+							)
+							.await
 						}
 						Entry::HandleConnection => {
 							Http2Server::handle_connection(stream, handler).await
