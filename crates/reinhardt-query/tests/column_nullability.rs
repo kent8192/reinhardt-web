@@ -83,13 +83,13 @@ fn unspecified_modify_column_preserves_nullability() {
 #[rstest]
 #[case::postgres(
 	false,
-	"ALTER TABLE \"users\" ALTER COLUMN \"age\" DROP NOT NULL, ALTER COLUMN \"age\" SET DEFAULT $1, ADD COLUMN \"name\" TEXT",
-	"ALTER TABLE \"users\" ALTER COLUMN \"age\" DROP NOT NULL, ALTER COLUMN \"age\" SET DEFAULT 7, ADD COLUMN \"name\" TEXT"
+	"ALTER TABLE \"users\" ALTER COLUMN \"age\" TYPE INTEGER, ALTER COLUMN \"age\" DROP NOT NULL, ALTER COLUMN \"age\" SET DEFAULT $1, ADD COLUMN \"name\" TEXT",
+	"ALTER TABLE \"users\" ALTER COLUMN \"age\" TYPE INTEGER, ALTER COLUMN \"age\" DROP NOT NULL, ALTER COLUMN \"age\" SET DEFAULT 7, ADD COLUMN \"name\" TEXT"
 )]
 #[case::cockroachdb(
 	true,
-	"ALTER TABLE \"users\" ALTER COLUMN \"age\" DROP NOT NULL; ALTER TABLE \"users\" ALTER COLUMN \"age\" SET DEFAULT $1; ALTER TABLE \"users\" ADD COLUMN \"name\" TEXT",
-	"ALTER TABLE \"users\" ALTER COLUMN \"age\" DROP NOT NULL; ALTER TABLE \"users\" ALTER COLUMN \"age\" SET DEFAULT 7; ALTER TABLE \"users\" ADD COLUMN \"name\" TEXT"
+	"ALTER TABLE \"users\" ALTER COLUMN \"age\" TYPE INTEGER; ALTER TABLE \"users\" ALTER COLUMN \"age\" DROP NOT NULL; ALTER TABLE \"users\" ALTER COLUMN \"age\" SET DEFAULT $1; ALTER TABLE \"users\" ADD COLUMN \"name\" TEXT",
+	"ALTER TABLE \"users\" ALTER COLUMN \"age\" TYPE INTEGER; ALTER TABLE \"users\" ALTER COLUMN \"age\" DROP NOT NULL; ALTER TABLE \"users\" ALTER COLUMN \"age\" SET DEFAULT 7; ALTER TABLE \"users\" ADD COLUMN \"name\" TEXT"
 )]
 fn nullability_with_default_and_following_operation(
 	#[case] cockroachdb: bool,
@@ -99,7 +99,12 @@ fn nullability_with_default_and_following_operation(
 	// Arrange
 	let mut stmt = Query::alter_table();
 	stmt.table("users")
-		.modify_column(ColumnDef::new("age").not_null(false).default(7.into()))
+		.modify_column(
+			ColumnDef::new("age")
+				.column_type(ColumnType::Integer)
+				.not_null(false)
+				.default(7.into()),
+		)
 		.add_column(ColumnDef::new("name").column_type(ColumnType::Text));
 
 	// Act
@@ -118,6 +123,24 @@ fn nullability_with_default_and_following_operation(
 	assert_eq!(sql, expected_bound);
 	assert_eq!(values.0, vec![7.into()]);
 	assert_eq!(inline, expected_inline);
+}
+
+#[rstest]
+fn cockroachdb_keeps_type_free_operations_in_one_statement() {
+	// Arrange
+	let mut stmt = Query::alter_table();
+	stmt.table("users")
+		.add_column(ColumnDef::new("age").column_type(ColumnType::Integer))
+		.add_column(ColumnDef::new("name").column_type(ColumnType::Text));
+
+	// Act
+	let (sql, _) = CockroachDBQueryBuilder::new().build_alter_table(&stmt);
+
+	// Assert
+	assert_eq!(
+		sql,
+		"ALTER TABLE \"users\" ADD COLUMN \"age\" INTEGER, ADD COLUMN \"name\" TEXT"
+	);
 }
 
 #[rstest]

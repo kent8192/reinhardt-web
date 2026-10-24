@@ -196,8 +196,8 @@ impl AlterTableStatement {
 	///
 	/// PostgreSQL-family nullability is preserved unless [`ColumnDef::not_null`]
 	/// is specified. PostgreSQL combines changes into one statement; CockroachDB
-	/// emits separate statements for each change. MySQL applies the full column
-	/// definition. SQLite requires table recreation instead.
+	/// separates changes when a column type changes. MySQL applies the full
+	/// column definition. SQLite requires table recreation instead.
 	///
 	/// # Examples
 	///

@@ -93,8 +93,15 @@ impl QueryBuilder for CockroachDBQueryBuilder {
 
 	fn build_alter_table(&self, stmt: &AlterTableStatement) -> (String, Values) {
 		// CockroachDB cannot combine a type change with other column changes.
-		self.postgres
-			.build_alter_table_with_mode(stmt, super::SqlWriter::new(), true)
+		let separate_statements = stmt.operations.iter().any(|operation| {
+			matches!(operation, crate::query::AlterTableOperation::ModifyColumn(column)
+				if column.column_type.is_some())
+		});
+		self.postgres.build_alter_table_with_mode(
+			stmt,
+			super::SqlWriter::new(),
+			separate_statements,
+		)
 	}
 
 	fn build_drop_table(&self, stmt: &DropTableStatement) -> (String, Values) {
