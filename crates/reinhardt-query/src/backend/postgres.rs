@@ -299,7 +299,7 @@ impl PostgresQueryBuilder {
 		if let Some(generated) = &column.generated {
 			self.write_generated_column(writer, generated);
 		}
-		if column.not_null {
+		if column.not_null == Some(true) {
 			writer.push_space();
 			writer.push_keyword("NOT NULL");
 		}
@@ -2267,7 +2267,16 @@ impl PostgresQueryBuilder {
 	pub(crate) fn build_alter_table_with_writer(
 		&self,
 		stmt: &AlterTableStatement,
+		writer: SqlWriter,
+	) -> (String, Values) {
+		self.build_alter_table_with_mode(stmt, writer, false)
+	}
+
+	pub(crate) fn build_alter_table_with_mode(
+		&self,
+		stmt: &AlterTableStatement,
 		mut writer: SqlWriter,
+		separate_statements: bool,
 	) -> (String, Values) {
 		// ALTER TABLE table_name
 		writer.push("ALTER TABLE");
@@ -2280,7 +2289,14 @@ impl PostgresQueryBuilder {
 		let mut first = true;
 		for operation in &stmt.operations {
 			if !first {
-				writer.push(",");
+				if separate_statements {
+					writer.push("; ALTER TABLE ");
+					if let Some(table) = &stmt.table {
+						self.write_table_ref(&mut writer, table);
+					}
+				} else {
+					writer.push(",");
+				}
 			}
 			first = false;
 			writer.push_space();
@@ -2300,7 +2316,7 @@ impl PostgresQueryBuilder {
 					if let Some(generated) = &column_def.generated {
 						self.write_generated_column(&mut writer, generated);
 					}
-					if column_def.not_null {
+					if column_def.not_null == Some(true) {
 						writer.push(" NOT NULL");
 					}
 					if column_def.unique {
@@ -2335,33 +2351,48 @@ impl PostgresQueryBuilder {
 					writer.push_identifier(&new.to_string(), |s| self.escape_iden(s));
 				}
 				AlterTableOperation::ModifyColumn(column_def) => {
-					// PostgreSQL uses ALTER COLUMN instead of MODIFY COLUMN
-					writer.push("ALTER COLUMN");
-					writer.push_space();
-					writer.push_identifier(&column_def.name.to_string(), |s| self.escape_iden(s));
-					writer.push_space();
+					let mut first_change = true;
+					let mut start_change = |writer: &mut SqlWriter| {
+						if !first_change {
+							if separate_statements {
+								writer.push("; ALTER TABLE ");
+								if let Some(table) = &stmt.table {
+									self.write_table_ref(writer, table);
+								}
+								writer.push_space();
+							} else {
+								writer.push(", ");
+							}
+						}
+						first_change = false;
+						writer.push("ALTER COLUMN ");
+						writer
+							.push_identifier(&column_def.name.to_string(), |s| self.escape_iden(s));
+						writer.push_space();
+					};
 
 					// TYPE change
 					if let Some(col_type) = &column_def.column_type {
+						start_change(&mut writer);
 						writer.push("TYPE");
 						writer.push_space();
 						writer.push(&self.column_type_to_sql(col_type));
 					}
 
 					// NOT NULL / NULL
-					if column_def.not_null {
-						writer.push(", ALTER COLUMN ");
-						writer
-							.push_identifier(&column_def.name.to_string(), |s| self.escape_iden(s));
-						writer.push(" SET NOT NULL");
+					if let Some(not_null) = column_def.not_null {
+						start_change(&mut writer);
+						writer.push(if not_null {
+							"SET NOT NULL"
+						} else {
+							"DROP NOT NULL"
+						});
 					}
 
 					// DEFAULT
 					if let Some(default) = &column_def.default {
-						writer.push(", ALTER COLUMN ");
-						writer
-							.push_identifier(&column_def.name.to_string(), |s| self.escape_iden(s));
-						writer.push(" SET DEFAULT ");
+						start_change(&mut writer);
+						writer.push("SET DEFAULT ");
 						self.write_simple_expr(&mut writer, default);
 					}
 				}
@@ -8338,7 +8369,7 @@ mod tests {
 		stmt.columns.push(ColumnDef {
 			name: "id".into_iden(),
 			column_type: Some(ColumnType::Integer),
-			not_null: false,
+			not_null: None,
 			unique: false,
 			primary_key: false,
 			auto_increment: false,
@@ -8351,7 +8382,7 @@ mod tests {
 		stmt.columns.push(ColumnDef {
 			name: "name".into_iden(),
 			column_type: Some(ColumnType::String(Some(255))),
-			not_null: false,
+			not_null: None,
 			unique: false,
 			primary_key: false,
 			auto_increment: false,
@@ -8379,7 +8410,7 @@ mod tests {
 		stmt.columns.push(ColumnDef {
 			name: "id".into_iden(),
 			column_type: Some(ColumnType::Integer),
-			not_null: false,
+			not_null: None,
 			unique: false,
 			primary_key: false,
 			auto_increment: false,
@@ -8406,7 +8437,7 @@ mod tests {
 		stmt.columns.push(ColumnDef {
 			name: "id".into_iden(),
 			column_type: Some(ColumnType::Integer),
-			not_null: false,
+			not_null: None,
 			unique: false,
 			primary_key: true,
 			auto_increment: false,
@@ -8433,7 +8464,7 @@ mod tests {
 		stmt.columns.push(ColumnDef {
 			name: "email".into_iden(),
 			column_type: Some(ColumnType::String(Some(255))),
-			not_null: true,
+			not_null: Some(true),
 			unique: false,
 			primary_key: false,
 			auto_increment: false,
@@ -8459,7 +8490,7 @@ mod tests {
 		stmt.columns.push(ColumnDef {
 			name: "username".into_iden(),
 			column_type: Some(ColumnType::String(Some(50))),
-			not_null: false,
+			not_null: None,
 			unique: true,
 			primary_key: false,
 			auto_increment: false,
@@ -8485,7 +8516,7 @@ mod tests {
 		stmt.columns.push(ColumnDef {
 			name: "active".into_iden(),
 			column_type: Some(ColumnType::Boolean),
-			not_null: false,
+			not_null: None,
 			unique: false,
 			primary_key: false,
 			auto_increment: false,
@@ -8511,7 +8542,7 @@ mod tests {
 		stmt.columns.push(ColumnDef {
 			name: "age".into_iden(),
 			column_type: Some(ColumnType::Integer),
-			not_null: false,
+			not_null: None,
 			unique: false,
 			primary_key: false,
 			auto_increment: false,
@@ -8591,7 +8622,7 @@ mod tests {
 		stmt.columns.push(ColumnDef {
 			name: "id".into_iden(),
 			column_type: Some(ColumnType::Integer),
-			not_null: false,
+			not_null: None,
 			unique: false,
 			primary_key: false,
 			auto_increment: false,
@@ -8604,7 +8635,7 @@ mod tests {
 		stmt.columns.push(ColumnDef {
 			name: "email".into_iden(),
 			column_type: Some(ColumnType::String(Some(255))),
-			not_null: false,
+			not_null: None,
 			unique: false,
 			primary_key: false,
 			auto_increment: false,
@@ -8636,7 +8667,7 @@ mod tests {
 		stmt.columns.push(ColumnDef {
 			name: "id".into_iden(),
 			column_type: Some(ColumnType::Integer),
-			not_null: false,
+			not_null: None,
 			unique: false,
 			primary_key: true,
 			auto_increment: false,
@@ -8649,7 +8680,7 @@ mod tests {
 		stmt.columns.push(ColumnDef {
 			name: "user_id".into_iden(),
 			column_type: Some(ColumnType::Integer),
-			not_null: false,
+			not_null: None,
 			unique: false,
 			primary_key: false,
 			auto_increment: false,
@@ -8894,7 +8925,7 @@ mod tests {
 			.push(AlterTableOperation::AddColumn(ColumnDef {
 				name: "age".into_iden(),
 				column_type: Some(ColumnType::Integer),
-				not_null: false,
+				not_null: None,
 				unique: false,
 				primary_key: false,
 				auto_increment: false,
@@ -9001,7 +9032,7 @@ mod tests {
 			.push(AlterTableOperation::ModifyColumn(ColumnDef {
 				name: "age".into_iden(),
 				column_type: Some(ColumnType::BigInteger),
-				not_null: false,
+				not_null: None,
 				unique: false,
 				primary_key: false,
 				auto_increment: false,
