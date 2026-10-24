@@ -342,6 +342,7 @@ fn date_hierarchy_level(selection: &DateHierarchySelection) -> Option<DateHierar
 	}
 }
 
+#[cfg(server)]
 async fn get_viewable_model_admin(
 	site: &AdminSite,
 	model_name: &str,

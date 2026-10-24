@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `HttpServer::with_max_body_size` and `Http2Server::with_max_body_size` configure listener body budgets while preserving the 10 MiB default and per-request admission overrides. Oversized bodies receive HTTP 413 before handler execution.
+
 ## [0.4.0-alpha.22](https://github.com/kent8192/reinhardt-web/compare/reinhardt-server@v0.4.0-alpha.21...reinhardt-server@v0.4.0-alpha.22) - 2026-10-22
 
 ### Documentation

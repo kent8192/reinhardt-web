@@ -22,10 +22,9 @@ env:
   CARGO_NET_RETRY: 10
 
 jobs:
-  # Verify the WASM-target build for the four base targets and four
-  # client-side feature presets. Replaces the former `wasm-check` job;
-  # entries 1-4 reproduce its coverage and entries 5-8 add representative
-  # client-side feature combinations.
+  # Verify base targets, representative client-side feature presets, and
+  # shared browser dependencies. Compile the admin component fixtures too,
+  # so client-only API drift is caught before browser execution.
   wasm-feature-check:
     name: WASM Feature Check (${{ matrix.combo.name }})
     runs-on: ${{ fromJSON(inputs.runner || '"ubuntu-latest"') }}
@@ -46,6 +45,8 @@ jobs:
           - { name: "reinhardt-core (core-full)",         pkg: "reinhardt-core",  features: "core-full",                                     no_default: "true",  all_features: "false" }
           # Shared utilities used by browser crates such as the reinhardt-admin client (#6766)
           - { name: "reinhardt-utils (utils-core)",       pkg: "reinhardt-utils", features: "utils-core",                                    no_default: "true",  all_features: "false" }
+          # Browser admin client; native clippy cannot see client-only imports (#6766)
+          - { name: "reinhardt-admin (default)",          pkg: "reinhardt-admin", features: "",                                              no_default: "false", all_features: "false" }
     steps:
       - name: Free Disk Space (Ubuntu)
         if: ${{ !contains(inputs.runner || '', 'self-hosted') }}
@@ -104,6 +105,10 @@ jobs:
           fi
           # shellcheck disable=SC2086
           cargo check --target wasm32-unknown-unknown ${FLAGS} --quiet
+
+      - name: Compile admin WASM component tests
+        if: matrix.combo.pkg == 'reinhardt-admin'
+        run: cargo test -p reinhardt-admin --target wasm32-unknown-unknown --test wasm_components --no-run --quiet
 
   # Run clippy against wasm32-unknown-unknown for the same targets as wasm-check.
   # Catches lint violations in cfg(target_arch = "wasm32") code paths and

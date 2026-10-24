@@ -81,7 +81,8 @@ pub trait OidcStateStore: Send + Sync {
 	async fn subject(&self, user_id: &str) -> Result<Option<String>, String>;
 	/// Remove a user's live link while permanently reserving the subject.
 	async fn retire_subject(&self, user_id: &str) -> Result<(), String>;
-	/// Invalidate a retired user's code contexts and subject; PostgreSQL also invalidates OAuth codes and tokens in the same transaction.
+	/// Invalidate a retired user's code contexts and subject; PostgreSQL also invalidates
+	/// OAuth codes, tokens, and refresh families in the same transaction.
 	async fn retire_user(&self, user_id: &str) -> Result<(), String>;
 	/// Persist a validated pending OIDC request.
 	async fn put_pending(&self, id: &str, pending: OidcPending) -> Result<(), String>;

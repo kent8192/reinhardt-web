@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Breaking:** Opt-in OIDC refresh grants use the shared rotating OAuth token-family policy. `OidcTokenResponse` includes `refresh_token: Option<String>`; manually constructed response literals must add `refresh_token: None`. `OidcProvider::refresh` returns rotating access/refresh credentials without a new ID Token, while UserInfo preserves the published subject and authoritative account checks remain active.
+
+### Fixed
+
+- Allow opted-in OIDC code exchanges to persist rotating refresh-token families in PostgreSQL, matching the protocol and in-memory store while retaining profile, client, principal, scope, and audience binding checks.
+
 ## [0.4.0-alpha.22](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.4.0-alpha.21...reinhardt-auth@v0.4.0-alpha.22) - 2026-10-22
 
 ### Documentation

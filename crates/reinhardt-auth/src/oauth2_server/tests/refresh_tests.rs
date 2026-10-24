@@ -444,9 +444,9 @@ async fn client_credentials_never_issue_refresh_tokens() {
 #[cfg(feature = "oidc-op")]
 #[rstest]
 #[tokio::test]
-async fn oidc_code_exchange_never_issues_refresh_tokens() {
+async fn oidc_code_exchange_without_client_opt_in_never_issues_refresh_tokens() {
 	use super::super::CodeExchangeRequest;
-	// Arrange: an OIDC-enabled client that also opted into refresh tokens.
+	// Arrange: the server enables refresh but this OIDC client does not opt in.
 	let mut config = config();
 	config.refresh_tokens = Some(policy());
 	let store = Arc::new(MemoryOAuthStore::new());
@@ -463,7 +463,7 @@ async fn oidc_code_exchange_never_issues_refresh_tokens() {
 		.unwrap();
 	let mut registration = client(ClientKind::Confidential);
 	registration.oidc_enabled = true;
-	registration.refresh_token = true;
+	registration.refresh_token = false;
 	registration.scopes = vec!["openid".into()];
 	registration.default_scopes = vec!["openid".into()];
 	registration.client_credentials = false;
