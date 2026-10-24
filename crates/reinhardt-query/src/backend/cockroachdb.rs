@@ -14,18 +14,19 @@ use crate::{
 	query::{
 		AlterDatabaseStatement, AlterFunctionStatement, AlterIndexStatement,
 		AlterMaterializedViewStatement, AlterProcedureStatement, AlterSchemaStatement,
-		AlterSequenceStatement, AlterTableStatement, AlterTypeStatement, AnalyzeStatement,
-		CheckTableStatement, CommentStatement, CreateDatabaseStatement, CreateFunctionStatement,
-		CreateIndexStatement, CreateMaterializedViewStatement, CreateProcedureStatement,
-		CreateSchemaStatement, CreateSequenceStatement, CreateTableStatement,
-		CreateTriggerStatement, CreateTypeStatement, CreateViewStatement, DeleteStatement,
-		DropDatabaseStatement, DropFunctionStatement, DropIndexStatement,
+		AlterSequenceStatement, AlterTableOperation, AlterTableStatement, AlterTypeStatement,
+		AnalyzeStatement, CheckTableStatement, CommentStatement, CreateDatabaseStatement,
+		CreateFunctionStatement, CreateIndexStatement, CreateMaterializedViewStatement,
+		CreateProcedureStatement, CreateSchemaStatement, CreateSequenceStatement,
+		CreateTableStatement, CreateTriggerStatement, CreateTypeStatement, CreateViewStatement,
+		DeleteStatement, DropDatabaseStatement, DropFunctionStatement, DropIndexStatement,
 		DropMaterializedViewStatement, DropProcedureStatement, DropSchemaStatement,
 		DropSequenceStatement, DropTableStatement, DropTriggerStatement, DropTypeStatement,
 		DropViewStatement, InsertStatement, OptimizeTableStatement,
 		RefreshMaterializedViewStatement, ReindexStatement, RepairTableStatement, SelectStatement,
 		TruncateTableStatement, UpdateStatement, VacuumStatement,
 	},
+	types::ColumnDef,
 	value::Values,
 };
 
@@ -60,6 +61,97 @@ impl CockroachDBQueryBuilder {
 			postgres: PostgresQueryBuilder::new(),
 		}
 	}
+
+	/// Build individually executable ALTER TABLE statements.
+	///
+	/// Execute each pair in order as a separate prepared statement. Unlike
+	/// [`QueryBuilder::build_alter_table`], which can return a semicolon-separated
+	/// script for CockroachDB type changes, each SQL string contains one statement.
+	/// CockroachDB rejects bind variables in schema expressions such as DEFAULT,
+	/// so managed values are rendered directly as escaped PostgreSQL literals and
+	/// each returned parameter list is empty. Operations without a type change
+	/// remain combined into a single statement.
+	///
+	/// # API parity
+	///
+	/// P2: SQL generation behaves identically on native and WASM targets.
+	///
+	/// # Examples
+	///
+	/// ```no_run
+	/// use reinhardt_query::prelude::*;
+	/// use reinhardt_query::types::{ColumnDef, ColumnType};
+	///
+	/// # async fn apply(pool: &sqlx::PgPool) -> Result<(), sqlx::Error> {
+	/// let builder = CockroachDBQueryBuilder::new();
+	/// let mut alter = Query::alter_table();
+	/// alter.table("users").modify_column(
+	///     ColumnDef::new("age")
+	///         .column_type(ColumnType::Integer)
+	///         .not_null(false)
+	///         .default(7.into()),
+	/// );
+	/// for (sql, values) in builder.build_alter_table_statements(&alter) {
+	///     // Schema values are already rendered as escaped literals.
+	///     assert!(values.is_empty());
+	///     sqlx::query(&sql).execute(pool).await?;
+	/// }
+	/// # Ok(())
+	/// # }
+	/// ```
+	pub fn build_alter_table_statements(
+		&self,
+		stmt: &AlterTableStatement,
+	) -> Vec<(String, Values)> {
+		let build_statement = |statement: &AlterTableStatement| {
+			self.postgres.build_alter_table_with_writer(
+				statement,
+				super::SqlWriter::new_inlined(PostgresQueryBuilder::value_to_sql_literal),
+			)
+		};
+		if !Self::requires_separate_alter_statements(stmt) {
+			return vec![build_statement(stmt)];
+		}
+
+		let mut statements = Vec::new();
+		let mut push_operation = |operation| {
+			let single = AlterTableStatement {
+				table: stmt.table.clone(),
+				operations: vec![operation],
+			};
+			statements.push(build_statement(&single));
+		};
+		for operation in &stmt.operations {
+			match operation {
+				AlterTableOperation::ModifyColumn(column) => {
+					if let Some(column_type) = &column.column_type {
+						push_operation(AlterTableOperation::ModifyColumn(
+							ColumnDef::new(column.name.clone()).column_type(column_type.clone()),
+						));
+					}
+					if let Some(not_null) = column.not_null {
+						push_operation(AlterTableOperation::ModifyColumn(
+							ColumnDef::new(column.name.clone()).not_null(not_null),
+						));
+					}
+					if let Some(default) = &column.default {
+						push_operation(AlterTableOperation::ModifyColumn(
+							ColumnDef::new(column.name.clone()).default(default.clone()),
+						));
+					}
+				}
+				operation => push_operation(operation.clone()),
+			}
+		}
+		statements
+	}
+
+	fn requires_separate_alter_statements(stmt: &AlterTableStatement) -> bool {
+		stmt.operations.iter().any(|operation| {
+			matches!(operation, AlterTableOperation::ModifyColumn(column)
+				if column.column_type.is_some())
+		})
+	}
 }
 
 impl QueryBuilder for CockroachDBQueryBuilder {
@@ -92,7 +184,12 @@ impl QueryBuilder for CockroachDBQueryBuilder {
 	}
 
 	fn build_alter_table(&self, stmt: &AlterTableStatement) -> (String, Values) {
-		self.postgres.build_alter_table(stmt)
+		// CockroachDB cannot combine a type change with other column changes.
+		self.postgres.build_alter_table_with_mode(
+			stmt,
+			super::SqlWriter::new(),
+			Self::requires_separate_alter_statements(stmt),
+		)
 	}
 
 	fn build_drop_table(&self, stmt: &DropTableStatement) -> (String, Values) {
