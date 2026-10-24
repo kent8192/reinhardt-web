@@ -1093,8 +1093,10 @@ error when silent completion is impossible. `auth_time` must be the time of
 the active host authentication. The provider enforces `prompt=login`,
 `prompt=consent`, `prompt=select_account`, and `max_age` against the decision
 supplied by the host. An opaque public `sub` remains stable for a live account;
-call `retire_user` during account deletion to invalidate unredeemed codes and
-tokens, remove OIDC code contexts, and permanently reserve its former subject.
+call `retire_user` during account deletion to invalidate unredeemed codes,
+tokens, and refresh families, remove OIDC code contexts, and permanently reserve
+its former subject. PostgreSQL performs these changes in one transaction, so
+re-registering the same local user identifier cannot revive old credentials.
 
 ID Tokens default to five minutes and can be configured up to fifteen;
 UserInfo access tokens default to ten minutes and can be configured up to one

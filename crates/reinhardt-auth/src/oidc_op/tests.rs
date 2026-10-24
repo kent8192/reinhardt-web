@@ -190,13 +190,15 @@ fn code_from(location: &str) -> String {
 }
 
 async fn authorize(test: &TestIssuer) -> String {
-	let pending = test
-		.provider
+	authorize_provider(&test.provider).await
+}
+
+async fn authorize_provider(provider: &OidcProvider) -> String {
+	let pending = provider
 		.begin_authorization(request(), "browser-a")
 		.await
 		.unwrap();
-	let redirect = test
-		.provider
+	let redirect = provider
 		.complete_authorization(&pending.id, "browser-a", approve())
 		.await
 		.unwrap();
@@ -1278,14 +1280,16 @@ async fn production_nodes_complete_one_cross_instance_login() {
 	let pool_a = PgPool::connect(&url).await.unwrap();
 	let pool_b = PgPool::connect(&url).await.unwrap();
 	let oauth_config = || {
-		OAuthServerConfig::new(
+		let mut config = OAuthServerConfig::new(
 			ISSUER,
 			"https://auth.example/oauth/authorize",
 			"https://auth.example/oauth/token",
 			"https://auth.example/oauth/revoke",
 			"https://auth.example/oauth/introspect",
 		)
-		.unwrap()
+		.unwrap();
+		config.refresh_tokens = Some(crate::oauth2_server::RefreshTokenPolicy::default());
+		config
 	};
 	let rate_limit_keys = Arc::new(tokio::sync::Mutex::new(Vec::new()));
 	let limiter = Arc::new(CaptureLimiter(rate_limit_keys.clone()));
@@ -1311,7 +1315,9 @@ async fn production_nodes_complete_one_cross_instance_login() {
 		.register_resource("oidc-userinfo", USERINFO)
 		.await
 		.unwrap();
-	let secret = oauth_a.register_client(rp_client()).await.unwrap().unwrap();
+	let mut client = rp_client();
+	client.refresh_token = true;
+	let secret = oauth_a.register_client(client).await.unwrap().unwrap();
 	let signer = Arc::new(RsaPemKeyRing::new());
 	let public = add_key(&signer, "key-a");
 	let state_a = PostgresOidcStore::new(pool_a);
@@ -1393,6 +1399,17 @@ async fn production_nodes_complete_one_cross_instance_login() {
 			.unwrap_err(),
 		OidcError::InvalidGrant
 	);
+	// A different login owns a live family when the same account is retired.
+	let live_code = authorize_provider(&first).await;
+	let live_token = first
+		.exchange_code(&live_code, "rp-a", &secret, REDIRECT, VERIFIER)
+		.await
+		.unwrap();
+	let old_subject = second
+		.userinfo(&live_token.access_token)
+		.await
+		.unwrap()
+		.unwrap();
 	let pending = first
 		.begin_authorization(request(), "browser-a")
 		.await
@@ -1406,6 +1423,38 @@ async fn production_nodes_complete_one_cross_instance_login() {
 	assert_eq!(
 		first
 			.exchange_code(&retired_code, "rp-a", &secret, REDIRECT, VERIFIER)
+			.await
+			.unwrap_err(),
+		OidcError::InvalidGrant
+	);
+	// Re-registering the local user must not revive the previous subject's family.
+	let new_code = authorize_provider(&first).await;
+	let new_token = second
+		.exchange_code(&new_code, "rp-a", &secret, REDIRECT, VERIFIER)
+		.await
+		.unwrap();
+	assert_ne!(
+		first
+			.userinfo(&new_token.access_token)
+			.await
+			.unwrap()
+			.unwrap(),
+		old_subject
+	);
+	assert!(
+		first
+			.userinfo(&live_token.access_token)
+			.await
+			.unwrap()
+			.is_none()
+	);
+	assert_eq!(
+		first
+			.refresh(
+				live_token.refresh_token.as_deref().unwrap(),
+				"rp-a",
+				&secret
+			)
 			.await
 			.unwrap_err(),
 		OidcError::InvalidGrant

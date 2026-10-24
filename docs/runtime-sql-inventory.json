@@ -6805,7 +6805,7 @@
       "symbol": "PostgresOidcStore as OidcStateStore::retire_user",
       "kind": "execution-wrapper",
       "line": 292,
-      "fingerprint": "476b40648c7a8fa989e7e439e303c17928796ac3450f7b7544eed9c72ce254fd",
+      "fingerprint": "d2f89395c70c06894a3e2f8e261e9c32e9b9cca3a5d5cc9599518ca815d7aa52",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -6817,14 +6817,15 @@
         "database and oauth (oidc-op for OIDC state)",
         "native PostgreSQL executor"
       ],
-      "rationale": "Private authentication statements consume exact rendered Values; JSON operators are typed. Built-in schema/reverse statements preserve migration identities and constant/default semantics.",
+      "rationale": "OIDC retirement invalidates OAuth codes, refresh families and access tokens, and deletes OIDC contexts and the live subject in one transaction. Each statement uses reinhardt-query and binds the exact rendered Values.",
       "backends": [
         "postgres"
       ],
       "evidence": [
         "16 native PostgreSQL OAuth/OIDC tests passed, including CAS, replay, transactional rollback, apply/reapply/rollback.",
         "4 database-filtered tests passed, including both token expiry cases, schema default equivalence, and JSON argument order.",
-        "Normal production library Clippy and rustdoc build passed; unrelated broad test/doc failures tracked in #6514/#6518."
+        "Normal production library Clippy and rustdoc build passed; unrelated broad test/doc failures tracked in #6514/#6518.",
+        "Regression: oidc_op::tests::production_nodes_complete_one_cross_instance_login retires a live family and re-registers the same user ID without reviving its credentials."
       ]
     },
     {
@@ -6833,7 +6834,7 @@
       "symbol": "PostgresOidcStore as OidcStateStore::retire_user",
       "kind": "execution-wrapper",
       "line": 303,
-      "fingerprint": "476b40648c7a8fa989e7e439e303c17928796ac3450f7b7544eed9c72ce254fd",
+      "fingerprint": "d2f89395c70c06894a3e2f8e261e9c32e9b9cca3a5d5cc9599518ca815d7aa52",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -6845,14 +6846,15 @@
         "database and oauth (oidc-op for OIDC state)",
         "native PostgreSQL executor"
       ],
-      "rationale": "Private authentication statements consume exact rendered Values; JSON operators are typed. Built-in schema/reverse statements preserve migration identities and constant/default semantics.",
+      "rationale": "OIDC retirement invalidates OAuth codes, refresh families and access tokens, and deletes OIDC contexts and the live subject in one transaction. Each statement uses reinhardt-query and binds the exact rendered Values.",
       "backends": [
         "postgres"
       ],
       "evidence": [
         "16 native PostgreSQL OAuth/OIDC tests passed, including CAS, replay, transactional rollback, apply/reapply/rollback.",
         "4 database-filtered tests passed, including both token expiry cases, schema default equivalence, and JSON argument order.",
-        "Normal production library Clippy and rustdoc build passed; unrelated broad test/doc failures tracked in #6514/#6518."
+        "Normal production library Clippy and rustdoc build passed; unrelated broad test/doc failures tracked in #6514/#6518.",
+        "Regression: oidc_op::tests::production_nodes_complete_one_cross_instance_login retires a live family and re-registers the same user ID without reviving its credentials."
       ]
     },
     {
@@ -6860,8 +6862,8 @@
       "path": "crates/reinhardt-auth/src/oidc_op/postgres.rs",
       "symbol": "PostgresOidcStore as OidcStateStore::retire_user",
       "kind": "execution-wrapper",
-      "line": 313,
-      "fingerprint": "476b40648c7a8fa989e7e439e303c17928796ac3450f7b7544eed9c72ce254fd",
+      "line": 314,
+      "fingerprint": "d2f89395c70c06894a3e2f8e261e9c32e9b9cca3a5d5cc9599518ca815d7aa52",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -6873,14 +6875,15 @@
         "database and oauth (oidc-op for OIDC state)",
         "native PostgreSQL executor"
       ],
-      "rationale": "Private authentication statements consume exact rendered Values; JSON operators are typed. Built-in schema/reverse statements preserve migration identities and constant/default semantics.",
+      "rationale": "OIDC retirement invalidates OAuth codes, refresh families and access tokens, and deletes OIDC contexts and the live subject in one transaction. Each statement uses reinhardt-query and binds the exact rendered Values.",
       "backends": [
         "postgres"
       ],
       "evidence": [
         "16 native PostgreSQL OAuth/OIDC tests passed, including CAS, replay, transactional rollback, apply/reapply/rollback.",
         "4 database-filtered tests passed, including both token expiry cases, schema default equivalence, and JSON argument order.",
-        "Normal production library Clippy and rustdoc build passed; unrelated broad test/doc failures tracked in #6514/#6518."
+        "Normal production library Clippy and rustdoc build passed; unrelated broad test/doc failures tracked in #6514/#6518.",
+        "Regression: oidc_op::tests::production_nodes_complete_one_cross_instance_login retires a live family and re-registers the same user ID without reviving its credentials."
       ]
     },
     {
@@ -6888,8 +6891,8 @@
       "path": "crates/reinhardt-auth/src/oidc_op/postgres.rs",
       "symbol": "PostgresOidcStore as OidcStateStore::retire_user",
       "kind": "execution-wrapper",
-      "line": 323,
-      "fingerprint": "476b40648c7a8fa989e7e439e303c17928796ac3450f7b7544eed9c72ce254fd",
+      "line": 324,
+      "fingerprint": "d2f89395c70c06894a3e2f8e261e9c32e9b9cca3a5d5cc9599518ca815d7aa52",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -6901,14 +6904,45 @@
         "database and oauth (oidc-op for OIDC state)",
         "native PostgreSQL executor"
       ],
-      "rationale": "Private authentication statements consume exact rendered Values; JSON operators are typed. Built-in schema/reverse statements preserve migration identities and constant/default semantics.",
+      "rationale": "OIDC retirement invalidates OAuth codes, refresh families and access tokens, and deletes OIDC contexts and the live subject in one transaction. Each statement uses reinhardt-query and binds the exact rendered Values.",
       "backends": [
         "postgres"
       ],
       "evidence": [
         "16 native PostgreSQL OAuth/OIDC tests passed, including CAS, replay, transactional rollback, apply/reapply/rollback.",
         "4 database-filtered tests passed, including both token expiry cases, schema default equivalence, and JSON argument order.",
-        "Normal production library Clippy and rustdoc build passed; unrelated broad test/doc failures tracked in #6514/#6518."
+        "Normal production library Clippy and rustdoc build passed; unrelated broad test/doc failures tracked in #6514/#6518.",
+        "Regression: oidc_op::tests::production_nodes_complete_one_cross_instance_login retires a live family and re-registers the same user ID without reviving its credentials."
+      ]
+    },
+    {
+      "id": "crates/reinhardt-auth/src/oidc_op/postgres.rs::PostgresOidcStore as OidcStateStore::retire_user::execution-wrapper#5",
+      "path": "crates/reinhardt-auth/src/oidc_op/postgres.rs",
+      "symbol": "PostgresOidcStore as OidcStateStore::retire_user",
+      "kind": "execution-wrapper",
+      "line": 334,
+      "fingerprint": "d2f89395c70c06894a3e2f8e261e9c32e9b9cca3a5d5cc9599518ca815d7aa52",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "database and oauth (oidc-op for OIDC state)",
+        "native PostgreSQL executor"
+      ],
+      "rationale": "OIDC retirement invalidates OAuth codes, refresh families and access tokens, and deletes OIDC contexts and the live subject in one transaction. Each statement uses reinhardt-query and binds the exact rendered Values.",
+      "backends": [
+        "postgres"
+      ],
+      "evidence": [
+        "16 native PostgreSQL OAuth/OIDC tests passed, including CAS, replay, transactional rollback, apply/reapply/rollback.",
+        "4 database-filtered tests passed, including both token expiry cases, schema default equivalence, and JSON argument order.",
+        "Normal production library Clippy and rustdoc build passed; unrelated broad test/doc failures tracked in #6514/#6518.",
+        "Regression: oidc_op::tests::production_nodes_complete_one_cross_instance_login retires a live family and re-registers the same user ID without reviving its credentials.",
+        "Regression: oidc_op::tests::production_nodes_complete_one_cross_instance_login retires a live family and re-registers the same user ID without reviving its credentials."
       ]
     },
     {
@@ -6917,7 +6951,7 @@
       "symbol": "PostgresOidcStore as OidcStateStore::retire_user",
       "kind": "executor",
       "line": 292,
-      "fingerprint": "3ec6384f4b2205e373142d829b822af7dcf4408e503440e25e00892abb05e774",
+      "fingerprint": "f1903d66542e467acb97499c883d78f9882abc323e7a2606b82f6c9f11010bdb",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -6929,14 +6963,15 @@
         "database and oauth (oidc-op for OIDC state)",
         "native PostgreSQL executor"
       ],
-      "rationale": "Private authentication statements consume exact rendered Values; JSON operators are typed. Built-in schema/reverse statements preserve migration identities and constant/default semantics.",
+      "rationale": "OIDC retirement invalidates OAuth codes, refresh families and access tokens, and deletes OIDC contexts and the live subject in one transaction. Each statement uses reinhardt-query and binds the exact rendered Values.",
       "backends": [
         "postgres"
       ],
       "evidence": [
         "16 native PostgreSQL OAuth/OIDC tests passed, including CAS, replay, transactional rollback, apply/reapply/rollback.",
         "4 database-filtered tests passed, including both token expiry cases, schema default equivalence, and JSON argument order.",
-        "Normal production library Clippy and rustdoc build passed; unrelated broad test/doc failures tracked in #6514/#6518."
+        "Normal production library Clippy and rustdoc build passed; unrelated broad test/doc failures tracked in #6514/#6518.",
+        "Regression: oidc_op::tests::production_nodes_complete_one_cross_instance_login retires a live family and re-registers the same user ID without reviving its credentials."
       ]
     },
     {
@@ -6945,7 +6980,7 @@
       "symbol": "PostgresOidcStore as OidcStateStore::retire_user",
       "kind": "executor",
       "line": 303,
-      "fingerprint": "3ec6384f4b2205e373142d829b822af7dcf4408e503440e25e00892abb05e774",
+      "fingerprint": "f1903d66542e467acb97499c883d78f9882abc323e7a2606b82f6c9f11010bdb",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -6957,14 +6992,15 @@
         "database and oauth (oidc-op for OIDC state)",
         "native PostgreSQL executor"
       ],
-      "rationale": "Private authentication statements consume exact rendered Values; JSON operators are typed. Built-in schema/reverse statements preserve migration identities and constant/default semantics.",
+      "rationale": "OIDC retirement invalidates OAuth codes, refresh families and access tokens, and deletes OIDC contexts and the live subject in one transaction. Each statement uses reinhardt-query and binds the exact rendered Values.",
       "backends": [
         "postgres"
       ],
       "evidence": [
         "16 native PostgreSQL OAuth/OIDC tests passed, including CAS, replay, transactional rollback, apply/reapply/rollback.",
         "4 database-filtered tests passed, including both token expiry cases, schema default equivalence, and JSON argument order.",
-        "Normal production library Clippy and rustdoc build passed; unrelated broad test/doc failures tracked in #6514/#6518."
+        "Normal production library Clippy and rustdoc build passed; unrelated broad test/doc failures tracked in #6514/#6518.",
+        "Regression: oidc_op::tests::production_nodes_complete_one_cross_instance_login retires a live family and re-registers the same user ID without reviving its credentials."
       ]
     },
     {
@@ -6972,8 +7008,8 @@
       "path": "crates/reinhardt-auth/src/oidc_op/postgres.rs",
       "symbol": "PostgresOidcStore as OidcStateStore::retire_user",
       "kind": "executor",
-      "line": 313,
-      "fingerprint": "3ec6384f4b2205e373142d829b822af7dcf4408e503440e25e00892abb05e774",
+      "line": 314,
+      "fingerprint": "f1903d66542e467acb97499c883d78f9882abc323e7a2606b82f6c9f11010bdb",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -6985,14 +7021,15 @@
         "database and oauth (oidc-op for OIDC state)",
         "native PostgreSQL executor"
       ],
-      "rationale": "Private authentication statements consume exact rendered Values; JSON operators are typed. Built-in schema/reverse statements preserve migration identities and constant/default semantics.",
+      "rationale": "OIDC retirement invalidates OAuth codes, refresh families and access tokens, and deletes OIDC contexts and the live subject in one transaction. Each statement uses reinhardt-query and binds the exact rendered Values.",
       "backends": [
         "postgres"
       ],
       "evidence": [
         "16 native PostgreSQL OAuth/OIDC tests passed, including CAS, replay, transactional rollback, apply/reapply/rollback.",
         "4 database-filtered tests passed, including both token expiry cases, schema default equivalence, and JSON argument order.",
-        "Normal production library Clippy and rustdoc build passed; unrelated broad test/doc failures tracked in #6514/#6518."
+        "Normal production library Clippy and rustdoc build passed; unrelated broad test/doc failures tracked in #6514/#6518.",
+        "Regression: oidc_op::tests::production_nodes_complete_one_cross_instance_login retires a live family and re-registers the same user ID without reviving its credentials."
       ]
     },
     {
@@ -7000,8 +7037,8 @@
       "path": "crates/reinhardt-auth/src/oidc_op/postgres.rs",
       "symbol": "PostgresOidcStore as OidcStateStore::retire_user",
       "kind": "executor",
-      "line": 323,
-      "fingerprint": "3ec6384f4b2205e373142d829b822af7dcf4408e503440e25e00892abb05e774",
+      "line": 324,
+      "fingerprint": "f1903d66542e467acb97499c883d78f9882abc323e7a2606b82f6c9f11010bdb",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -7013,14 +7050,45 @@
         "database and oauth (oidc-op for OIDC state)",
         "native PostgreSQL executor"
       ],
-      "rationale": "Private authentication statements consume exact rendered Values; JSON operators are typed. Built-in schema/reverse statements preserve migration identities and constant/default semantics.",
+      "rationale": "OIDC retirement invalidates OAuth codes, refresh families and access tokens, and deletes OIDC contexts and the live subject in one transaction. Each statement uses reinhardt-query and binds the exact rendered Values.",
       "backends": [
         "postgres"
       ],
       "evidence": [
         "16 native PostgreSQL OAuth/OIDC tests passed, including CAS, replay, transactional rollback, apply/reapply/rollback.",
         "4 database-filtered tests passed, including both token expiry cases, schema default equivalence, and JSON argument order.",
-        "Normal production library Clippy and rustdoc build passed; unrelated broad test/doc failures tracked in #6514/#6518."
+        "Normal production library Clippy and rustdoc build passed; unrelated broad test/doc failures tracked in #6514/#6518.",
+        "Regression: oidc_op::tests::production_nodes_complete_one_cross_instance_login retires a live family and re-registers the same user ID without reviving its credentials."
+      ]
+    },
+    {
+      "id": "crates/reinhardt-auth/src/oidc_op/postgres.rs::PostgresOidcStore as OidcStateStore::retire_user::executor#5",
+      "path": "crates/reinhardt-auth/src/oidc_op/postgres.rs",
+      "symbol": "PostgresOidcStore as OidcStateStore::retire_user",
+      "kind": "executor",
+      "line": 334,
+      "fingerprint": "f1903d66542e467acb97499c883d78f9882abc323e7a2606b82f6c9f11010bdb",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "database and oauth (oidc-op for OIDC state)",
+        "native PostgreSQL executor"
+      ],
+      "rationale": "OIDC retirement invalidates OAuth codes, refresh families and access tokens, and deletes OIDC contexts and the live subject in one transaction. Each statement uses reinhardt-query and binds the exact rendered Values.",
+      "backends": [
+        "postgres"
+      ],
+      "evidence": [
+        "16 native PostgreSQL OAuth/OIDC tests passed, including CAS, replay, transactional rollback, apply/reapply/rollback.",
+        "4 database-filtered tests passed, including both token expiry cases, schema default equivalence, and JSON argument order.",
+        "Normal production library Clippy and rustdoc build passed; unrelated broad test/doc failures tracked in #6514/#6518.",
+        "Regression: oidc_op::tests::production_nodes_complete_one_cross_instance_login retires a live family and re-registers the same user ID without reviving its credentials.",
+        "Regression: oidc_op::tests::production_nodes_complete_one_cross_instance_login retires a live family and re-registers the same user ID without reviving its credentials."
       ]
     },
     {
