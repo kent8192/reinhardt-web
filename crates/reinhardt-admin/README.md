@@ -739,6 +739,27 @@ For comprehensive routing documentation, see the [`core::router`](src/core/route
 
 By default, no features are enabled (`default = []`).
 
+## Browser WASM Verification
+
+From the workspace root, check the browser client and compile its component and
+API parity fixtures:
+
+```bash
+rustup target add wasm32-unknown-unknown
+cargo check -p reinhardt-admin --target wasm32-unknown-unknown --lib
+cargo test -p reinhardt-admin --target wasm32-unknown-unknown --test wasm_components --no-run
+```
+
+Run the fixtures in Chrome with `wasm-pack` and a matching ChromeDriver:
+
+```bash
+wasm-pack test --headless --chrome crates/reinhardt-admin --test wasm_components
+```
+
+The WASM Check workflow checks the admin client with default features and compiles
+`wasm_components`, including the P1 inline metadata and P2 save-hook fixtures.
+Browser execution is a separate local check.
+
 ## Documentation
 
 - [API Documentation](https://docs.rs/reinhardt-admin) (coming soon)

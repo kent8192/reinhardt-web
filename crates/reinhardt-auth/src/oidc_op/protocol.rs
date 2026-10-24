@@ -308,6 +308,9 @@ pub struct OidcTokenResponse {
 	pub scope: String,
 	/// Signed RS256 ID Token.
 	pub id_token: String,
+	/// Rotating refresh credential when both the server and client explicitly opt in.
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub refresh_token: Option<String>,
 }
 
 /// Issuer-side OIDC protocol assembled on a shared OAuth server.
@@ -408,7 +411,7 @@ impl OidcProvider {
 			"jwks_uri": self.config.jwks_uri,
 			"response_types_supported": ["code"],
 			"response_modes_supported": ["query"],
-			"grant_types_supported": ["authorization_code"],
+			"grant_types_supported": if self.oauth.config().refresh_tokens.is_some() { vec!["authorization_code", "refresh_token"] } else { vec!["authorization_code"] },
 			"subject_types_supported": ["public"],
 			"id_token_signing_alg_values_supported": ["RS256"],
 			"scopes_supported": ["openid"],
@@ -821,7 +824,63 @@ impl OidcProvider {
 			expires_in: issued.expires_in,
 			scope: issued.scope,
 			id_token,
+			refresh_token: issued.refresh_token,
 		})
+	}
+
+	/// Whether the host has explicitly enabled rotating refresh credentials.
+	pub fn supports_refresh_tokens(&self) -> bool {
+		self.oauth.config().refresh_tokens.is_some()
+	}
+
+	/// Rotate an OIDC refresh credential, rechecking authoritative host status.
+	///
+	/// As permitted by OpenID Connect Core section 12.2 this response omits a new
+	/// ID Token. The original authenticated subject stays in the token family;
+	/// UserInfo continues returning that subject. Reuse revokes only this family.
+	/// The access token uses `OidcConfig::access_token_ttl`, as in the code exchange.
+	pub async fn refresh(
+		&self,
+		refresh_token: &str,
+		client_id: &str,
+		client_secret: &str,
+	) -> Result<crate::oauth2_server::IssuedToken, OidcError> {
+		let user_id = self
+			.oauth
+			.inspect_oidc_refresh(
+				refresh_token,
+				client_id,
+				client_secret,
+				&self.config.userinfo_endpoint,
+			)
+			.await?;
+		if !self
+			.accounts
+			.is_active(&user_id)
+			.await
+			.map_err(|_| OidcError::ServerError)?
+		{
+			return Err(OidcError::InvalidGrant);
+		}
+		if self
+			.state
+			.subject(&user_id)
+			.await
+			.map_err(|_| OidcError::ServerError)?
+			.is_none()
+		{
+			return Err(OidcError::InvalidGrant);
+		}
+		Ok(self
+			.oauth
+			.refresh_oidc(
+				refresh_token,
+				client_id,
+				client_secret,
+				&self.config.userinfo_endpoint,
+				self.config.access_token_ttl,
+			)
+			.await?)
 	}
 
 	async fn sign_id_token(

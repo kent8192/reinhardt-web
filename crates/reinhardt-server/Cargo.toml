@@ -42,7 +42,7 @@ tempfile = { workspace = true }
 insta = { workspace = true }
 rstest = { workspace = true }
 tokio-test = "0.4"
-reqwest = { workspace = true }
+reqwest = { workspace = true, features = ["stream"] }
 async-graphql = "7.0"
 tokio-tungstenite = { workspace = true }
 futures-util = "0.3"

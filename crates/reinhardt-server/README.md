@@ -6,6 +6,26 @@ HTTP server implementation for Reinhardt framework
 
 `` `reinhardt-server` `` provides a high-performance HTTP server implementation for Reinhardt applications, built on Hyper with support for WebSockets and GraphQL.
 
+## Request body budgets
+
+`HttpServer::with_max_body_size(bytes)` and `Http2Server::with_max_body_size(bytes)`
+set a per-instance request body budget before listening. For example, a JSON
+artifact upload with base64 data may need a larger wire budget than its decoded
+content limit:
+
+```rust,ignore
+let server = reinhardt::server::HttpServer::new(handler)
+    .with_max_body_size(12 * 1024 * 1024);
+server.listen(address).await?;
+```
+
+The default remains 10 MiB. Both ordinary and graceful-shutdown listeners enforce
+the selected budget for known-length and streamed bodies; oversized requests
+receive HTTP 413 before the application handler runs. Zero permits empty bodies
+only. A `RequestAdmission` policy retains its existing per-request budget override;
+the server setting is the fallback when no policy is installed. Static connection
+adapters such as `HttpServer::handle_connection` retain their 10 MiB default.
+
 ## Features
 
 ### Implemented ✓

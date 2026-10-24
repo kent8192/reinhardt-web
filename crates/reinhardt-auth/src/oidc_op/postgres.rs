@@ -295,6 +295,17 @@ impl OidcStateStore for PostgresOidcStore {
 			.map_err(|e| e.to_string())?;
 		let (sql, arguments) = prepare(
 			Query::update()
+				.table(Alias::new("oauth_server_token_families"))
+				.value(Alias::new("revoked"), true)
+				.and_where(Expr::col(Alias::new("user_id").into_iden()).eq(user_id))
+				.take(),
+		)?;
+		sqlx::query_with(&sql, arguments)
+			.execute(&mut *tx)
+			.await
+			.map_err(|e| e.to_string())?;
+		let (sql, arguments) = prepare(
+			Query::update()
 				.table(Alias::new("oauth_server_tokens"))
 				.value(Alias::new("revoked"), true)
 				.and_where(Expr::col(Alias::new("user_id").into_iden()).eq(user_id))

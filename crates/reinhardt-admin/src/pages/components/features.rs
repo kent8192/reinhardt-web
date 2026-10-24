@@ -8,6 +8,8 @@
 //! - `Filters` - Filter panel
 //! - `DataTable` - Data table component
 
+#[cfg(client)]
+use crate::server::{create_record, delete_record, get_relation_options, update_record};
 use crate::types::{
 	AdminAction, FieldInfo, FieldType, Fieldset, FilterInfo, FilterType, HistoryResponse,
 	InlineEditResponse, InlineFormInfo, InlineRowInfo, InlineStyle, ModelInfo, MutationResponse,

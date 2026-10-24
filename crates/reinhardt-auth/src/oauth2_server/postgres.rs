@@ -490,8 +490,7 @@ impl PostgresOAuthStore {
 		if let Some((family, _)) = family
 			&& (family.user_id != code.user_id
 				|| family.scopes != code.scopes
-				|| family.audience != code.audience
-				|| code.oidc)
+				|| family.audience != code.audience)
 		{
 			return Ok(CodeRedemption::Invalid);
 		}

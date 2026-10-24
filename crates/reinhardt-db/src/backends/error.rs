@@ -359,6 +359,7 @@ pub(crate) fn decorate_error_with_pgvector_context(
 	}
 }
 
+#[cfg(feature = "orm")]
 pub(crate) fn into_database_error(error: reinhardt_core::exception::Error) -> DatabaseError {
 	match error {
 		reinhardt_core::exception::Error::Database(database_error) => database_error,

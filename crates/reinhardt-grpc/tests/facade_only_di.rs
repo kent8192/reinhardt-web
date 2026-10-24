@@ -6,6 +6,7 @@ use std::process::Command;
 
 #[test]
 fn facade_only_dependency_compiles_grpc_handler_di() {
+	run_facade_fixture("mutual-tls", "reinhardt", true, "reinhardt");
 	run_facade_fixture("renamed", "reinhardt", true, "reinhardt");
 	run_facade_fixture("package-only", "reinhardt-web", false, "reinhardt");
 	run_facade_fixture(
@@ -35,6 +36,26 @@ fn run_facade_fixture(case: &str, dependency_key: &str, package_alias: bool, cra
 		""
 	};
 	let target_dir = shared_target_dir(&repo_root);
+	let (features, tonic_dependency, transport_usage) = if case == "mutual-tls" {
+		(
+			"grpc-tls",
+			"",
+			r#"
+fn transport_api() -> Result<(), Box<dyn std::error::Error>> {
+    use reinhardt::grpc::{GrpcClientTlsConfig, GrpcServerTlsConfig, PeerIdentity, PeerIdentityInterceptor};
+    let _server = GrpcServerTlsConfig::new(b"cert", b"key", b"ca").configure(tonic::transport::Server::builder());
+    let _endpoint = GrpcClientTlsConfig::new(b"ca", b"cert", b"key", "auth.internal").endpoint("https://127.0.0.1:50051");
+    let _policy = PeerIdentityInterceptor::new(|peer: &PeerIdentity| {
+        if peer.uri_sans().iter().any(|uri| uri == "spiffe://example.test/marketplace") { Ok(()) }
+        else { Err(Status::permission_denied("not authorized")) }
+    });
+    Ok(())
+}
+"#,
+		)
+	} else {
+		("grpc", "tonic = \"0.14.2\"", "")
+	};
 
 	fs::create_dir(crate_dir.path().join("src")).expect("create downstream src directory");
 	fs::write(
@@ -49,8 +70,8 @@ publish = false
 [workspace]
 
 [dependencies]
-{dependency_key} = {{ path = {repo_root_toml}{package_spec}, default-features = false, features = ["minimal", "grpc"] }}
-tonic = "0.14.2"
+{dependency_key} = {{ path = {repo_root_toml}{package_spec}, default-features = false, features = ["minimal", "{features}"] }}
+{tonic_dependency}
 "#
 		),
 	)
@@ -61,6 +82,7 @@ tonic = "0.14.2"
 			r#"use {crate_ident}::di::{{InjectableKey, InjectionContext, KeyedDepends}};
 use {crate_ident}::grpc::{{GrpcRequestExt, grpc_handler}};
 use std::sync::Arc;
+use {crate_ident}::grpc::tonic;
 use tonic::{{Request, Response, Status}};
 
 struct ConfigKey;
@@ -83,6 +105,8 @@ async fn handler(
 fn context_from_request(request: &Request<MyRequest>) -> Option<Arc<InjectionContext>> {{
 	request.get_di_context::<Arc<InjectionContext>>()
 }}
+
+{transport_usage}
 
 fn main() {{
 	let _handler = handler;

@@ -85,17 +85,32 @@ fn add_key(ring: &RsaPemKeyRing, kid: &str) -> PublicRsaJwk {
 }
 
 async fn issuer() -> TestIssuer {
+	issuer_with_refresh(false).await
+}
+
+async fn issuer_with_refresh(refresh: bool) -> TestIssuer {
+	issuer_with_refresh_ttl(refresh, 600).await
+}
+
+async fn issuer_with_refresh_ttl(refresh: bool, access_token_ttl: u64) -> TestIssuer {
 	let oauth_store = Arc::new(MemoryOAuthStore::new());
 	let oauth = Arc::new(
 		OAuthServer::for_development(
-			OAuthServerConfig::new(
-				ISSUER,
-				"https://auth.example/oauth/authorize",
-				"https://auth.example/oauth/token",
-				"https://auth.example/oauth/revoke",
-				"https://auth.example/oauth/introspect",
-			)
-			.unwrap(),
+			{
+				let mut config = OAuthServerConfig::new(
+					ISSUER,
+					"https://auth.example/oauth/authorize",
+					"https://auth.example/oauth/token",
+					"https://auth.example/oauth/revoke",
+					"https://auth.example/oauth/introspect",
+				)
+				.unwrap();
+				if refresh {
+					config.refresh_tokens =
+						Some(crate::oauth2_server::RefreshTokenPolicy::default());
+				}
+				config
+			},
 			oauth_store.clone(),
 			Arc::new(SimpleUserRepository),
 			Arc::new(AllowAll),
@@ -106,21 +121,27 @@ async fn issuer() -> TestIssuer {
 		.register_resource("oidc-userinfo", USERINFO)
 		.await
 		.unwrap();
-	let secret = oauth.register_client(rp_client()).await.unwrap().unwrap();
+	let mut client = rp_client();
+	client.refresh_token = refresh;
+	let secret = oauth.register_client(client).await.unwrap().unwrap();
 	let active = Arc::new(AtomicBool::new(true));
 	let signer = Arc::new(RsaPemKeyRing::new());
 	add_key(&signer, "key-a");
 	let state = Arc::new(MemoryOidcStore::new());
 	let provider = Arc::new(
 		OidcProvider::for_development(
-			OidcConfig::new(
-				ISSUER,
-				"https://auth.example/oidc/authorize",
-				"https://auth.example/oidc/token",
-				USERINFO,
-				"https://auth.example/oidc/jwks",
-			)
-			.unwrap(),
+			{
+				let mut config = OidcConfig::new(
+					ISSUER,
+					"https://auth.example/oidc/authorize",
+					"https://auth.example/oidc/token",
+					USERINFO,
+					"https://auth.example/oidc/jwks",
+				)
+				.unwrap();
+				config.access_token_ttl = Duration::from_secs(access_token_ttl);
+				config
+			},
 			oauth.clone(),
 			state.clone(),
 			Arc::new(HostAccounts(active.clone())),
@@ -177,13 +198,15 @@ fn code_from(location: &str) -> String {
 }
 
 async fn authorize(test: &TestIssuer) -> String {
-	let pending = test
-		.provider
+	authorize_provider(&test.provider).await
+}
+
+async fn authorize_provider(provider: &OidcProvider) -> String {
+	let pending = provider
 		.begin_authorization(request(), "browser-a")
 		.await
 		.unwrap();
-	let redirect = test
-		.provider
+	let redirect = provider
 		.complete_authorization(&pending.id, "browser-a", approve())
 		.await
 		.unwrap();
@@ -1265,14 +1288,16 @@ async fn production_nodes_complete_one_cross_instance_login() {
 	let pool_a = PgPool::connect(&url).await.unwrap();
 	let pool_b = PgPool::connect(&url).await.unwrap();
 	let oauth_config = || {
-		OAuthServerConfig::new(
+		let mut config = OAuthServerConfig::new(
 			ISSUER,
 			"https://auth.example/oauth/authorize",
 			"https://auth.example/oauth/token",
 			"https://auth.example/oauth/revoke",
 			"https://auth.example/oauth/introspect",
 		)
-		.unwrap()
+		.unwrap();
+		config.refresh_tokens = Some(crate::oauth2_server::RefreshTokenPolicy::default());
+		config
 	};
 	let rate_limit_keys = Arc::new(tokio::sync::Mutex::new(Vec::new()));
 	let limiter = Arc::new(CaptureLimiter(rate_limit_keys.clone()));
@@ -1298,7 +1323,9 @@ async fn production_nodes_complete_one_cross_instance_login() {
 		.register_resource("oidc-userinfo", USERINFO)
 		.await
 		.unwrap();
-	let secret = oauth_a.register_client(rp_client()).await.unwrap().unwrap();
+	let mut client = rp_client();
+	client.refresh_token = true;
+	let secret = oauth_a.register_client(client).await.unwrap().unwrap();
 	let signer = Arc::new(RsaPemKeyRing::new());
 	let public = add_key(&signer, "key-a");
 	let state_a = PostgresOidcStore::new(pool_a);
@@ -1380,6 +1407,17 @@ async fn production_nodes_complete_one_cross_instance_login() {
 			.unwrap_err(),
 		OidcError::InvalidGrant
 	);
+	// A different login owns a live family when the same account is retired.
+	let live_code = authorize_provider(&first).await;
+	let live_token = first
+		.exchange_code(&live_code, "rp-a", &secret, REDIRECT, VERIFIER)
+		.await
+		.unwrap();
+	let old_subject = second
+		.userinfo(&live_token.access_token)
+		.await
+		.unwrap()
+		.unwrap();
 	let pending = first
 		.begin_authorization(request(), "browser-a")
 		.await
@@ -1393,6 +1431,38 @@ async fn production_nodes_complete_one_cross_instance_login() {
 	assert_eq!(
 		first
 			.exchange_code(&retired_code, "rp-a", &secret, REDIRECT, VERIFIER)
+			.await
+			.unwrap_err(),
+		OidcError::InvalidGrant
+	);
+	// Re-registering the local user must not revive the previous subject's family.
+	let new_code = authorize_provider(&first).await;
+	let new_token = second
+		.exchange_code(&new_code, "rp-a", &secret, REDIRECT, VERIFIER)
+		.await
+		.unwrap();
+	assert_ne!(
+		first
+			.userinfo(&new_token.access_token)
+			.await
+			.unwrap()
+			.unwrap(),
+		old_subject
+	);
+	assert!(
+		first
+			.userinfo(&live_token.access_token)
+			.await
+			.unwrap()
+			.is_none()
+	);
+	assert_eq!(
+		first
+			.refresh(
+				live_token.refresh_token.as_deref().unwrap(),
+				"rp-a",
+				&secret
+			)
 			.await
 			.unwrap_err(),
 		OidcError::InvalidGrant
@@ -1421,4 +1491,130 @@ fn rp_client() -> ClientRegistration {
 	client.audiences = vec![USERINFO.into()];
 	client.default_audience = Some(USERINFO.into());
 	client
+}
+
+#[rstest]
+#[case::default_ttl(600)]
+#[case::custom_ttl(73)]
+#[tokio::test]
+async fn opt_in_oidc_code_issues_refresh_credential(#[case] ttl: u64) {
+	let test = issuer_with_refresh_ttl(true, ttl).await;
+	let code = authorize(&test).await;
+	let response = test
+		.provider
+		.exchange_code(&code, "rp-a", &test.secret, REDIRECT, VERIFIER)
+		.await
+		.unwrap();
+	let wire = serde_json::to_value(response).unwrap();
+	let refresh = wire["refresh_token"]
+		.as_str()
+		.filter(|value| !value.is_empty())
+		.expect("OIDC code flow must preserve its opt-in refresh credential");
+	let original_subject = test
+		.provider
+		.userinfo(wire["access_token"].as_str().unwrap())
+		.await
+		.unwrap()
+		.unwrap();
+	let refreshed = test
+		.provider
+		.refresh(refresh, "rp-a", &test.secret)
+		.await
+		.unwrap();
+	assert_eq!(refreshed.expires_in, ttl);
+	let stored = test
+		.oauth_store
+		.token(&hex::encode(Sha256::digest(&refreshed.access_token)))
+		.await
+		.unwrap()
+		.unwrap();
+	assert_eq!(stored.expires_at - stored.issued_at, ttl as i64);
+	assert_eq!(
+		test.provider
+			.userinfo(&refreshed.access_token)
+			.await
+			.unwrap()
+			.unwrap(),
+		original_subject
+	);
+	assert_ne!(refreshed.refresh_token.as_deref(), Some(refresh));
+	test.active.store(false, Ordering::SeqCst);
+	assert_eq!(
+		test.provider
+			.refresh(
+				refreshed.refresh_token.as_deref().unwrap(),
+				"rp-a",
+				&test.secret
+			)
+			.await
+			.unwrap_err(),
+		OidcError::InvalidGrant
+	);
+	test.active.store(true, Ordering::SeqCst);
+	assert_eq!(
+		test.provider
+			.refresh(refresh, "rp-a", &test.secret)
+			.await
+			.unwrap_err(),
+		OidcError::InvalidGrant
+	);
+	assert!(
+		test.provider
+			.userinfo(&refreshed.access_token)
+			.await
+			.unwrap()
+			.is_none()
+	);
+}
+
+#[rstest]
+#[case::active(true)]
+#[case::disabled(false)]
+#[tokio::test]
+async fn generic_oauth_endpoint_rejects_oidc_refresh_credentials(#[case] active: bool) {
+	use crate::oauth2_server::{OAuthEndpoint, OAuthHandler};
+
+	// Arrange: the generic user repository stays active independently of OIDC status.
+	let test = issuer_with_refresh(true).await;
+	let code = authorize(&test).await;
+	let issued = test
+		.provider
+		.exchange_code(&code, "rp-a", &test.secret, REDIRECT, VERIFIER)
+		.await
+		.unwrap();
+	let refresh = issued.refresh_token.as_deref().unwrap();
+	test.active.store(active, Ordering::SeqCst);
+	let form = url::form_urlencoded::Serializer::new(String::new())
+		.append_pair("grant_type", "refresh_token")
+		.append_pair("refresh_token", refresh)
+		.finish();
+	let basic = STANDARD.encode(format!("rp-a:{}", test.secret));
+
+	// Act
+	let response = OAuthHandler::new(test.oauth.clone(), OAuthEndpoint::Token)
+		.handle(
+			Request::builder()
+				.method(Method::POST)
+				.uri("/oauth/token")
+				.secure(true)
+				.header("Content-Type", "application/x-www-form-urlencoded")
+				.header("Authorization", format!("Basic {basic}"))
+				.body(Bytes::from(form))
+				.build()
+				.unwrap(),
+		)
+		.await
+		.unwrap();
+
+	// Assert: the foreign endpoint must not consume a valid OIDC credential.
+	assert_eq!(response.status, StatusCode::BAD_REQUEST);
+	let body: Value = serde_json::from_slice(&response.body).unwrap();
+	assert_eq!(body["error"], "invalid_grant");
+	test.active.store(true, Ordering::SeqCst);
+	assert!(
+		test.provider
+			.refresh(refresh, "rp-a", &test.secret)
+			.await
+			.is_ok()
+	);
 }

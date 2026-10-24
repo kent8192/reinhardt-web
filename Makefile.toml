@@ -608,7 +608,7 @@ echo "=== All facade checks passed ==="
 '''
 
 [tasks.feature-check-subcrate]
-description = "Check key sub-crate feature combinations (15 patterns)"
+description = "Check key sub-crate feature combinations (16 patterns)"
 script_runner = "bash"
 script = '''
 set -e
@@ -620,6 +620,7 @@ combos=(
 	"conf-minimal|reinhardt-conf|--no-default-features"
 	"conf-dynamic-database|reinhardt-conf|--no-default-features -F dynamic-database"
 	"db-minimal|reinhardt-db|--no-default-features"
+	"db-backends|reinhardt-db|--no-default-features -F backends"
 	"db-full|reinhardt-db|--no-default-features -F database-full"
 	"db-no-di|reinhardt-db|--no-default-features -F backends,orm"
 	"auth-minimal|reinhardt-auth|--no-default-features"
@@ -635,7 +636,12 @@ combos=(
 for combo in "${combos[@]}"; do
 	IFS='|' read -r name pkg flags <<< "$combo"
 	echo "--- Checking: ${name} ---"
-	cargo check -p "${pkg}" ${flags} --quiet
+	case "${name}" in
+		db-backends|dentdelion-wasm)
+			RUSTFLAGS="${RUSTFLAGS:+${RUSTFLAGS} }-D warnings" cargo check -p "${pkg}" ${flags} --quiet
+			;;
+		*) cargo check -p "${pkg}" ${flags} --quiet ;;
+	esac
 	echo "  OK: ${name}"
 done
 

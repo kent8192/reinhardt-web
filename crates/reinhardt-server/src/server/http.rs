@@ -35,6 +35,7 @@ pub type UpgradeTask = Pin<Box<dyn Future<Output = ()> + Send + 'static>>;
 /// Server-wide request services cloned into every accepted connection.
 #[derive(Clone)]
 struct ConnectionServices {
+	max_body_size: u64,
 	handler: Arc<dyn Handler>,
 	di_context: Option<Arc<InjectionContext>>,
 	request_admission: Option<Arc<dyn RequestAdmission>>,
@@ -75,6 +76,7 @@ impl HttpUpgradeContext {
 
 /// HTTP Server with middleware support
 pub struct HttpServer {
+	max_body_size: u64,
 	handler: Arc<dyn Handler>,
 	pub(crate) middlewares: Vec<Arc<dyn Middleware>>,
 	di_context: Option<Arc<InjectionContext>>,
@@ -108,6 +110,7 @@ impl HttpServer {
 	/// ```
 	pub fn new<H: Handler + 'static>(handler: H) -> Self {
 		Self {
+			max_body_size: DEFAULT_MAX_BODY_SIZE,
 			handler: Arc::new(handler),
 			middlewares: Vec::new(),
 			di_context: None,
@@ -158,6 +161,30 @@ impl HttpServer {
 	/// ```
 	pub fn with_exception_handler(mut self, exception_handler: Arc<dyn ExceptionHandler>) -> Self {
 		self.exception_handler = Some(exception_handler);
+		self
+	}
+
+	/// Sets the request body budget in bytes for this server's listeners.
+	///
+	/// Defaults to 10 MiB. Zero permits only empty bodies. Requests exceeding
+	/// the budget receive HTTP 413 before the handler runs, including bodies
+	/// without Content-Length. An installed `RequestAdmission` policy retains
+	/// control of its per-request budget and overrides this fallback.
+	/// Standalone static connection adapters retain their 10 MiB default.
+	///
+	/// ```rust
+	/// # use reinhardt_http::{Handler, Request, Response};
+	/// # use reinhardt_server::HttpServer;
+	/// # struct Upload;
+	/// # #[async_trait::async_trait]
+	/// # impl Handler for Upload {
+	/// # async fn handle(&self, _: Request) -> reinhardt_http::Result<Response> { Ok(Response::ok()) }
+	/// # }
+	/// let server = HttpServer::new(Upload).with_max_body_size(12 * 1024 * 1024);
+	/// # let _ = server;
+	/// ```
+	pub fn with_max_body_size(mut self, max_body_size: u64) -> Self {
+		self.max_body_size = max_body_size;
 		self
 	}
 
@@ -360,6 +387,7 @@ impl HttpServer {
 	) -> Result<(), Box<dyn std::error::Error>> {
 		// Build the handler with middleware chain
 		let services = ConnectionServices {
+			max_body_size: self.max_body_size,
 			handler: self.build_handler(),
 			di_context: self.di_context.clone(),
 			request_admission: self.request_admission.clone(),
@@ -514,6 +542,7 @@ impl HttpServer {
 		let io = TokioIo::new(stream);
 		let service = service_fn(move |req| {
 			let ConnectionServices {
+				max_body_size,
 				handler,
 				di_context,
 				request_admission,
@@ -529,7 +558,7 @@ impl HttpServer {
 				socket_addr,
 				di_context,
 				request_admission,
-				DEFAULT_MAX_BODY_SIZE,
+				max_body_size,
 				Some(upgrade_tasks),
 			)
 		});
@@ -1056,6 +1085,7 @@ mod tests {
 			let handled = handled.clone();
 			async move {
 				HttpServer::new(AdmittedHandler(handled))
+					.with_max_body_size(1)
 					.with_request_admission(Arc::new(CountingAdmission(active)))
 					.listen_on_with_shutdown(listener, server_coordinator)
 					.await

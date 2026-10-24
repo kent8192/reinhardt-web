@@ -113,6 +113,10 @@ full = ["console_error_panic_hook", "file-uploads", "all"]
 console_error_panic_hook = ["dep:console_error_panic_hook"]
 pgvector = ["reinhardt-db/pgvector"]
 
+# Common dev-dependencies (both server and WASM test targets)
+[dev-dependencies]
+rstest = { workspace = true }
+
 # Server-only dev-dependencies
 [target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dev-dependencies]
 insta = { workspace = true }
@@ -125,7 +129,6 @@ reinhardt-di = { workspace = true }
 reinhardt-testkit = { path = "../reinhardt-testkit" }
 tokio = { workspace = true, features = ["full"] }
 tokio-test = { workspace = true }
-rstest = { workspace = true }
 sqlx = { workspace = true, features = ["postgres", "runtime-tokio-native-tls"] }
 # Pin to avoid build failure in native-tls 0.2.17 (non-exhaustive pattern in openssl.rs)
 native-tls = { workspace = true }

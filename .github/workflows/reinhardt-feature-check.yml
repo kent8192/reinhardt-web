@@ -15,7 +15,7 @@ on:
   # GitHub Actions branch scoping: PR branches can only restore caches
   # from the default branch (main). This trigger runs a single
   # --all-features check on main to populate the shared cache that all
-  # 31 feature-check matrix entries restore from.
+  # 32 feature-check matrix entries restore from.
   push:
     branches: [main]
     paths:
@@ -54,7 +54,7 @@ jobs:
   # the shared cache. Uses the same self-hosted runner architecture
   # (aarch64) as release-plz PRs so cache artifacts are compatible.
   # All feature-check jobs share a single cache via shared-key, keeping
-  # total cache usage at ~1-2 GB instead of 31 × ~300 MB = ~9 GB.
+  # total cache usage at ~1-2 GB instead of 32 × ~300 MB = ~9 GB.
   cache-seed:
     name: Cache Seed (all-features)
     if: github.event_name == 'push'
@@ -132,6 +132,7 @@ jobs:
           - { name: "conf-minimal",      pkg: "reinhardt-conf", features: "",                    no_default: "true"  }
           - { name: "conf-dynamic-database", pkg: "reinhardt-conf", features: "dynamic-database", no_default: "true" }
           - { name: "db-minimal",        pkg: "reinhardt-db",   features: "",                    no_default: "true"  }
+          - { name: "db-backends",       pkg: "reinhardt-db",   features: "backends",            no_default: "true"  }
           - { name: "db-full",           pkg: "reinhardt-db",   features: "database-full",       no_default: "true"  }
           - { name: "auth-minimal",      pkg: "reinhardt-auth", features: "",                    no_default: "true"  }
           - { name: "auth-full",         pkg: "reinhardt-auth", features: "auth-full",           no_default: "true"  }
@@ -156,13 +157,13 @@ jobs:
           # shared-key replaces the automatic job-based key so all matrix
           # entries restore from the single cache seeded on main push.
           # This keeps total cache usage at ~1-2 GB (one entry) instead
-          # of 31 × ~300 MB with per-entry keys.
+          # of 32 × ~300 MB with per-entry keys.
           shared-key: "feature-check"
           cache-targets: "false"
           cache-directories: /tmp/cargo_target
           cache-on-failure: "true"
           # Don't save on PR branches - restore from main's cache only.
-          # Avoids 31 matrix entries competing to save the same key.
+          # Avoids 32 matrix entries competing to save the same key.
           save-if: "false"
 
       - name: Run feature check (${{ matrix.combo.name }})
@@ -171,6 +172,7 @@ jobs:
           PKG: ${{ matrix.combo.pkg }}
           FEATURES: ${{ matrix.combo.features }}
           NO_DEFAULT: ${{ matrix.combo.no_default }}
+          DENY_WARNINGS: ${{ matrix.combo.name == 'db-backends' || matrix.combo.name == 'dentdelion-wasm' }}
         run: |
           FLAGS="-p ${PKG}"
           if [ "${NO_DEFAULT}" = "true" ]; then
@@ -178,6 +180,9 @@ jobs:
           fi
           if [ -n "${FEATURES}" ]; then
             FLAGS="${FLAGS} -F ${FEATURES}"
+          fi
+          if [ "${DENY_WARNINGS}" = "true" ]; then
+            export RUSTFLAGS="${RUSTFLAGS:+${RUSTFLAGS} }-D warnings"
           fi
           cargo check ${FLAGS} --quiet
 
