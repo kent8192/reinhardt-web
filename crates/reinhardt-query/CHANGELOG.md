@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-query@v0.3.25...reinhardt-query@v0.4.0) - 2026-10-24
+
+### Fixed
+
+- *(query)* represent explicit column nullability changes
+- *(query)* preserve type-free CockroachDB alterations
+- *(query)* expose executable CockroachDB alteration batches
+
 ## [0.3.25](https://github.com/kent8192/reinhardt-web/compare/reinhardt-query@v0.3.24...reinhardt-query@v0.3.25) - 2026-10-20
 
 ### Other

@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.3.25...reinhardt-web@v0.4.0) - 2026-10-24
+
+### Documentation
+
+- add release announcement(s)
+
+### Fixed
+
+- *(deps)* remove legacy aws tls from the stable line
+
+### Maintenance
+
+- *(deps)* track the retained crypto-bigint timing risk
+
 ## [0.3.25](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.3.24...reinhardt-web@v0.3.25) - 2026-10-20
 
 ### Documentation
