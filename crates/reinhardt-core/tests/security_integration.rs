@@ -627,6 +627,46 @@ fn redirect_detects_encoded_bypass_attempt() {
 	);
 }
 
+#[rstest]
+#[case("'//evil.com/path")]
+#[case("\"//evil.com/path")]
+#[case("/\\evil.com/path")]
+#[case("\\\\evil.com/path")]
+#[case("\\/evil.com/path")]
+#[case("/\t/evil.com/path")]
+#[case("/%5cevil.com/path")]
+#[case("/%2f%2fevil.com/path")]
+fn redirect_rejects_browser_normalized_network_paths(#[case] url: &str) {
+	// Arrange
+	let hosts = make_allowed_hosts(&["example.com"]);
+
+	// Act
+	let result = validate_redirect_url(url, &hosts);
+	let safe = is_safe_redirect(url, &hosts);
+
+	// Assert
+	assert!(
+		matches!(result, Err(RedirectValidationError::SuspiciousEncoding)),
+		"Browser-normalized network path {url:?} must be rejected"
+	);
+	assert!(!safe, "{url:?} must not be reported as a safe redirect");
+}
+
+#[rstest]
+#[case("/日本語/")]
+#[case("/search?q=%E6%97%A5%E6%9C%AC")]
+#[case("/files/a%2Fb")]
+fn redirect_allows_non_ascii_and_encoded_same_origin_paths(#[case] url: &str) {
+	// Arrange
+	let hosts = make_allowed_hosts(&["example.com"]);
+
+	// Act
+	let result = validate_redirect_url(url, &hosts);
+
+	// Assert
+	assert!(result.is_ok(), "Same-origin path {url:?} should be allowed");
+}
+
 // ============================================================================
 // is_safe_redirect convenience function
 // ============================================================================

@@ -7,6 +7,79 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.22](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.4.0-alpha.21...reinhardt-web@v0.4.0-alpha.22) - 2026-10-22
+
+### Documentation
+
+- add release announcement(s)
+
+### Fixed
+
+- *(ci)* allow aws-smithy-schema 0.2 alongside aws-smithy-runtime 1.16.1
+- *(deps)* remove legacy aws sdk tls transports
+
+### Maintenance
+
+- *(deps)* refresh full-feature dependency policy
+
+## [0.4.0-alpha.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.4.0-alpha.20...reinhardt-web@v0.4.0-alpha.21) - 2026-10-18
+
+### Added
+
+- *(test)* add method-aware async stub router
+- *(testkit)* add ordered per-request headers and payloads
+- *(testkit)* fork clients with independent state and transport
+- *(auth)* [**breaking**] add refresh token support to oauth2_server
+- *(testkit)* make http_client timeout configurable and add a streaming client fixture
+
+### Changed
+
+- *(test)* migrate header requests to the request builder
+
+### Documentation
+
+- add release announcement(s)
+- *(test)* document async stub routes through test facades
+- *(test)* record SimpleHandler migration and removal timeline
+- *(auth)* document oauth2_server refresh tokens
+- *(testkit)* clarify read_timeout semantics of streaming_http_client
+- *(utils)* declare native-only utils APIs as Parity P0
+- *(rest)* scope the SimpleSearchBackend output guarantee to its condition
+
+### Fixed
+
+- *(testkit)* correct SimpleHandler deprecation guidance
+- *(admin)* handle independently enabled pgvector field types
+- *(admin)* reject vector edits without the admin feature
+- *(testkit)* make native NATS JetStream fixture future Send
+- *(auth)* enforce audience allowlist and allow unscoped families on refresh
+- *(auth)* deserialize before deleting in DatabaseSessionBackend::take
+- *(auth)* serialize InMemorySessionBackend writes with take
+- *(ci)* allow bit-set 0.8 alongside proptest 1.12 in deny policy
+- *(utils)* keep native-only dependencies out of browser WASM builds
+- *(utils)* keep filesystem and local-DST APIs native-only on browser WASM
+- *(ci)* allow unmaintained unsafe-libyaml advisory in deny policy
+- *(ci)* allow rustls 0.21 advisories retained by AWS SDK legacy transport
+- *(rest)* keep SimpleSearchBackend output scannable by chained filters
+- *(ci)* allow zip 3.0.0 advisories from the utoipa-swagger-ui build script
+- *(ci)* forward admin pgvector in the alpha.20 reinhardt-test baseline
+
+### Maintenance
+
+- *(test)* merge develop/0.4.0 into stub router branch
+- *(testkit)* merge develop client transport changes
+- *(testkit)* sync latest develop after conflict resolution
+- *(audit)* classify refresh token runtime SQL sites
+- *(rest)* refresh SimpleSearchBackend runtime SQL fingerprints for [[#6804](https://github.com/kent8192/reinhardt-web/issues/6804)](https://github.com/kent8192/reinhardt-web/issues/6804)
+
+### Testing
+
+- *(testkit)* move HTTP stub route coverage to integration suite
+- *(admin)* inherit workspace patches in vector consumer
+- *(db)* refresh generated execution regression contracts
+- *(testkit)* compare form fields independently of map order
+- *(ci)* cover pgvector forwarding in the alpha.20 reinhardt-test baseline
+
 ## [0.4.0-alpha.20](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.4.0-alpha.19...reinhardt-web@v0.4.0-alpha.20) - 2026-10-06
 
 ### Added
@@ -438,6 +511,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Testing
 
 - *(db)* align migration compatibility contracts
+
+## [0.3.25](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.3.24...reinhardt-web@v0.3.25) - 2026-10-20
+
+### Documentation
+
+- *(rest)* scope the SimpleSearchBackend output guarantee to its condition
+
+### Fixed
+
+- *(rest)* keep SimpleSearchBackend output scannable by chained filters
+- *(ci)* allow zip 3.0.0 advisories from the utoipa-swagger-ui build script
+- *(db)* keep QuerySet UnwindSafe with structured join conditions
+
+### Other
+
+- resolve conflicts with origin/main
+
+### Testing
+
+- *(db)* expect grouped CASE operands on MySQL and SQLite
+
+## [0.3.24](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.3.23...reinhardt-web@v0.3.24) - 2026-10-14
+
+### Documentation
+
+- add release announcement(s)
+- *(agents)* attribute AI work to the agent and model that wrote it
+
+### Fixed
+
+- *(ci)* allow bit-set 0.8 alongside proptest 1.12 in deny policy
+- *(db)* emit nullability changes in forward AlterColumn SQL
+- *(db)* keep NOT NULL when AlterColumn demotes a primary key
+- *(admin)* propagate database errors from scoped detail fetches
+- *(auth)* accept NAT64 addresses that embed public IPv4
+- *(dentdelion)* accept NAT64 addresses that embed public IPv4
+- *(middleware)* issue CSRF token for the rotated session ID
+- *(dentdelion)* port owner-scoped event bus calls to shared bus state
+
 
 ## [0.3.23](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.3.22...reinhardt-web@v0.3.23) - 2026-10-08
 

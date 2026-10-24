@@ -18,7 +18,8 @@ use reinhardt_auth::{
 	AuthBackend, AuthIdentity, AuthenticationError, CompositeAuthentication, RestAuthentication,
 	SessionAuthentication, TokenAuthentication,
 };
-use reinhardt_http::Request;
+use reinhardt_http::{Handler, Middleware, Request, Response};
+use reinhardt_middleware::csrf::CsrfMiddleware;
 use reinhardt_test::fixtures::*;
 use rstest::*;
 use std::sync::Arc;
@@ -74,6 +75,37 @@ fn build_test_request(method: Method, uri: &str, headers: HeaderMap, body: Bytes
 		.body(body)
 		.build()
 		.unwrap()
+}
+
+struct CsrfCookieHandler;
+
+#[async_trait::async_trait]
+impl Handler for CsrfCookieHandler {
+	async fn handle(&self, _request: Request) -> reinhardt_core::exception::Result<Response> {
+		Ok(Response::ok())
+	}
+}
+
+/// Fetch a CSRF token as a browser would before a session-authenticated POST.
+async fn add_session_csrf_token(headers: &mut HeaderMap) {
+	let request = build_test_request(Method::GET, "/csrf", headers.clone(), Bytes::new());
+	let response = CsrfMiddleware::new()
+		.process(request, Arc::new(CsrfCookieHandler))
+		.await
+		.unwrap();
+	let cookie = response
+		.headers
+		.get("Set-Cookie")
+		.unwrap()
+		.to_str()
+		.unwrap();
+	let token = cookie
+		.split(';')
+		.next()
+		.unwrap()
+		.strip_prefix("csrftoken=")
+		.unwrap();
+	headers.insert("X-CSRFToken", token.parse().unwrap());
 }
 
 /// Create JWT token for testing
@@ -307,6 +339,7 @@ async fn test_backend_priority_jwt_first() {
 }
 
 /// Test backend priority with Session first
+#[rstest]
 #[tokio::test]
 async fn test_backend_priority_session_first() {
 	// Test intent: Verify CompositeAuthentication prioritizes Session over Token
@@ -341,6 +374,8 @@ async fn test_backend_priority_session_first() {
 		format!("sessionid={}", session_key).parse().unwrap(),
 	);
 	headers.insert("Authorization", "Token token123".parse().unwrap());
+
+	add_session_csrf_token(&mut headers).await;
 
 	let request = build_test_request(Method::POST, "/api/action", headers, Bytes::new());
 
@@ -472,6 +507,7 @@ async fn test_single_request_multiple_valid_credentials() {
 }
 
 /// Test single request with one valid and one invalid credential
+#[rstest]
 #[tokio::test]
 async fn test_single_request_mixed_valid_invalid_credentials() {
 	// Test intent: Verify CompositeAuthentication skips invalid JWT and successfully
@@ -506,6 +542,8 @@ async fn test_single_request_mixed_valid_invalid_credentials() {
 		"Cookie",
 		format!("sessionid={}", session_key).parse().unwrap(),
 	);
+
+	add_session_csrf_token(&mut headers).await;
 
 	let request = build_test_request(Method::POST, "/api/submit", headers, Bytes::new());
 

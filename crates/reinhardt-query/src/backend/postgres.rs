@@ -973,7 +973,7 @@ impl PostgresQueryBuilder {
 				self.write_grouped_expr(writer, expr, parenthesized, false);
 			}
 			SimpleExpr::FunctionCall(func_name, args) => {
-				writer.push(&func_name.to_string());
+				writer.push(&super::safe_function_name(func_name, '"'));
 				writer.push("(");
 				writer.push_list(args, ", ", |w, arg| {
 					self.write_simple_expr(w, arg);
@@ -1332,7 +1332,7 @@ impl PostgresQueryBuilder {
 				self.write_grouped_expr(writer, expr, parenthesized, true);
 			}
 			SimpleExpr::FunctionCall(func_name, args) => {
-				writer.push(&func_name.to_string());
+				writer.push(&super::safe_function_name(func_name, '"'));
 				writer.push("(");
 				writer.push_list(args, ", ", |w, arg| {
 					self.write_simple_expr_unquoted(w, arg);

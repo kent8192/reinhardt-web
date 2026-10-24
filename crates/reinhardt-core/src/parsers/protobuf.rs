@@ -7,6 +7,7 @@ use crate::exception::Error;
 use async_trait::async_trait;
 use bytes::Bytes;
 use http::HeaderMap;
+use serde_json::map::Entry;
 use serde_json::{Value, json};
 use std::collections::HashMap;
 
@@ -191,14 +192,17 @@ impl ProtobufParser {
 					let (len, n) = self.decode_varint(&data[cursor..])?;
 					cursor += n;
 
-					if cursor + len as usize > data.len() {
-						return Err(Error::Validation(
-							"Insufficient data for length-delimited field".to_string(),
-						)
-						.into());
-					}
-
-					let field_data = &data[cursor..cursor + len as usize];
+					// The declared length is attacker-controlled and may reach
+					// `u64::MAX`, so convert and add with checked arithmetic
+					// before slicing instead of truncating or overflowing.
+					let field_data = usize::try_from(len)
+						.ok()
+						.and_then(|len| data.get(cursor..cursor.checked_add(len)?))
+						.ok_or_else(|| {
+							Error::Validation(
+								"Insufficient data for length-delimited field".to_string(),
+							)
+						})?;
 
 					// Check before descending: the speculative nested parse
 					// below recurses once per level of untrusted nesting.
@@ -223,7 +227,7 @@ impl ProtobufParser {
 						}
 					};
 
-					(value, len as usize)
+					(value, field_data.len())
 				}
 				3 | 4 => {
 					// Start/End group (deprecated)
@@ -253,21 +257,22 @@ impl ProtobufParser {
 
 			cursor += bytes_consumed;
 
-			// Store field with field number as key
-			let field_key = field_number.to_string();
-
-			// Handle repeated fields
-			if let Some(existing) = fields.get(&field_key) {
-				let repeated = if let Some(arr) = existing.as_array() {
-					let mut new_arr = arr.clone();
-					new_arr.push(value);
-					json!(new_arr)
-				} else {
-					json!([existing.clone(), value])
-				};
-				fields.insert(field_key, repeated);
-			} else {
-				fields.insert(field_key, value);
+			// Store field with field number as key. Repeated occurrences are
+			// appended to the stored array in place: copying the accumulated
+			// values on every occurrence would make the work quadratic in the
+			// number of repetitions, which the body size limit does not bound.
+			match fields.entry(field_number.to_string()) {
+				Entry::Vacant(entry) => {
+					entry.insert(value);
+				}
+				Entry::Occupied(mut entry) => match entry.get_mut() {
+					Value::Array(values) => values.push(value),
+					existing => {
+						// Second occurrence: move the scalar into a new array.
+						let first = existing.take();
+						*existing = Value::Array(vec![first, value]);
+					}
+				},
 			}
 		}
 
@@ -358,6 +363,9 @@ pub trait ProtobufMessage: Sized {
 mod tests {
 	use super::*;
 	use rstest::rstest;
+	use std::sync::mpsc::{self, RecvTimeoutError};
+	use std::thread;
+	use std::time::Duration;
 
 	/// Appends `value` to `out` as a Protobuf base-128 varint.
 	fn encode_varint(mut value: usize, out: &mut Vec<u8>) {
@@ -383,6 +391,90 @@ mod tests {
 		}
 		reversed.reverse();
 		Bytes::from(reversed)
+	}
+
+	#[rstest]
+	// Field 1, length u64::MAX: the 11-byte body overflows `cursor + len`.
+	#[case::max_length_at_end(vec![
+		0x0A, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x01,
+	])]
+	// Field 1 varint 1, then field 2 with length u64::MAX and a trailing byte.
+	#[case::max_length_mid_message(vec![
+		0x08, 0x01, 0x12, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x01, 0x00,
+	])]
+	// Field 1, length u64::MAX - 10: `cursor + len` wraps to exactly zero.
+	#[case::length_wrapping_to_zero(vec![
+		0x0A, 0xF5, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x01,
+	])]
+	#[tokio::test]
+	async fn test_protobuf_parser_rejects_overflowing_length(#[case] body: Vec<u8>) {
+		// Arrange
+		let parser = ProtobufParser::new();
+		let headers = HeaderMap::new();
+
+		// Act
+		let result = parser
+			.parse(Some("application/protobuf"), Bytes::from(body), &headers)
+			.await;
+
+		// Assert
+		let Err(err) = result else {
+			panic!("Expected overflowing length to be rejected, got: {result:?}");
+		};
+		assert!(
+			matches!(
+				&err,
+				Error::Validation(msg) if msg == "Insufficient data for length-delimited field"
+			),
+			"Unexpected error: {err:?}"
+		);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_protobuf_parser_nested_overflowing_length_falls_back_to_bytes() {
+		// Arrange: field 1 wraps the 11-byte overflowing payload as its contents
+		let body = Bytes::from(vec![
+			0x0A, 0x0B, 0x0A, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x01,
+		]);
+		let parser = ProtobufParser::new();
+		let headers = HeaderMap::new();
+
+		// Act
+		let result = parser
+			.parse(Some("application/protobuf"), body, &headers)
+			.await;
+
+		// Assert
+		match result {
+			Ok(ParsedData::Protobuf(value)) => {
+				assert_eq!(
+					value,
+					json!({"1": [10, 255, 255, 255, 255, 255, 255, 255, 255, 255, 1]})
+				);
+			}
+			other => panic!("Expected Protobuf variant, got: {other:?}"),
+		}
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_protobuf_parser_length_reaching_end_of_data() {
+		// Arrange: field 1, length 3, exactly the remaining bytes "abc"
+		let body = Bytes::from(vec![0x0A, 0x03, 0x61, 0x62, 0x63]);
+		let parser = ProtobufParser::new();
+		let headers = HeaderMap::new();
+
+		// Act
+		let result = parser
+			.parse(Some("application/protobuf"), body, &headers)
+			.await;
+
+		// Assert
+		match result {
+			Ok(ParsedData::Protobuf(value)) => assert_eq!(value, json!({"1": "abc"})),
+			other => panic!("Expected Protobuf variant, got: {other:?}"),
+		}
 	}
 
 	#[tokio::test]
@@ -600,6 +692,93 @@ mod tests {
 			}
 			_ => panic!("Expected Protobuf variant"),
 		}
+	}
+
+	#[rstest]
+	// The second occurrence turns the stored scalar into an array.
+	#[case::scalar_twice(vec![0x08, 0x01, 0x08, 0x02], json!({"1": [1, 2]}))]
+	// Strings are collected in wire order.
+	#[case::strings(
+		vec![0x0A, 0x01, 0x61, 0x0A, 0x01, 0x62, 0x0A, 0x01, 0x63],
+		json!({"1": ["a", "b", "c"]})
+	)]
+	// Embedded messages are collected as objects.
+	#[case::messages(
+		vec![0x12, 0x02, 0x08, 0x01, 0x12, 0x02, 0x08, 0x02],
+		json!({"2": [{"1": 1}, {"1": 2}]})
+	)]
+	// Another field in between does not restart the accumulation.
+	#[case::interleaved(
+		vec![0x08, 0x01, 0x10, 0x05, 0x08, 0x02, 0x08, 0x03],
+		json!({"1": [1, 2, 3], "2": 5})
+	)]
+	#[tokio::test]
+	async fn test_protobuf_parser_collects_repeated_fields(
+		#[case] body: Vec<u8>,
+		#[case] expected: Value,
+	) {
+		// Arrange
+		let parser = ProtobufParser::new();
+		let headers = HeaderMap::new();
+
+		// Act
+		let result = parser
+			.parse(Some("application/protobuf"), Bytes::from(body), &headers)
+			.await;
+
+		// Assert
+		match result {
+			Ok(ParsedData::Protobuf(value)) => assert_eq!(value, expected),
+			other => panic!("Expected Protobuf variant, got: {other:?}"),
+		}
+	}
+
+	#[rstest]
+	fn test_protobuf_parser_appends_repeated_field_in_linear_time() {
+		// Arrange: 500,000 occurrences of varint field 1 fit in a 1 MB body.
+		// Copying the accumulated array on every occurrence would clone about
+		// 1.25 * 10^11 values, far beyond the timeout below.
+		const COUNT: usize = 500_000;
+		const TIMEOUT: Duration = Duration::from_secs(60);
+		let body: Vec<u8> = (0..COUNT).flat_map(|i| [0x08, (i % 128) as u8]).collect();
+		let (sender, receiver) = mpsc::channel();
+
+		// Act: parse on a separate thread so that a regression fails at the
+		// timeout instead of stalling the whole test run.
+		let parser_thread = thread::spawn(move || {
+			let headers = HeaderMap::new();
+			let result = tokio_test::block_on(ProtobufParser::new().parse(
+				Some("application/protobuf"),
+				Bytes::from(body),
+				&headers,
+			));
+			// The receiver is already gone if the test timed out.
+			let _ = sender.send(result);
+		});
+		let result = match receiver.recv_timeout(TIMEOUT) {
+			Ok(result) => result,
+			Err(RecvTimeoutError::Timeout) => {
+				panic!("Parsing {COUNT} repeated fields took longer than {TIMEOUT:?}")
+			}
+			Err(RecvTimeoutError::Disconnected) => std::panic::resume_unwind(
+				parser_thread
+					.join()
+					.expect_err("parser thread must have panicked without sending"),
+			),
+		};
+
+		// Assert
+		let Ok(ParsedData::Protobuf(value)) = result else {
+			panic!("Expected Protobuf variant, got: {result:?}");
+		};
+		let values = value["1"]
+			.as_array()
+			.expect("repeated field must be an array");
+		assert_eq!(values.len(), COUNT);
+		assert!(
+			values.iter().enumerate().all(|(i, v)| *v == json!(i % 128)),
+			"repeated values must keep wire order"
+		);
 	}
 
 	#[tokio::test]

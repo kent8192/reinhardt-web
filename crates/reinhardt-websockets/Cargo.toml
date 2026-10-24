@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-websockets"
-version = "0.4.0-alpha.20"
+version = "0.4.0-alpha.22"
 description = "WebSocket support for real-time bidirectional communication"
 edition.workspace = true
 rust-version.workspace = true
@@ -50,6 +50,8 @@ brotli = { version = "8.0.2", optional = true }
 redis = { workspace = true, features = [
     "tokio-comp",
     "connection-manager",
+    # TLS support so `tls = true` and `rediss://` URLs connect over verified TLS.
+    "tokio-rustls-comp",
 ], optional = true }
 
 # Metrics
@@ -64,6 +66,7 @@ tokio-test = "0.4"
 futures = { workspace = true }
 rstest = { workspace = true }
 rand = { workspace = true }
+testcontainers = { workspace = true }
 
 [features]
 default = []

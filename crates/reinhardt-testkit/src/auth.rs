@@ -6,7 +6,9 @@
 //!
 //! - **`ForceLoginUser`**: Trait for extracting session identity from any user type.
 //!   Blanket-implemented for all `AuthIdentity` types (available on native targets).
-//! - **`SessionIdentity`**: Type-erased identity struct matching `CookieSessionAuthMiddleware` fields.
+//! - **`SessionIdentity`**: Type-erased fixture identity and session metadata.
+//!   Cookie authentication resolves current privileges through a separate account backend;
+//!   see `SessionAuthBuilder` for a complete native fixture example.
 //! - **`AuthBuilder`**: Entry point returned by `APIClient::auth()`.
 //! - **`SecondaryAuth`**: Open trait for secondary auth layers (MFA, PassKey, etc.).
 //!
@@ -32,6 +34,11 @@ pub use secondary::TotpSecondaryAuth;
 mod builder;
 #[cfg(native)]
 pub use builder::{AuthBuilder, JwtAuthBuilder, JwtTestConfig, SessionAuthBuilder};
+
+#[cfg(native)]
+mod session_backend;
+#[cfg(native)]
+pub use session_backend::TestSessionAuthBackend;
 
 #[cfg(native)]
 mod server_fn_builder;

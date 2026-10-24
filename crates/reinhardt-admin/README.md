@@ -50,10 +50,10 @@ Add `reinhardt` to your `Cargo.toml`:
 <!-- reinhardt-version-sync:2 -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.4.0-alpha.20", features = ["admin"] }
+reinhardt = { version = "0.4.0-alpha.22", features = ["admin"] }
 
 # Or use a preset:
-# reinhardt = { version = "0.4.0-alpha.20", features = ["full"] }  # All features
+# reinhardt = { version = "0.4.0-alpha.22", features = ["full"] }  # All features
 ```
 
 Then import admin features:
@@ -648,6 +648,8 @@ individual modules under `src/server/`:
 Successful mutations persist their per-object history metadata in the same
 transaction. History records contain changed field names, but not submitted
 field values.
+
+CSV and TSV exports prefix spreadsheet formula cells with an apostrophe.
 
 ### Routing
 

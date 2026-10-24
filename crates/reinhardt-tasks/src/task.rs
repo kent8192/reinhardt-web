@@ -86,6 +86,100 @@ pub enum TaskStatus {
 	Retry,
 }
 
+impl TaskStatus {
+	/// Returns the canonical lowercase name of this status.
+	///
+	/// Backends that persist the status as text use this name together with
+	/// the [`FromStr`] implementation, so the mapping between variants and
+	/// stored strings is defined in exactly one place. The returned names
+	/// are part of the on-disk format and must stay stable.
+	///
+	/// # Example
+	///
+	/// ```rust
+	/// use reinhardt_tasks::TaskStatus;
+	///
+	/// assert_eq!(TaskStatus::Pending.as_str(), "pending");
+	/// assert_eq!(TaskStatus::Retry.as_str(), "retry");
+	/// ```
+	pub const fn as_str(&self) -> &'static str {
+		match self {
+			Self::Pending => "pending",
+			Self::Running => "running",
+			Self::Success => "success",
+			Self::Failure => "failure",
+			Self::Retry => "retry",
+		}
+	}
+}
+
+/// Error returned when a string is not a known [`TaskStatus`] name.
+///
+/// Produced by the [`FromStr`] implementation of [`TaskStatus`]. Persistent
+/// backends surface it instead of substituting a default status, so a
+/// corrupted or newer-format value is never reported as a pending task.
+///
+/// # Example
+///
+/// ```rust
+/// use reinhardt_tasks::TaskStatus;
+///
+/// let error = "bogus".parse::<TaskStatus>().unwrap_err();
+/// assert_eq!(error.value(), "bogus");
+/// assert_eq!(error.to_string(), "unknown task status 'bogus'");
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("unknown task status '{value}'")]
+pub struct ParseTaskStatusError {
+	value: String,
+}
+
+impl ParseTaskStatusError {
+	/// Returns the string that could not be parsed.
+	///
+	/// # Example
+	///
+	/// ```rust
+	/// use reinhardt_tasks::TaskStatus;
+	///
+	/// let error = "Pending".parse::<TaskStatus>().unwrap_err();
+	/// assert_eq!(error.value(), "Pending");
+	/// ```
+	pub fn value(&self) -> &str {
+		&self.value
+	}
+}
+
+impl FromStr for TaskStatus {
+	type Err = ParseTaskStatusError;
+
+	/// Parses a canonical status name (as returned by [`TaskStatus::as_str`]).
+	///
+	/// Matching is exact and case-sensitive. Any other input is rejected with
+	/// a [`ParseTaskStatusError`] rather than falling back to a default.
+	///
+	/// # Example
+	///
+	/// ```rust
+	/// use reinhardt_tasks::TaskStatus;
+	///
+	/// assert_eq!("success".parse::<TaskStatus>(), Ok(TaskStatus::Success));
+	/// assert!("bogus".parse::<TaskStatus>().is_err());
+	/// ```
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		match s {
+			"pending" => Ok(Self::Pending),
+			"running" => Ok(Self::Running),
+			"success" => Ok(Self::Success),
+			"failure" => Ok(Self::Failure),
+			"retry" => Ok(Self::Retry),
+			other => Err(ParseTaskStatusError {
+				value: other.to_owned(),
+			}),
+		}
+	}
+}
+
 /// Task priority (0-9, where 9 is highest)
 ///
 /// # Example
@@ -161,4 +255,47 @@ pub trait Task: Send + Sync {
 pub trait TaskExecutor: Task {
 	/// Executes the task and returns the result.
 	async fn execute(&self) -> crate::TaskResult<()>;
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use rstest::rstest;
+
+	#[rstest]
+	#[case(TaskStatus::Pending, "pending")]
+	#[case(TaskStatus::Running, "running")]
+	#[case(TaskStatus::Success, "success")]
+	#[case(TaskStatus::Failure, "failure")]
+	#[case(TaskStatus::Retry, "retry")]
+	fn test_task_status_round_trips_through_as_str_and_from_str(
+		#[case] status: TaskStatus,
+		#[case] expected: &str,
+	) {
+		// Arrange & Act
+		let name = status.as_str();
+		let parsed = name.parse::<TaskStatus>();
+
+		// Assert
+		assert_eq!(name, expected);
+		assert_eq!(parsed, Ok(status));
+	}
+
+	#[rstest]
+	#[case("bogus")]
+	#[case("")]
+	#[case("Pending")]
+	#[case("SUCCESS")]
+	#[case(" pending")]
+	#[case("pending\n")]
+	fn test_task_status_from_str_rejects_unknown_value(#[case] input: &str) {
+		// Arrange & Act
+		let error = input
+			.parse::<TaskStatus>()
+			.expect_err("unknown status must be rejected");
+
+		// Assert
+		assert_eq!(error.value(), input);
+		assert_eq!(error.to_string(), format!("unknown task status '{input}'"));
+	}
 }

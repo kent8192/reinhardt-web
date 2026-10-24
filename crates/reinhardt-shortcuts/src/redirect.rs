@@ -240,6 +240,49 @@ mod tests {
 	}
 
 	#[rstest]
+	#[case("/\\evil.com/path")]
+	#[case("\\\\evil.com/path")]
+	#[case("/\t/evil.com/path")]
+	#[case("/%5cevil.com/path")]
+	#[case("/%2f%2fevil.com/path")]
+	fn test_redirect_rejects_backslash_normalized_network_paths(#[case] url: &str) {
+		// Arrange
+		let hosts = allowed_hosts();
+
+		// Act
+		let temporary = redirect(url, &hosts);
+		let permanent = redirect_permanent(url, &hosts);
+
+		// Assert
+		assert!(
+			matches!(temporary, Err(RedirectValidationError::SuspiciousEncoding)),
+			"redirect must reject {url:?}"
+		);
+		assert!(
+			matches!(permanent, Err(RedirectValidationError::SuspiciousEncoding)),
+			"redirect_permanent must reject {url:?}"
+		);
+	}
+
+	#[rstest]
+	#[case("/search/?q=%E6%97%A5%E6%9C%AC")]
+	#[case("/users/caf%C3%A9/")]
+	fn test_redirect_allows_percent_encoded_non_ascii_paths(#[case] url: &str) {
+		// Arrange
+		let hosts = empty_hosts();
+
+		// Act
+		let response = redirect(url, &hosts).unwrap();
+
+		// Assert
+		assert_eq!(response.status, StatusCode::FOUND);
+		assert_eq!(
+			response.headers.get("location").unwrap().to_str().unwrap(),
+			url
+		);
+	}
+
+	#[rstest]
 	fn test_redirect_with_query_params() {
 		// Arrange
 		let hosts = empty_hosts();

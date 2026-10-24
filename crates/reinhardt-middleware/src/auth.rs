@@ -226,13 +226,11 @@ impl<S: SessionStore + 'static, A: AuthBackend + 'static> Middleware
 				None
 			};
 
-		let (user_id, is_authenticated, is_admin, is_active) = if let Some(ref user) = user {
-			(
-				user.id(),
-				user.is_authenticated(),
-				user.is_admin(),
-				user.is_account_active(),
-			)
+		let (user_id, is_authenticated, is_admin, is_active) = if let Some(ref user) = user
+			&& user.is_authenticated()
+			&& user.is_account_active()
+		{
+			(user.id(), true, user.is_admin(), true)
 		} else {
 			(String::new(), false, false, false)
 		};
@@ -262,10 +260,14 @@ pub use reinhardt_http::AuthState;
 #[cfg(all(test, feature = "sessions"))]
 mod tests {
 	use super::*;
+	use crate::auth_extensions::test_support::{
+		AuthEntriesHandler, anonymous_entries, auth_entries, expected_entries, seed_prior_principal,
+	};
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, Version};
 	use reinhardt_auth::AuthenticationError;
 	use reinhardt_auth::session::{InMemorySessionStore, Session};
+	use rstest::rstest;
 	use uuid::Uuid;
 
 	/// Local test user implementing `AuthIdentity` for middleware tests.
@@ -385,7 +387,7 @@ mod tests {
 	}
 
 	#[tokio::test]
-	async fn test_auth_middleware_preserves_inactive_session_user() {
+	async fn test_auth_middleware_rejects_inactive_session_user() {
 		let session_store = Arc::new(InMemorySessionStore::new());
 		let user = TestUser {
 			id: Uuid::now_v7(),
@@ -417,7 +419,8 @@ mod tests {
 
 		let response = middleware.process(request, handler).await.unwrap();
 		let body: serde_json::Value = serde_json::from_slice(response.body.as_ref()).unwrap();
-		assert_eq!(body["is_authenticated"], true);
+		assert_eq!(body["user_id"], "");
+		assert_eq!(body["is_authenticated"], false);
 		assert_eq!(body["is_active"], false);
 	}
 
@@ -443,6 +446,79 @@ mod tests {
 
 		let body_str = String::from_utf8(response.body.to_vec()).unwrap();
 		assert!(body_str.contains("\"is_authenticated\":false"));
+	}
+
+	fn request_with_session_cookie(session_id: Option<&str>) -> Request {
+		let mut headers = HeaderMap::new();
+		if let Some(session_id) = session_id {
+			headers.insert(
+				"cookie",
+				format!("sessionid={}", session_id).parse().unwrap(),
+			);
+		}
+		Request::builder()
+			.method(Method::GET)
+			.uri("/test")
+			.version(Version::HTTP_11)
+			.headers(headers)
+			.body(Bytes::new())
+			.build()
+			.unwrap()
+	}
+
+	#[rstest]
+	#[case::missing_cookie(None)]
+	#[case::unknown_session(Some("0193a7b0-0000-7000-8000-000000000000"))]
+	#[tokio::test]
+	async fn test_auth_failure_clears_prior_legacy_principal(#[case] session_id: Option<&str>) {
+		// Arrange
+		let session_store = Arc::new(InMemorySessionStore::new());
+		let auth_backend = Arc::new(TestAuthBackend { user: None });
+		let middleware = AuthenticationMiddleware::new(session_store, auth_backend);
+		let request = request_with_session_cookie(session_id);
+		seed_prior_principal(&request);
+
+		// Act
+		let response = middleware
+			.process(request, Arc::new(AuthEntriesHandler))
+			.await
+			.unwrap();
+
+		// Assert
+		assert_eq!(auth_entries(&response), anonymous_entries());
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_valid_session_replaces_prior_legacy_principal() {
+		// Arrange
+		let session_store = Arc::new(InMemorySessionStore::new());
+		let user = TestUser {
+			id: Uuid::now_v7(),
+			is_admin: false,
+			is_active: true,
+		};
+		let expected_id = user.id.to_string();
+		let auth_backend = Arc::new(TestAuthBackend { user: Some(user) });
+		let session_id = session_store.create_session_id();
+		let mut session = Session::new();
+		session.set(SESSION_KEY_USER_ID, serde_json::json!("user123"));
+		session_store.save(&session_id, &session).await;
+		let middleware = AuthenticationMiddleware::new(session_store, auth_backend);
+		let request = request_with_session_cookie(Some(session_id.as_str()));
+		seed_prior_principal(&request);
+
+		// Act
+		let response = middleware
+			.process(request, Arc::new(AuthEntriesHandler))
+			.await
+			.unwrap();
+
+		// Assert
+		assert_eq!(
+			auth_entries(&response),
+			expected_entries(&expected_id, true, false, true)
+		);
 	}
 
 	#[test]

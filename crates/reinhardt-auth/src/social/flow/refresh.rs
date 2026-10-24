@@ -36,6 +36,14 @@ impl RefreshFlow {
 		refresh_token: &str,
 	) -> Result<TokenResponse, SocialAuthError> {
 		validate_endpoint_url(token_endpoint)?;
+		if let Some(oauth2) = &self.config.oauth2
+			&& oauth2.token_endpoint != token_endpoint
+		{
+			return Err(SocialAuthError::InsecureEndpoint(
+				"token endpoint differs from provider configuration".to_string(),
+			));
+		}
+		let client = self.client.for_endpoint(token_endpoint).await?;
 
 		let mut params = HashMap::new();
 		params.insert("grant_type", "refresh_token");
@@ -43,9 +51,7 @@ impl RefreshFlow {
 		params.insert("client_id", &self.config.client_id);
 		params.insert("client_secret", &self.config.client_secret);
 
-		let response = self
-			.client
-			.client()
+		let response = client
 			.post(token_endpoint)
 			.header("Accept", "application/json")
 			.form(&params)

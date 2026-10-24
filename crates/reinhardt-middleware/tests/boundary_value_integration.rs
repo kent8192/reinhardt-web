@@ -556,52 +556,47 @@ async fn test_cache_ttl_boundary(
 // ============================================================================
 
 #[rstest]
-#[case::below_max_entries(4, 5)]
-#[case::at_max_entries(5, 5)]
-#[case::above_max_entries(6, 5)]
+#[case::below_max_entries(4, 5, 4, "HIT")]
+#[case::at_max_entries(5, 5, 5, "HIT")]
+#[case::above_max_entries(6, 5, 5, "MISS")]
+#[case::far_above_max_entries(50, 5, 5, "MISS")]
 #[tokio::test]
 #[serial(cache_max_entries)]
-async fn test_cache_max_entries_boundary(#[case] entry_count: usize, #[case] max_entries: usize) {
+async fn test_cache_max_entries_boundary(
+	#[case] entry_count: usize,
+	#[case] max_entries: usize,
+	#[case] expected_len: usize,
+	#[case] expected_first_entry_status: &str,
+) {
+	// Arrange
 	let config = CacheConfig::new(Duration::from_secs(60), CacheKeyStrategy::UrlAndMethod)
 		.with_max_entries(max_entries);
 	let middleware = Arc::new(CacheMiddleware::new(config));
 	let handler = Arc::new(ConfigurableTestHandler::always_success().with_body("cached"));
 
-	// Create entries by making requests to different URLs
+	// Act: every key stays live because the TTL outlasts the test
 	for i in 0..entry_count {
 		let url = format!("/api/data/{}", i);
 		let request = create_test_request("GET", &url);
-		let _ = middleware.process(request, handler.clone()).await;
+		middleware.process(request, handler.clone()).await.unwrap();
 	}
-
-	// Verify the earliest entries - they might be evicted if we exceeded max_entries
+	let len_after_fill = middleware.store().len();
 	let first_request = create_test_request("GET", "/api/data/0");
 	let first_response = middleware
 		.process(first_request, handler.clone())
 		.await
 		.unwrap();
 
-	let cache_status = first_response
-		.headers
-		.get("X-Cache")
-		.and_then(|v| v.to_str().ok())
-		.unwrap_or("NONE");
-
-	if entry_count <= max_entries {
-		// All entries should fit in cache
-		assert_eq!(
-			cache_status, "HIT",
-			"First entry should still be in cache when {} <= {}",
-			entry_count, max_entries
-		);
-	} else {
-		// First entry might have been evicted
-		// This depends on eviction policy - just verify no panic
-		assert!(
-			cache_status == "HIT" || cache_status == "MISS",
-			"Cache should return valid status"
-		);
-	}
+	// Assert: the oldest entry is evicted once the limit is exceeded
+	assert_eq!(len_after_fill, expected_len);
+	assert_eq!(
+		first_response
+			.headers
+			.get("X-Cache")
+			.and_then(|v| v.to_str().ok()),
+		Some(expected_first_entry_status)
+	);
+	assert_eq!(middleware.store().len(), expected_len);
 }
 
 // ============================================================================

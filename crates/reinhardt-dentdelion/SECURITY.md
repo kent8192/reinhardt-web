@@ -28,6 +28,14 @@ malicious. A plugin's requested capabilities do not establish trust.
 - Protected deployments must enforce WASM memory, fuel, and wall-clock limits
   and bound host calls. The current runtime applies fuel but does not
   automatically enforce every configured memory or timeout value.
+- HTTP host calls buffer responses in host memory, outside guest memory and
+  fuel limits, so `HostState` bounds them with `HttpResourceLimits`. A
+  response whose declared `Content-Length` exceeds the body cap is rejected
+  before its body is read; other bodies are streamed through a byte counter
+  and the connection is dropped at the cap. Oversized request bodies are
+  rejected before they are copied or sent, each call has a total deadline that
+  also applies to custom clients, and a per-plugin concurrency budget shared by
+  `HostState` clones bounds the response memory one plugin holds at once.
 - Database access is available only through its granted host interface and
   intended SQL boundary. Plugins cannot acquire raw connections, credentials,
   or a broader database identity, and untrusted values remain parameterized or
@@ -47,6 +55,12 @@ malicious. A plugin's requested capabilities do not establish trust.
 	the caller's output-encoding and response-security rules and cannot gain
 	ambient server privileges through rendering context or serialization. Both
 	direct and WIT host calls pass through the same plugin trust check.
+- Plugin event access is a capability grant. Every WIT `events` call (`emit`,
+  `subscribe`, `unsubscribe`, `poll-events`) checks the `Signals` grant before
+  it touches the event bus; a denied poll returns no events and leaves the
+  queue intact. `SignalReceivers` does not substitute for `Signals`. The public
+  `HostState` event methods act for the plugin without this check and are for
+  trusted host code only.
 - Registry entries, lifecycle state, and event delivery must be isolated by
   plugin identity. Host integrations must carry the authenticated owner into
   poll and unsubscribe operations; the current `HostState` forwards only the

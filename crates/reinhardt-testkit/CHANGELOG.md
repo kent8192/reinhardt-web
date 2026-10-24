@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.22](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit@v0.4.0-alpha.21...reinhardt-testkit@v0.4.0-alpha.22) - 2026-10-22
+
+### Added
+
+- *(testkit)* add scoped session account adapter
+
+### Fixed
+
+- *(testkit)* document and verify live session account wiring
+
+### Maintenance
+
+- *(release)* target 0.3.24 instead of 0.4.0
+- *(sync)* merge main into develop/0.4.0
+
+## [0.4.0-alpha.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit@v0.4.0-alpha.20...reinhardt-testkit@v0.4.0-alpha.21) - 2026-10-18
+
+### Added
+
+- *(test)* add method-aware async stub router
+- *(testkit)* add redirect policy to APIClientBuilder
+
+### Documentation
+
+- *(test)* document async stub routes through test facades
+- *(test)* record SimpleHandler migration and removal timeline
+- *(testkit)* describe shared guard lifetime on TestServerClient constructors
+
+### Fixed
+
+- *(testkit)* correct SimpleHandler deprecation guidance
+- *(testkit)* make native NATS JetStream fixture future Send
+- *(testkit)* share the server guard across TestServerClient forks
+
+### Maintenance
+
+- *(test)* merge develop/0.4.0 into stub router branch
+- *(testkit)* merge develop client transport changes
+- *(testkit)* sync latest develop after conflict resolution
+
+### Testing
+
+- *(testkit)* move HTTP stub route coverage to integration suite
+- *(testkit)* move redirect integration coverage to workspace tests
+- *(testkit)* compare form fields independently of map order
+
 ### Added
 
 - `stub::StubRouter` registers capturing async closures for explicit HTTP
@@ -162,6 +208,21 @@ let router = StubRouter::new()
 ### Maintenance
 
 - migrate dependency policy checks to cargo-deny
+
+## [0.3.24](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit@v0.3.23...reinhardt-testkit@v0.3.24) - 2026-10-14
+
+### Added
+
+- *(testkit)* add scoped session account adapter
+
+### Fixed
+
+- *(testkit)* document and verify live session account wiring
+
+### Fixed
+
+- Document and verify current-account backend wiring for session privilege overrides.
+
 
 ## [0.3.23](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit@v0.3.22...reinhardt-testkit@v0.3.23) - 2026-10-08
 

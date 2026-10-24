@@ -291,6 +291,56 @@ sys.exit(int(os.environ.get("RELEASE_TEST_EXIT_CODE", "0")))
         self.assertEqual(record["version"], manifest.read_text())
         self.assert_no_baseline_left()
 
+    def admin_vector_baseline(self, name="reinhardt-test", version="0.4.0-alpha.20",
+                              pgvector='["reinhardt-testkit/pgvector"]'):
+        manifest = self.repo / "Cargo.toml"
+        manifest.write_text(
+            f'[package]\nname = "{name}"\nversion = "{version}"\nedition = "2024"\n\n'
+            '[dependencies]\nreinhardt-admin = { version = "0.4.0-alpha.20", optional = true }\n'
+            'reinhardt-testkit = "0.4.0-alpha.20"\n\n'
+            f'[features]\npgvector = {pgvector}\nadmin = ["dep:reinhardt-admin"]\n'
+        )
+        return manifest
+
+    def prepare_baseline(self):
+        return subprocess.run(
+            ["python3", str(SCRIPT.parent / "prepare-release-baseline.py"), str(self.repo)],
+            text=True, capture_output=True,
+        )
+
+    def manifest_features(self, manifest):
+        return json.loads(subprocess.check_output(
+            ["cargo", "read-manifest", "--manifest-path", str(manifest)], text=True))["features"]
+
+    def test_admin_vector_baseline_forwards_admin_pgvector(self):
+        manifest = self.admin_vector_baseline()
+        for attempt in ("first", "repeated"):
+            with self.subTest(attempt=attempt):
+                result = self.prepare_baseline()
+                self.assertEqual(result.returncode, 0, result.stderr)
+                features = self.manifest_features(manifest)
+                self.assertEqual(features["pgvector"],
+                                 ["reinhardt-testkit/pgvector", "reinhardt-admin?/pgvector"])
+                self.assertEqual(features["admin"], ["dep:reinhardt-admin"])
+
+    def test_unaffected_admin_vector_baselines_are_not_edited(self):
+        for name, version in (("reinhardt-test", "0.4.0-alpha.21"),
+                              ("reinhardt-testkit", "0.4.0-alpha.20")):
+            with self.subTest(name=name, version=version):
+                manifest = self.admin_vector_baseline(name=name, version=version)
+                original = manifest.read_text()
+                result = self.prepare_baseline()
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(manifest.read_text(), original)
+
+    def test_unexpected_admin_vector_feature_stops_without_edit(self):
+        manifest = self.admin_vector_baseline(pgvector='[\n  "reinhardt-testkit/pgvector",\n]')
+        original = manifest.read_text()
+        result = self.prepare_baseline()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Unexpected pgvector feature", result.stderr)
+        self.assertEqual(manifest.read_text(), original)
+
     def test_local_update_uses_same_baseline_without_opening_pr(self):
         result = self.invoke("update", "--no-changelog", "--package", "reinhardt-web")
         self.assertEqual(result.returncode, 0, result.stderr)

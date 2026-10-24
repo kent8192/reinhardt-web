@@ -710,7 +710,7 @@ Add this to your `Cargo.toml`:
 <!-- reinhardt-version-sync -->
 ```toml
 [dependencies]
-reinhardt-db = "0.4.0-alpha.20"
+reinhardt-db = "0.4.0-alpha.22"
 chrono-tz = "0.10"
 ```
 
@@ -721,7 +721,7 @@ Enable specific features based on your needs:
 <!-- reinhardt-version-sync -->
 ```toml
 [dependencies]
-reinhardt-db = { version = "0.4.0-alpha.20", features = ["postgres", "orm", "migrations"] }
+reinhardt-db = { version = "0.4.0-alpha.22", features = ["postgres", "orm", "migrations"] }
 ```
 
 Available features:
@@ -877,9 +877,12 @@ remain separate APIs.
 The former synchronous descriptors moved to
 `orm::legacy_file_fields::LegacyFileField` and `LegacyImageField`, with
 `LegacyFileFieldError`; the explicit `Legacy*` top-level names are deprecated
-compatibility exports. The unprefixed `orm::FileField` is now the typed model
-value. The unprefixed `orm::ImageField` is the storage-backed image value when
-both `file-storage` and `image-fields` are enabled.
+compatibility exports. Their `save`, `exists`, and `delete` methods stay inside
+the storage root: empty, absolute, prefixed, and `..` paths are rejected, and
+symlinks that lead outside the root fail. The unprefixed `orm::FileField` is
+now the typed model value. The unprefixed `orm::ImageField` is the
+storage-backed image value when both `file-storage` and `image-fields` are
+enabled.
 
 Changing `file_storage` for rows that already exist changes the backend alias,
 not the object location. Perform an object/data migration that copies (and,
@@ -894,7 +897,7 @@ Enable native dense-vector storage directly on `reinhardt-db`:
 <!-- reinhardt-version-sync -->
 ```toml
 [dependencies]
-reinhardt-db = { version = "0.4.0-alpha.20", features = ["pgvector"] }
+reinhardt-db = { version = "0.4.0-alpha.22", features = ["pgvector"] }
 reinhardt-core = { version = "0.4.0-alpha.2", features = ["macros"] }
 serde = { version = "1", features = ["derive"] }
 ```
@@ -905,7 +908,7 @@ Applications using the facade enable `db-pgvector` instead and import
 <!-- reinhardt-version-sync -->
 ```toml
 [dependencies]
-reinhardt = { package = "reinhardt-web", version = "0.4.0-alpha.20", features = ["db-pgvector"] }
+reinhardt = { package = "reinhardt-web", version = "0.4.0-alpha.22", features = ["db-pgvector"] }
 ```
 
 Reinhardt never installs the PostgreSQL extension automatically. Add

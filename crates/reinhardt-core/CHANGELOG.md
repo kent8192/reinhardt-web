@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.22](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.4.0-alpha.21...reinhardt-core@v0.4.0-alpha.22) - 2026-10-22
+
+### Added
+
+- *(macros,db)* [**breaking**] lead foreign keys with columns shared by both models
+- *(macros)* give generated relation id fields the relation's visibility
+
+### Fixed
+
+- *(macros)* compare explicit foreign key constraint names without allocating
+
+### Maintenance
+
+- *(sync)* merge main into develop/0.4.0
+
+## [0.4.0-alpha.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.4.0-alpha.20...reinhardt-core@v0.4.0-alpha.21) - 2026-10-18
+
+### Fixed
+
+- *(macros,conf)* redact #[setting(secret)] fields in generated Debug
+- *(macros)* reject async #[routes] on wasm with a compile-time diagnostic
+
+### Maintenance
+
+- *(sync)* merge main into develop/0.4.0
+
+### Security
+
+- *(core)* bound protobuf parser nesting depth
+- *(core)* reject backslash-normalized redirect network paths
+- *(core)* reject quoted redirect targets unquoted by meta refresh
+
 ## [0.4.0-alpha.20](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.4.0-alpha.19...reinhardt-core@v0.4.0-alpha.20) - 2026-10-06
 
 ### Added
@@ -194,6 +226,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - *(serializers)* cover required, fallback, and field-type stability
 - *(macros)* keep server_only Info compile-fail on SecretInfo
 - *(macros)* isolate server_only Info compile-fail from serde bounds
+
+## [0.3.25](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.3.24...reinhardt-core@v0.3.25) - 2026-10-20
+
+### Security
+
+- *(core)* decode redirect bypass checks as UTF-8
+- *(core)* reject quoted redirect targets unquoted by meta refresh
+
+## [0.3.24](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.3.23...reinhardt-core@v0.3.24) - 2026-10-14
+
+### Security
+
+- *(core)* bound protobuf parser nesting depth
+
 
 ## [0.3.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.3.20...reinhardt-core@v0.3.21) - 2026-10-05
 

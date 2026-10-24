@@ -1388,6 +1388,13 @@ pub enum Operation {
 		/// Original column definition (before alteration).
 		/// This is required for generating accurate rollback SQL.
 		/// If None, rollback will attempt to reconstruct from ProjectState.
+		///
+		/// On PostgreSQL and CockroachDB, forward SQL compares its nullability
+		/// with `new_definition` and emits `SET NOT NULL` / `DROP NOT NULL` only
+		/// when they differ. If None, the nullability of `new_definition` is
+		/// always applied. Primary key columns are always treated as NOT NULL,
+		/// and a column that stops being a primary key keeps NOT NULL because
+		/// this operation does not drop the primary key constraint.
 		#[serde(default, skip_serializing_if = "Option::is_none")]
 		old_definition: Option<ColumnDefinition>,
 		/// The new definition.
@@ -3402,6 +3409,35 @@ impl Operation {
 								));
 							}
 						}
+
+						// `ALTER COLUMN ... TYPE` keeps the existing NOT NULL flag, so a
+						// nullability change needs its own statement. Emit it as a
+						// separate payload (CockroachDB rejects the comma-combined form,
+						// see `to_reverse_sql`). When `old_definition` is unknown, follow
+						// `new_definition`: SET/DROP NOT NULL is idempotent on PostgreSQL
+						// and this matches MySQL `MODIFY COLUMN` and SQLite recreation,
+						// which both apply the full new definition. Primary key columns
+						// count as NOT NULL (see `ColumnDefinition::effective_not_null`).
+						let new_not_null = new_definition.effective_not_null();
+						let nullability_changed = match old_definition {
+							// PK demotion: the old column is NOT NULL as a primary key,
+							// and AlterColumn never drops the primary key constraint, so
+							// DROP NOT NULL would hit "column is in a primary key" and
+							// abort the migration. Keep NOT NULL until the constraint is
+							// gone. Remove this skip once a PK-constraint operation runs
+							// before AlterColumn.
+							Some(old) if old.primary_key && !new_definition.primary_key => false,
+							Some(old) => old.effective_not_null() != new_not_null,
+							None => true,
+						};
+						if nullability_changed {
+							statements.push(format!(
+								"ALTER TABLE {} ALTER COLUMN {} {} NOT NULL;",
+								Self::quote_schema_identifier(table, dialect),
+								Self::quote_schema_identifier(column, dialect),
+								if new_not_null { "SET" } else { "DROP" }
+							));
+						}
 						statements.join(" ")
 					}
 					SqlDialect::Mysql => {
@@ -4830,7 +4866,8 @@ impl Operation {
 				};
 
 				let type_sql = old_def.type_definition.to_sql_for_dialect(dialect);
-				let null_clause = if old_def.not_null { " NOT NULL" } else { "" };
+				let old_not_null = old_def.effective_not_null();
+				let null_clause = if old_not_null { " NOT NULL" } else { "" };
 
 				// Dispatch reverse SQL per dialect.
 				// SQLite is handled via the SQLite-recreation path before reaching
@@ -4854,7 +4891,7 @@ impl Operation {
 						// multi-statement path keeps the contract uniform and
 						// restores NOT NULL rollback fidelity on Cockroach.
 						// Refs #4630, #4640.
-						let nullability_clause = if old_def.not_null {
+						let nullability_clause = if old_not_null {
 							"SET NOT NULL"
 						} else {
 							"DROP NOT NULL"
@@ -5501,6 +5538,17 @@ impl ColumnDefinition {
 	pub fn with_domain_option(mut self, domain: Option<crate::field_domain::FieldDomain>) -> Self {
 		self.domain = domain.map(crate::field_domain::FieldDomain::canonicalized);
 		self
+	}
+
+	/// Return whether the column is NOT NULL in the database.
+	///
+	/// Primary key columns cannot hold NULL, so they count as NOT NULL even
+	/// when a hand-built definition leaves `not_null` false. Use this
+	/// instead of the raw `not_null` flag when generating nullability
+	/// changes, because PostgreSQL rejects `DROP NOT NULL` on a primary key
+	/// column.
+	pub(crate) fn effective_not_null(&self) -> bool {
+		self.not_null || self.primary_key
 	}
 
 	/// Create a ColumnDefinition from FieldState with attribute parsing
@@ -10266,6 +10314,8 @@ mod tests {
 				referenced_column: "id".to_string(),
 				on_delete: ForeignKeyAction::Cascade,
 				on_update: ForeignKeyAction::Cascade,
+				shared_columns: Vec::new(),
+				constraint_name: None,
 			},
 		));
 		post.add_foreign_key_constraint_from_field("user_id");
@@ -10314,6 +10364,8 @@ mod tests {
 				referenced_column: "id".to_string(),
 				on_delete: ForeignKeyAction::Cascade,
 				on_update: ForeignKeyAction::Cascade,
+				shared_columns: Vec::new(),
+				constraint_name: None,
 			},
 		));
 		post.fields
@@ -10608,7 +10660,6 @@ mod tests {
 		);
 	}
 
-	#[cfg(not(feature = "pgvector"))]
 	#[test]
 	fn named_legacy_drop_index_reverse_preserves_definition_without_state() {
 		let operation = Operation::DropNamedIndex {
@@ -10636,7 +10687,6 @@ mod tests {
 		);
 	}
 
-	#[cfg(not(feature = "pgvector"))]
 	#[test]
 	fn named_legacy_drop_index_reverse_omits_mysql_predicate() {
 		let operation = Operation::DropNamedIndex {
@@ -11018,6 +11068,159 @@ mod tests {
 			sql.contains("ALTER COLUMN is_active DROP DEFAULT"),
 			"AlterColumn must remove dropped database defaults, got: {}",
 			sql
+		);
+	}
+
+	/// Forward `AlterColumn` SQL on the PostgreSQL family must change the
+	/// column nullability as a separate statement after `TYPE`, because
+	/// `ALTER COLUMN ... TYPE` alone keeps the existing NOT NULL flag
+	/// (reinhardt-web#6724). A known `old_definition` limits the statement to
+	/// real changes; an unknown one applies `new_definition`. Primary key
+	/// columns count as NOT NULL, and a demoted primary key keeps NOT NULL
+	/// because AlterColumn does not drop the primary key constraint.
+	#[rstest]
+	#[case::not_null_to_nullable(Some(true), false, false, false, Some("DROP"))]
+	#[case::nullable_to_not_null(Some(false), false, true, false, Some("SET"))]
+	#[case::unchanged_not_null(Some(true), false, true, false, None)]
+	#[case::unchanged_nullable(Some(false), false, false, false, None)]
+	#[case::unknown_old_to_nullable(None, false, false, false, Some("DROP"))]
+	#[case::unknown_old_to_not_null(None, false, true, false, Some("SET"))]
+	#[case::primary_key_keeps_not_null(Some(true), true, false, true, None)]
+	#[case::primary_key_unknown_old(None, false, false, true, Some("SET"))]
+	#[case::primary_key_promoted(Some(false), false, false, true, Some("SET"))]
+	#[case::primary_key_demoted_to_nullable(Some(true), true, false, false, None)]
+	fn test_to_sql_alter_column_changes_nullability_for_postgres_family(
+		#[case] old_not_null: Option<bool>,
+		#[case] old_primary_key: bool,
+		#[case] new_not_null: bool,
+		#[case] new_primary_key: bool,
+		#[case] expected_clause: Option<&str>,
+		#[values(SqlDialect::Postgres, SqlDialect::Cockroachdb)] dialect: SqlDialect,
+	) {
+		// Arrange
+		let new_definition = ColumnDefinition {
+			not_null: new_not_null,
+			primary_key: new_primary_key,
+			..ColumnDefinition::new("created_at", FieldType::TimestampTz)
+		};
+		let op = Operation::AlterColumn {
+			table: "events".to_string(),
+			column: "created_at".to_string(),
+			old_definition: old_not_null.map(|not_null| ColumnDefinition {
+				not_null,
+				primary_key: old_primary_key,
+				..new_definition.clone()
+			}),
+			new_definition,
+			mysql_options: None,
+		};
+		let mut expected =
+			vec!["ALTER TABLE events ALTER COLUMN created_at TYPE TIMESTAMPTZ;".to_string()];
+		if let Some(clause) = expected_clause {
+			expected.push(format!(
+				"ALTER TABLE events ALTER COLUMN created_at {clause} NOT NULL;"
+			));
+		}
+
+		// Act
+		let sql = op.to_sql(&dialect);
+
+		// Assert
+		assert_eq!(sql, expected.join(" "));
+	}
+
+	/// Reverse `AlterColumn` SQL must restore NOT NULL for a primary key
+	/// column even when a hand-built `old_definition` leaves `not_null`
+	/// false, because PostgreSQL rejects DROP NOT NULL on a primary key
+	/// column (reinhardt-web#6724).
+	#[rstest]
+	#[case::postgres(
+		SqlDialect::Postgres,
+		vec![
+			"ALTER TABLE example ALTER COLUMN id TYPE BIGINT;",
+			"ALTER TABLE example ALTER COLUMN id SET NOT NULL;",
+		]
+	)]
+	#[case::cockroachdb(
+		SqlDialect::Cockroachdb,
+		vec![
+			"ALTER TABLE example ALTER COLUMN id TYPE BIGINT;",
+			"ALTER TABLE example ALTER COLUMN id SET NOT NULL;",
+		]
+	)]
+	#[case::mysql(
+		SqlDialect::Mysql,
+		vec!["ALTER TABLE example MODIFY COLUMN id BIGINT NOT NULL;"]
+	)]
+	fn test_to_reverse_sql_alter_column_restores_not_null_for_primary_key(
+		#[case] dialect: SqlDialect,
+		#[case] expected: Vec<&str>,
+	) {
+		// Arrange
+		let old_definition = ColumnDefinition {
+			not_null: false,
+			primary_key: true,
+			..ColumnDefinition::new("id", FieldType::BigInteger)
+		};
+		let op = Operation::AlterColumn {
+			table: "example".to_string(),
+			column: "id".to_string(),
+			old_definition: Some(old_definition.clone()),
+			new_definition: ColumnDefinition {
+				type_definition: FieldType::Integer,
+				..old_definition
+			},
+			mysql_options: None,
+		};
+
+		// Act
+		let statements = op
+			.to_reverse_sql(&dialect, &ProjectState::default())
+			.unwrap();
+
+		// Assert
+		let expected: Vec<String> = expected.into_iter().map(str::to_owned).collect();
+		assert_eq!(statements, Some(expected));
+	}
+
+	/// The forward nullability statement must coexist with default changes
+	/// and come after them, each as its own statement (reinhardt-web#6724).
+	#[rstest]
+	#[case::postgres(SqlDialect::Postgres)]
+	#[case::cockroachdb(SqlDialect::Cockroachdb)]
+	fn test_to_sql_alter_column_changes_nullability_after_default_statements(
+		#[case] dialect: SqlDialect,
+	) {
+		// Arrange
+		let op = Operation::AlterColumn {
+			table: "events".to_string(),
+			column: "attempts".to_string(),
+			old_definition: Some(ColumnDefinition {
+				not_null: true,
+				default: Some("0".to_string()),
+				..ColumnDefinition::new("attempts", FieldType::Integer)
+			}),
+			new_definition: ColumnDefinition {
+				not_null: false,
+				default: Some("1".to_string()),
+				..ColumnDefinition::new("attempts", FieldType::BigInteger)
+			},
+			mysql_options: None,
+		};
+
+		// Act
+		let sql = op.to_sql(&dialect);
+
+		// Assert
+		assert_eq!(
+			sql,
+			[
+				"ALTER TABLE events ALTER COLUMN attempts DROP DEFAULT;",
+				"ALTER TABLE events ALTER COLUMN attempts TYPE BIGINT;",
+				"ALTER TABLE events ALTER COLUMN attempts SET DEFAULT 1;",
+				"ALTER TABLE events ALTER COLUMN attempts DROP NOT NULL;",
+			]
+			.join(" ")
 		);
 	}
 

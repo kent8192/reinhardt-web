@@ -3,6 +3,7 @@
 //! Provides functions to validate redirect URLs against a list of allowed hosts,
 //! preventing attackers from redirecting users to malicious external sites.
 
+use percent_encoding::percent_decode_str;
 use std::collections::HashSet;
 use url::Url;
 
@@ -39,6 +40,11 @@ pub enum RedirectValidationError {
 /// 3. Rejects protocol-relative URLs (`//`)
 /// 4. Validates absolute URL hosts against the allowed hosts list
 /// 5. Detects URL-encoded bypass attempts
+/// 6. Rejects backslashes and control characters (raw or percent-encoded),
+///    because browsers normalize inputs such as `/\host` into `//host`
+/// 7. Rejects a leading quote, which the meta refresh URL parser drops
+///
+/// Non-ASCII paths, raw or percent-encoded as UTF-8, are accepted.
 ///
 /// # Arguments
 ///
@@ -78,9 +84,30 @@ pub fn validate_redirect_url(
 	if trimmed.is_empty() {
 		return Ok(());
 	}
+	// Browsers read `\` as `/` and drop tabs, newlines and leading C0
+	// controls, so `/\evil.com` or `/<TAB>/evil.com` navigates to `//evil.com`
+	// even though it does not start with `//` here.
+	if trimmed.contains('\\') || trimmed.chars().any(char::is_control) {
+		return Err(RedirectValidationError::SuspiciousEncoding);
+	}
+	// The `<meta http-equiv="refresh">` URL parser drops one leading quote,
+	// so `'//evil.com` embedded as `content="0;url='//evil.com"` navigates to
+	// `//evil.com`.
+	if trimmed.starts_with(['\'', '"']) {
+		return Err(RedirectValidationError::SuspiciousEncoding);
+	}
 
-	// Check for URL-encoded bypass attempts before any other processing
-	let decoded = percent_decode(trimmed);
+	// Check for URL-encoded bypass attempts before any other processing.
+	// Decoded bytes are read as UTF-8 so that encoded non-ASCII text is not
+	// mistaken for C1 control characters.
+	let decoded = percent_decode_str(trimmed).decode_utf8_lossy();
+	if decoded != trimmed
+		&& (decoded.contains('\\')
+			|| decoded.starts_with("//")
+			|| decoded.chars().any(char::is_control))
+	{
+		return Err(RedirectValidationError::SuspiciousEncoding);
+	}
 	if decoded != trimmed {
 		// Re-check the decoded version for dangerous patterns
 		if has_dangerous_protocol(&decoded) {
@@ -188,38 +215,6 @@ fn has_dangerous_protocol(url: &str) -> bool {
 		|| trimmed.starts_with("vbscript:")
 }
 
-/// Simple percent-decoding for bypass detection
-fn percent_decode(input: &str) -> String {
-	let mut result = String::with_capacity(input.len());
-	let bytes = input.as_bytes();
-	let mut i = 0;
-
-	while i < bytes.len() {
-		if bytes[i] == b'%'
-			&& i + 2 < bytes.len()
-			&& let (Some(hi), Some(lo)) = (hex_digit(bytes[i + 1]), hex_digit(bytes[i + 2]))
-		{
-			result.push((hi * 16 + lo) as char);
-			i += 3;
-			continue;
-		}
-		result.push(bytes[i] as char);
-		i += 1;
-	}
-
-	result
-}
-
-/// Convert a hex digit byte to its numeric value
-fn hex_digit(byte: u8) -> Option<u8> {
-	match byte {
-		b'0'..=b'9' => Some(byte - b'0'),
-		b'a'..=b'f' => Some(byte - b'a' + 10),
-		b'A'..=b'F' => Some(byte - b'A' + 10),
-		_ => None,
-	}
-}
-
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -245,6 +240,56 @@ mod tests {
 
 		// Assert
 		assert!(result.is_ok(), "Expected Ok for relative URL: {url}");
+	}
+
+	// Browsers read `\` as `/` and drop tabs, newlines and leading C0 controls,
+	// and the meta refresh parser drops a leading quote, so each of these
+	// reaches `//evil.test` in a browser.
+	#[rstest]
+	#[case("'//evil.test/path")]
+	#[case("\"//evil.test/path")]
+	#[case("' //evil.test/path")]
+	#[case("/\\evil.test/path")]
+	#[case("\\\\evil.test/path")]
+	#[case("\\/evil.test/path")]
+	#[case("/\\example.com/path")]
+	#[case("/\t/evil.test/path")]
+	#[case("/\n/evil.test/path")]
+	#[case("\u{1}//evil.test/path")]
+	#[case("/%5cevil.test/path")]
+	#[case("/%5Cevil.test/path")]
+	#[case("/%2f%2fevil.test/path")]
+	#[case("%2F%2Fevil.test/path")]
+	fn test_validate_redirect_url_rejects_network_path_variants(#[case] url: &str) {
+		// Arrange
+		let hosts = allowed_hosts();
+
+		// Act
+		let result = validate_redirect_url(url, &hosts);
+
+		// Assert
+		assert_eq!(
+			result,
+			Err(RedirectValidationError::SuspiciousEncoding),
+			"Expected SuspiciousEncoding for network-path variant: {url:?}"
+		);
+	}
+
+	#[rstest]
+	#[case("/日本語/")]
+	#[case("/search?q=%E6%97%A5%E6%9C%AC")]
+	#[case("/users/caf%C3%A9/")]
+	#[case("/files/a%2Fb")]
+	#[case("/login?next=/dashboard")]
+	fn test_validate_redirect_url_allows_non_ascii_and_encoded_paths(#[case] url: &str) {
+		// Arrange
+		let hosts = allowed_hosts();
+
+		// Act
+		let result = validate_redirect_url(url, &hosts);
+
+		// Assert
+		assert_eq!(result, Ok(()), "Expected Ok for same-origin path: {url}");
 	}
 
 	#[rstest]

@@ -4607,6 +4607,14 @@ impl BaseCommand for RunServerCommand {
 	}
 }
 
+/// A request admission policy and the type name of the runserver hook that
+/// supplied it.
+#[cfg(feature = "server")]
+type SuppliedRequestAdmission = (
+	&'static str,
+	std::sync::Arc<dyn reinhardt_server::RequestAdmission>,
+);
+
 impl RunServerCommand {
 	/// Collect runserver hooks from inventory and run their `validate()` phase.
 	///
@@ -4646,6 +4654,59 @@ impl RunServerCommand {
 	#[cfg(feature = "server")]
 	pub(crate) async fn validate_hooks_only_for_tests(ctx: &CommandContext) -> CommandResult<()> {
 		Self::validate_hooks_only(ctx).await.map(|_| ())
+	}
+
+	/// Run every hook's `on_server_start()`, then collect the request admission
+	/// policy from `request_admission()`.
+	///
+	/// Admission is collected only after every startup phase has completed, so
+	/// a hook can return a policy that any startup phase registered in DI. At
+	/// most one hook may supply a policy: discovery order is not stable across
+	/// builds, so a conflict aborts startup and names every supplying hook
+	/// instead of picking one. Returns the policy together with the type name
+	/// of the hook that supplied it.
+	#[cfg(feature = "server")]
+	async fn start_hooks(
+		hooks: &[crate::runserver_hooks::CollectedRunserverHook],
+		runserver_ctx: &crate::runserver_hooks::RunserverContext,
+	) -> CommandResult<Option<SuppliedRequestAdmission>> {
+		for collected in hooks {
+			collected
+				.hook
+				.on_server_start(runserver_ctx)
+				.await
+				.map_err(|e| {
+					crate::CommandError::ExecutionError(format!(
+						"Runserver hook startup failed for {}: {}",
+						collected.type_name, e
+					))
+				})?;
+		}
+
+		let mut supplied = Vec::new();
+		for collected in hooks {
+			let admission = collected
+				.hook
+				.request_admission(runserver_ctx)
+				.await
+				.map_err(|e| {
+					crate::CommandError::ExecutionError(format!(
+						"Runserver hook request admission failed for {}: {}",
+						collected.type_name, e
+					))
+				})?;
+			if let Some(admission) = admission {
+				supplied.push((collected.type_name, admission));
+			}
+		}
+		if supplied.len() > 1 {
+			let hook_names: Vec<&str> = supplied.iter().map(|(type_name, _)| *type_name).collect();
+			return Err(crate::CommandError::ExecutionError(format!(
+				"Runserver hooks {} each supply a request admission policy; at most one hook may supply one",
+				hook_names.join(", ")
+			)));
+		}
+		Ok(supplied.pop())
 	}
 
 	/// Run the development server
@@ -4773,25 +4834,17 @@ impl RunServerCommand {
 			}
 		}
 
-		// Invoke runserver hook startup phase (#3442)
-		if !hooks.is_empty() {
+		// Invoke the runserver hook startup phase (#3442), then collect the
+		// request admission policy, which may depend on services it registered.
+		let request_admission = if hooks.is_empty() {
+			None
+		} else {
 			let runserver_ctx = crate::runserver_hooks::RunserverContext {
 				shutdown_coordinator: coordinator.clone(),
 				di_context: di_context.clone(),
 			};
-			for collected in &hooks {
-				collected
-					.hook
-					.on_server_start(&runserver_ctx)
-					.await
-					.map_err(|e| {
-						crate::CommandError::ExecutionError(format!(
-							"Runserver hook startup failed for {}: {}",
-							collected.type_name, e
-						))
-					})?;
-			}
-		}
+			Self::start_hooks(&hooks, &runserver_ctx).await?
+		};
 
 		#[cfg(feature = "websockets")]
 		let websocket_paths = launch_plan
@@ -4819,6 +4872,12 @@ impl RunServerCommand {
 		let mut server = HttpServer::new(router)
 			.with_di_context(std::sync::Arc::clone(&di_context))
 			.with_middleware(reinhardt_middleware::LoggingMiddleware::new());
+		if let Some((hook_name, admission)) = request_admission {
+			ctx.verbose(&format!(
+				"Using the request admission policy supplied by {hook_name}"
+			));
+			server = server.with_request_admission(admission);
+		}
 		#[cfg(feature = "grpc")]
 		let grpc_routes = launch_plan.grpc;
 
@@ -7810,6 +7869,272 @@ mod tests {
 		assert_static_security_headers(&asset);
 	}
 
+	/// Admission policy whose body budget identifies it in assertions.
+	#[cfg(feature = "server")]
+	struct BudgetAdmission(u64);
+
+	#[cfg(feature = "server")]
+	#[async_trait::async_trait]
+	impl reinhardt_server::RequestAdmission for BudgetAdmission {
+		async fn admit(
+			&self,
+			_head: reinhardt_server::RequestHead<'_>,
+		) -> Result<reinhardt_server::AdmittedRequest, reinhardt_http::Response> {
+			Ok(reinhardt_server::AdmittedRequest::new(
+				self.0,
+				std::time::Duration::from_secs(1),
+				(),
+			))
+		}
+	}
+
+	/// Runserver hook that supplies a [`BudgetAdmission`].
+	#[cfg(feature = "server")]
+	struct BudgetAdmissionHook(u64);
+
+	#[cfg(feature = "server")]
+	#[async_trait::async_trait]
+	impl crate::RunserverHook for BudgetAdmissionHook {
+		async fn request_admission(
+			&self,
+			_ctx: &crate::RunserverContext,
+		) -> Result<
+			Option<std::sync::Arc<dyn reinhardt_server::RequestAdmission>>,
+			Box<dyn std::error::Error + Send + Sync>,
+		> {
+			Ok(Some(std::sync::Arc::new(BudgetAdmission(self.0))))
+		}
+	}
+
+	/// Runserver hook that supplies no admission policy.
+	#[cfg(feature = "server")]
+	struct NoAdmissionHook;
+
+	#[cfg(feature = "server")]
+	#[async_trait::async_trait]
+	impl crate::RunserverHook for NoAdmissionHook {}
+
+	/// Runserver hook whose admission phase fails.
+	#[cfg(feature = "server")]
+	struct FailingAdmissionHook;
+
+	#[cfg(feature = "server")]
+	#[async_trait::async_trait]
+	impl crate::RunserverHook for FailingAdmissionHook {
+		async fn request_admission(
+			&self,
+			_ctx: &crate::RunserverContext,
+		) -> Result<
+			Option<std::sync::Arc<dyn reinhardt_server::RequestAdmission>>,
+			Box<dyn std::error::Error + Send + Sync>,
+		> {
+			Err("policy unavailable".into())
+		}
+	}
+
+	/// Runserver hook that records its startup phase in a shared flag.
+	#[cfg(feature = "server")]
+	struct StartupFlagHook(std::sync::Arc<std::sync::atomic::AtomicBool>);
+
+	#[cfg(feature = "server")]
+	#[async_trait::async_trait]
+	impl crate::RunserverHook for StartupFlagHook {
+		async fn on_server_start(
+			&self,
+			_ctx: &crate::RunserverContext,
+		) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+			self.0.store(true, std::sync::atomic::Ordering::SeqCst);
+			Ok(())
+		}
+	}
+
+	/// Runserver hook that supplies a policy only after the shared flag is set.
+	#[cfg(feature = "server")]
+	struct StartupGatedAdmissionHook(std::sync::Arc<std::sync::atomic::AtomicBool>);
+
+	#[cfg(feature = "server")]
+	#[async_trait::async_trait]
+	impl crate::RunserverHook for StartupGatedAdmissionHook {
+		async fn request_admission(
+			&self,
+			_ctx: &crate::RunserverContext,
+		) -> Result<
+			Option<std::sync::Arc<dyn reinhardt_server::RequestAdmission>>,
+			Box<dyn std::error::Error + Send + Sync>,
+		> {
+			if !self.0.load(std::sync::atomic::Ordering::SeqCst) {
+				return Err("startup phase has not run".into());
+			}
+			Ok(Some(std::sync::Arc::new(BudgetAdmission(7))))
+		}
+	}
+
+	#[cfg(feature = "server")]
+	fn collected_hook(
+		hook: impl crate::RunserverHook + 'static,
+		type_name: &'static str,
+	) -> crate::runserver_hooks::CollectedRunserverHook {
+		crate::runserver_hooks::CollectedRunserverHook {
+			hook: Box::new(hook),
+			type_name,
+		}
+	}
+
+	#[cfg(feature = "server")]
+	#[rstest::fixture]
+	fn runserver_context() -> crate::RunserverContext {
+		crate::RunserverContext {
+			shutdown_coordinator: reinhardt_server::ShutdownCoordinator::new(
+				std::time::Duration::from_secs(1),
+			),
+			di_context: std::sync::Arc::new(
+				reinhardt_di::InjectionContext::builder(std::sync::Arc::new(
+					reinhardt_di::SingletonScope::new(),
+				))
+				.build(),
+			),
+		}
+	}
+
+	/// Body budget the policy grants to a `POST /upload` request.
+	#[cfg(feature = "server")]
+	async fn admitted_body_budget(admission: &dyn reinhardt_server::RequestAdmission) -> u64 {
+		let method = hyper::Method::POST;
+		let uri = hyper::Uri::from_static("/upload");
+		let headers = hyper::HeaderMap::new();
+		admission
+			.admit(reinhardt_server::RequestHead {
+				method: &method,
+				uri: &uri,
+				headers: &headers,
+				remote_addr: None,
+			})
+			.await
+			.unwrap()
+			.max_body_size
+	}
+
+	#[cfg(feature = "server")]
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn start_hooks_returns_the_single_supplied_admission_policy(
+		runserver_context: crate::RunserverContext,
+	) {
+		// Arrange
+		let hooks = [
+			collected_hook(NoAdmissionHook, "NoAdmissionHook"),
+			collected_hook(BudgetAdmissionHook(42), "BudgetAdmissionHook"),
+		];
+
+		// Act
+		let (hook_name, admission) = RunServerCommand::start_hooks(&hooks, &runserver_context)
+			.await
+			.unwrap()
+			.unwrap();
+
+		// Assert
+		assert_eq!(hook_name, "BudgetAdmissionHook");
+		assert_eq!(admitted_body_budget(admission.as_ref()).await, 42);
+	}
+
+	#[cfg(feature = "server")]
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn start_hooks_without_admission_policy_returns_none(
+		runserver_context: crate::RunserverContext,
+	) {
+		// Arrange
+		let hooks = [collected_hook(NoAdmissionHook, "NoAdmissionHook")];
+
+		// Act
+		let admission = RunServerCommand::start_hooks(&hooks, &runserver_context)
+			.await
+			.unwrap();
+
+		// Assert
+		assert!(admission.is_none());
+	}
+
+	#[cfg(feature = "server")]
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn start_hooks_rejects_more_than_one_admission_policy(
+		runserver_context: crate::RunserverContext,
+	) {
+		// Arrange
+		let hooks = [
+			collected_hook(BudgetAdmissionHook(1), "FirstAdmissionHook"),
+			collected_hook(NoAdmissionHook, "NoAdmissionHook"),
+			collected_hook(BudgetAdmissionHook(2), "SecondAdmissionHook"),
+			collected_hook(BudgetAdmissionHook(3), "ThirdAdmissionHook"),
+		];
+
+		// Act
+		let error = RunServerCommand::start_hooks(&hooks, &runserver_context)
+			.await
+			.err()
+			.expect("startup must fail");
+
+		// Assert
+		assert_eq!(
+			error.to_string(),
+			"Execution error: Runserver hooks FirstAdmissionHook, SecondAdmissionHook, ThirdAdmissionHook each supply a request admission policy; at most one hook may supply one"
+		);
+	}
+
+	#[cfg(feature = "server")]
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn start_hooks_reports_the_failing_admission_hook(
+		runserver_context: crate::RunserverContext,
+	) {
+		// Arrange
+		let hooks = [collected_hook(FailingAdmissionHook, "FailingAdmissionHook")];
+
+		// Act
+		let error = RunServerCommand::start_hooks(&hooks, &runserver_context)
+			.await
+			.err()
+			.expect("startup must fail");
+
+		// Assert
+		assert_eq!(
+			error.to_string(),
+			"Execution error: Runserver hook request admission failed for FailingAdmissionHook: policy unavailable"
+		);
+	}
+
+	#[cfg(feature = "server")]
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn start_hooks_collects_admission_after_every_startup_phase(
+		runserver_context: crate::RunserverContext,
+	) {
+		// Arrange: the admission hook is discovered before the hook whose
+		// startup phase it depends on.
+		let started = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+		let hooks = [
+			collected_hook(
+				StartupGatedAdmissionHook(std::sync::Arc::clone(&started)),
+				"StartupGatedAdmissionHook",
+			),
+			collected_hook(
+				StartupFlagHook(std::sync::Arc::clone(&started)),
+				"StartupFlagHook",
+			),
+		];
+
+		// Act
+		let (hook_name, admission) = RunServerCommand::start_hooks(&hooks, &runserver_context)
+			.await
+			.unwrap()
+			.unwrap();
+
+		// Assert
+		assert_eq!(hook_name, "StartupGatedAdmissionHook");
+		assert_eq!(admitted_body_budget(admission.as_ref()).await, 7);
+	}
+
 	#[rstest::rstest]
 	#[tokio::test]
 	async fn asset_entrypoint_requires_manifest_serving() {
@@ -9662,6 +9987,8 @@ name = "db.sqlite3"
 					referenced_column: "id".to_string(),
 					on_delete: ForeignKeyAction::Cascade,
 					on_update: ForeignKeyAction::Cascade,
+					shared_columns: Vec::new(),
+					constraint_name: None,
 				},
 			));
 			model.add_foreign_key_constraint_from_field("parent_id");

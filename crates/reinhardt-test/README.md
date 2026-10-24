@@ -71,11 +71,11 @@ Add `reinhardt` to your `Cargo.toml`:
 <!-- reinhardt-version-sync:3 -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.4.0-alpha.20", features = ["test"] }
+reinhardt = { version = "0.4.0-alpha.22", features = ["test"] }
 
 # Or use a preset:
-# reinhardt = { version = "0.4.0-alpha.20", features = ["standard"] }  # Recommended
-# reinhardt = { version = "0.4.0-alpha.20", features = ["full"] }      # All features
+# reinhardt = { version = "0.4.0-alpha.22", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.4.0-alpha.22", features = ["full"] }      # All features
 ```
 
 Then import testing features:

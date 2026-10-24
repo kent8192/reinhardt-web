@@ -2784,6 +2784,54 @@ mod tests {
 		assert_eq!(sql, "ANALYZE \"users\"");
 	}
 
+	#[rstest]
+	#[case::postgres(
+		DatabaseType::Postgres,
+		"ANALYZE VERBOSE \"safe\"\"; INSERT INTO audit_probe (id) VALUES (7); --\" (\"col\"\"; DROP TABLE users; --\", \"tick`col\")"
+	)]
+	#[case::mysql(
+		DatabaseType::Mysql,
+		"ANALYZE TABLE `safe\"; INSERT INTO audit_probe (id) VALUES (7); --`"
+	)]
+	#[case::sqlite(
+		DatabaseType::Sqlite,
+		"ANALYZE \"safe\"\"; INSERT INTO audit_probe (id) VALUES (7); --\""
+	)]
+	fn test_analyze_builder_escapes_embedded_quotes_in_identifiers(
+		#[case] db_type: DatabaseType,
+		#[case] expected_sql: &str,
+	) {
+		// Arrange
+		let backend: Arc<dyn DatabaseBackend> = match db_type {
+			DatabaseType::Postgres => Arc::new(MockBackend),
+			DatabaseType::Mysql => Arc::new(MockMysqlBackend),
+			DatabaseType::Sqlite => Arc::new(MockSqliteBackend),
+		};
+		let builder = AnalyzeBuilder::new(backend)
+			.table("safe\"; INSERT INTO audit_probe (id) VALUES (7); --")
+			.columns(vec!["col\"; DROP TABLE users; --", "tick`col"])
+			.verbose(true);
+
+		// Act
+		let sql = builder.build();
+
+		// Assert: every name stays inside one quoted identifier.
+		assert_eq!(sql, expected_sql);
+	}
+
+	#[test]
+	fn test_analyze_builder_mysql_escapes_embedded_backticks() {
+		// Arrange
+		let backend = Arc::new(MockMysqlBackend);
+		let builder = AnalyzeBuilder::new(backend).table("safe`; DROP TABLE users; -- ");
+
+		// Act
+		let sql = builder.build();
+
+		// Assert
+		assert_eq!(sql, "ANALYZE TABLE `safe``; DROP TABLE users; -- `");
+	}
+
 	// ==========================================
 	// INSERT FROM SELECT Tests
 	// ==========================================

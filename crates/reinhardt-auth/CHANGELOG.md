@@ -7,6 +7,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.22](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.4.0-alpha.21...reinhardt-auth@v0.4.0-alpha.22) - 2026-10-22
+
+### Documentation
+
+- update version references to v0.4.0
+- update version references to v0.3.25
+
+### Fixed
+
+- *(auth)* [**breaking**] pin OAuth and OIDC endpoints per request
+- *(auth)* [**breaking**] revalidate cookie sessions and enforce CSRF
+- *(security)* [**breaking**] preserve configuration and typed values in hardening
+- *(auth)* validate csrf only for authenticated sessions
+- *(security)* reject non-global ipv6 and overlay identifiers
+- *(auth)* bound oauth dns resolution within the request deadline
+- *(security)* permit globally reachable IPv4 anycast exceptions
+- *(security)* reject the non-global IPv4 relay anycast address
+- *(auth)* accept NAT64 addresses that embed public IPv4
+
+### Maintenance
+
+- *(merge)* integrate main into security remediation branch
+- *(release)* target 0.3.24 instead of 0.4.0
+- *(sync)* merge main into develop/0.4.0
+
+### Security
+
+- *(auth)* enforce the session TTL in CookieSessionBackend
+
+### Testing
+
+- *(auth)* align OAuth mocks with configured token endpoints
+
+## [0.4.0-alpha.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.4.0-alpha.20...reinhardt-auth@v0.4.0-alpha.21) - 2026-10-18
+
+### Added
+
+- feat!(auth): add RFC 8628 device authorization grant to oauth2_server
+
+### Fixed
+
+- *(auth)* conclude expired device polls and rate-limit user code lookups by address
+- *(auth)* enforce audience allowlist and allow unscoped families on refresh
+- *(auth)* deserialize before deleting in DatabaseSessionBackend::take
+- *(auth)* serialize InMemorySessionBackend writes with take
+
+### Maintenance
+
+- *(sync)* merge main into develop/0.4.0
+
+### Security
+
+- *(auth)* enforce the session TTL in CookieSessionBackend
+
 ## [0.4.0-alpha.20](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.4.0-alpha.19...reinhardt-auth@v0.4.0-alpha.20) - 2026-10-06
 
 ### Changed
@@ -248,6 +302,47 @@ Mount the `OAuthHandler` authorization and token endpoints, then have clients us
 
 - merge main into develop/0.4.0
 - merge anyhow removal into atomic transactions
+
+## [0.3.25](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.3.24...reinhardt-auth@v0.3.25) - 2026-10-20
+
+### Security
+
+- *(auth)* enforce the session TTL in CookieSessionBackend
+
+## [0.3.24](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.3.23...reinhardt-auth@v0.3.24) - 2026-10-14
+
+### Fixed
+
+- *(auth)* [**breaking**] pin OAuth and OIDC endpoints per request
+- *(auth)* [**breaking**] revalidate cookie sessions and enforce CSRF
+- *(security)* [**breaking**] preserve configuration and typed values in hardening
+- *(auth)* validate csrf only for authenticated sessions
+- *(security)* reject non-global ipv6 and overlay identifiers
+- *(auth)* bound oauth dns resolution within the request deadline
+- *(security)* permit globally reachable IPv4 anycast exceptions
+- *(security)* reject the non-global IPv4 relay anycast address
+- *(auth)* accept NAT64 addresses that embed public IPv4
+
+### Maintenance
+
+- *(merge)* integrate main into security remediation branch
+
+### Testing
+
+- *(auth)* align OAuth mocks with configured token endpoints
+
+### Fixed
+
+- Reject the non-global `192.88.99.2` relay anycast address for literal and DNS-resolved OAuth/OIDC destinations.
+
+- Bound OAuth endpoint DNS resolution by the connection deadline and include it in the request budget.
+
+- Reject non-global and overlay IPv6 assignments for OAuth requests while retaining routable special-purpose locator exceptions.
+
+- Decline anonymous and expired sessions before enforcing session-authentication CSRF checks.
+
+- Share custom CSRF headers with session authentication and configure token issuance for custom session cookies.
+
 
 ## [0.3.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.3.20...reinhardt-auth@v0.3.21) - 2026-10-05
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Constrain incompatible dependencies only in a disposable release baseline checkout."""
+"""Constrain incompatible dependencies and features only in a disposable release baseline checkout."""
 
 import json
 from pathlib import Path
@@ -33,11 +33,28 @@ def prepare(root):
                 "salsa": "=0.28.2",
                 "salsa-macro-rules": "=0.28.2",
             })
-        if not constraints:
+        forwards = {}
+        if package["name"] == "reinhardt-test" and package["version"] == "0.4.0-alpha.20":
+            # The published pgvector feature enables reinhardt-db/pgvector without
+            # reinhardt-admin/pgvector, so its admin feature cannot compile under
+            # cargo-semver-checks' feature set (reinhardt-web#6820). reinhardt-admin
+            # accepts that combination since reinhardt-web#6686. Remove when the
+            # release baseline is newer than 0.4.0-alpha.20.
+            # Ideal implementation: use the release-tag manifests without edits.
+            forwards["pgvector"] = "reinhardt-admin?/pgvector"
+        if not constraints and not forwards:
             continue
         manifest = Path(package["manifest_path"]).resolve()
         manifest.relative_to(root)
         content = manifest.read_text()
+        for feature, forward in forwards.items():
+            values = package["features"].get(feature, [])
+            if forward in values:
+                continue
+            declaration = f"\n{feature} = {json.dumps(values)}\n"
+            if content.count(declaration) != 1:
+                raise ValueError(f"Unexpected {feature} feature in {manifest}")
+            content = content.replace(declaration, f"\n{feature} = {json.dumps([*values, forward])}\n")
         for name, requirement in constraints.items():
             if name in dependencies:
                 if dependencies[name]["req"] != requirement:

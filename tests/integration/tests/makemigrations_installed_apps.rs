@@ -138,6 +138,8 @@ fn register_model(app: &str, table: &str, provider: Option<&str>) {
 				referenced_column: "id".to_owned(),
 				on_delete: ForeignKeyAction::Cascade,
 				on_update: ForeignKeyAction::NoAction,
+				shared_columns: Vec::new(),
+				constraint_name: None,
 			}),
 		);
 	}

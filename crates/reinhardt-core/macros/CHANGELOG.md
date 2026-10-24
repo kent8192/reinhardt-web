@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.22](https://github.com/kent8192/reinhardt-web/compare/reinhardt-macros@v0.4.0-alpha.21...reinhardt-macros@v0.4.0-alpha.22) - 2026-10-22
+
+### Added
+
+- *(macros,db)* [**breaking**] lead foreign keys with columns shared by both models
+- *(macros)* give generated relation id fields the relation's visibility
+
+### Fixed
+
+- *(macros)* compare explicit foreign key constraint names without allocating
+
+## [0.4.0-alpha.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-macros@v0.4.0-alpha.20...reinhardt-macros@v0.4.0-alpha.21) - 2026-10-18
+
+### Fixed
+
+- *(macros,conf)* redact #[setting(secret)] fields in generated Debug
+- *(macros)* reject async #[routes] on wasm with a compile-time diagnostic
+
+### Maintenance
+
+- *(sync)* merge main into develop/0.4.0
+
 ## [0.4.0-alpha.20](https://github.com/kent8192/reinhardt-web/compare/reinhardt-macros@v0.4.0-alpha.19...reinhardt-macros@v0.4.0-alpha.20) - 2026-10-06
 
 ### Added

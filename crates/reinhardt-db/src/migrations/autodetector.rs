@@ -127,6 +127,13 @@ pub struct ForeignKeyInfo {
 	pub on_delete: ForeignKeyAction,
 	/// ON UPDATE action (Cascade, SetNull, Restrict, NoAction, SetDefault)
 	pub on_update: ForeignKeyAction,
+	/// Columns that lead the key, as `(local, referenced)` pairs, before the
+	/// field's own column and [`Self::referenced_column`]. Empty for a
+	/// single-column key.
+	pub shared_columns: Vec<(String, String)>,
+	/// Constraint name to use instead of the generated
+	/// [`foreign_key_constraint_name`].
+	pub constraint_name: Option<String>,
 }
 
 /// Field state for migration detection
@@ -1024,14 +1031,21 @@ impl ModelState {
 		if let Some(field) = self.fields.get(field_name)
 			&& let Some(ref fk_info) = field.foreign_key
 		{
+			let (mut fields, mut referenced_columns): (Vec<_>, Vec<_>) =
+				fk_info.shared_columns.iter().cloned().unzip();
+			fields.push(field_name.to_string());
+			referenced_columns.push(fk_info.referenced_column.clone());
 			let constraint = ConstraintDefinition {
-				name: foreign_key_constraint_name(&self.table_name, field_name),
+				name: fk_info
+					.constraint_name
+					.clone()
+					.unwrap_or_else(|| foreign_key_constraint_name(&self.table_name, field_name)),
 				constraint_type: "foreign_key".to_string(),
-				fields: vec![field_name.to_string()],
+				fields,
 				expression: None,
 				foreign_key_info: Some(ForeignKeyConstraintInfo {
 					referenced_table: fk_info.referenced_table.clone(),
-					referenced_columns: vec![fk_info.referenced_column.clone()],
+					referenced_columns,
 					on_delete: fk_info.on_delete,
 					on_update: fk_info.on_update,
 				}),
@@ -1847,6 +1861,8 @@ impl ProjectState {
 			referenced_column: "id".to_string(),
 			on_delete: ForeignKeyAction::Cascade,
 			on_update: ForeignKeyAction::Cascade,
+			shared_columns: Vec::new(),
+			constraint_name: None,
 		});
 		model_state.add_field(from_field);
 
@@ -1860,6 +1876,8 @@ impl ProjectState {
 			referenced_column: "id".to_string(),
 			on_delete: ForeignKeyAction::Cascade,
 			on_update: ForeignKeyAction::Cascade,
+			shared_columns: Vec::new(),
+			constraint_name: None,
 		});
 		model_state.add_field(to_field);
 
@@ -10561,6 +10579,8 @@ mod tests {
 		}
 	}
 
+	// With `pgvector`, `create_operation_with_state` always emits
+	// `CreateNamedIndex`, so only the default build uses `CreateIndex` here.
 	#[cfg(not(feature = "pgvector"))]
 	#[test]
 	fn ordinary_index_addition_uses_legacy_create_index_operation() {
@@ -10602,7 +10622,6 @@ mod tests {
 		);
 	}
 
-	#[cfg(not(feature = "pgvector"))]
 	#[test]
 	fn partial_index_addition_preserves_where_clause() {
 		let key = ("auth".to_string(), "Token".to_string());
@@ -10640,9 +10659,10 @@ mod tests {
 		);
 	}
 
-	#[cfg(not(feature = "pgvector"))]
-	#[test]
-	fn apply_migration_operations_replays_legacy_partial_index_lifecycle() {
+	/// Replays a partial index on `auth_token.user_id` and returns the state,
+	/// the replayed `CreateIndex`, and the hashed definition it produced.
+	fn replay_partial_auth_token_index() -> (ProjectState, super::super::Operation, IndexDefinition)
+	{
 		let create_table = super::super::Operation::CreateTable {
 			name: "auth_token".to_string(),
 			columns: Vec::new(),
@@ -10662,23 +10682,42 @@ mod tests {
 			mysql_options: None,
 			operator_class: None,
 		};
-		let drop_index = super::super::Operation::DropIndex {
-			table: "auth_token".to_string(),
-			columns: vec!["user_id".to_string()],
-		};
-		let mut state = ProjectState::new();
-
-		state.apply_migration_operations(&[create_table, create_index], "auth");
-		let model = state
-			.find_model_by_table("auth_token")
-			.expect("legacy index replay should create the model index");
-		assert_eq!(model.indexes.len(), 1);
-		assert_eq!(
-			model.indexes[0].where_clause.as_deref(),
-			Some("consumed_at IS NULL")
+		let mut expected_index = IndexDefinition::new(
+			super::super::operations::generated_index_name(
+				"auth_token",
+				&["user_id".to_string()],
+				None,
+				Some("consumed_at IS NULL"),
+			),
+			vec!["user_id".to_string()],
+			false,
 		);
+		expected_index.where_clause = Some("consumed_at IS NULL".to_string());
+		let mut state = ProjectState::new();
+		state.apply_migration_operations(&[create_table, create_index.clone()], "auth");
+		assert_eq!(
+			state
+				.find_model_by_table("auth_token")
+				.expect("partial index replay should create the model")
+				.indexes,
+			vec![expected_index.clone()]
+		);
+		(state, create_index, expected_index)
+	}
 
+	#[test]
+	fn apply_migration_operations_replays_partial_index_lifecycle() {
+		// Arrange
+		let (mut state, create_index, _) = replay_partial_auth_token_index();
+		let drop_index = create_index
+			.to_reverse_operation(&state)
+			.expect("partial index creation should be reversible")
+			.expect("partial index creation should produce a drop operation");
+
+		// Act
 		state.apply_migration_operations(&[drop_index], "auth");
+
+		// Assert
 		assert!(
 			state
 				.find_model_by_table("auth_token")
@@ -10688,7 +10727,30 @@ mod tests {
 		);
 	}
 
-	#[cfg(not(feature = "pgvector"))]
+	#[test]
+	fn apply_migration_operations_drop_index_keeps_hashed_partial_index() {
+		// Arrange
+		let (mut state, _, expected_index) = replay_partial_auth_token_index();
+		let drop_index = super::super::Operation::DropIndex {
+			table: "auth_token".to_string(),
+			columns: vec!["user_id".to_string()],
+		};
+
+		// Act
+		state.apply_migration_operations(&[drop_index], "auth");
+
+		// Assert
+		// A column-addressed `DropIndex` names only the unhashed physical index
+		// (#6443), so the hashed partial index must survive the replay.
+		assert_eq!(
+			state
+				.find_model_by_table("auth_token")
+				.expect("model should remain after replaying DropIndex")
+				.indexes,
+			vec![expected_index]
+		);
+	}
+
 	#[test]
 	fn replay_drop_index_removes_only_the_legacy_physical_index() {
 		// Arrange
@@ -10726,45 +10788,6 @@ mod tests {
 		assert_eq!(names, vec!["author_id_custom_idx"]);
 	}
 
-	#[cfg(feature = "pgvector")]
-	#[test]
-	fn partial_index_addition_preserves_where_clause_with_pgvector_enabled() {
-		let key = ("auth".to_string(), "Token".to_string());
-		let source = build_project_state(vec![(
-			key.clone(),
-			build_model_state("auth", "Token", Vec::new(), Vec::new(), Vec::new()),
-		)]);
-		let mut index = IndexDefinition::new(
-			"auth_tokens_user_id_idx",
-			vec!["user_id".to_string()],
-			false,
-		);
-		index.where_clause = Some("consumed_at IS NULL".to_string());
-		let target = build_project_state(vec![(
-			key,
-			build_model_state("auth", "Token", Vec::new(), vec![index], Vec::new()),
-		)]);
-
-		let operations = MigrationAutodetector::new(source, target).generate_operations();
-
-		assert_eq!(
-			operations,
-			vec![super::super::Operation::CreateNamedIndex {
-				table: "auth_token".to_string(),
-				name: "auth_tokens_user_id_idx".to_string(),
-				columns: vec!["user_id".to_string()],
-				unique: false,
-				index_type: None,
-				where_clause: Some("consumed_at IS NULL".to_string()),
-				concurrently: false,
-				expressions: None,
-				mysql_options: None,
-				operator_class: None,
-			}]
-		);
-	}
-
-	#[cfg(not(feature = "pgvector"))]
 	#[test]
 	fn ordinary_index_removal_preserves_definition_for_rollback() {
 		let key = ("catalog".to_string(), "Product".to_string());
@@ -11655,7 +11678,6 @@ mod tests {
 		);
 	}
 
-	#[cfg(not(feature = "pgvector"))]
 	#[test]
 	fn create_index_replay_preserves_concurrently_through_reverse_sql() {
 		// Arrange
@@ -11701,7 +11723,7 @@ mod tests {
 		));
 		assert!(matches!(
 			&reverse,
-			super::super::Operation::CreateIndexRepair {
+			super::super::Operation::CreateNamedIndex {
 				concurrently: true,
 				..
 			}
@@ -11713,7 +11735,6 @@ mod tests {
 		);
 	}
 
-	#[cfg(not(feature = "pgvector"))]
 	#[test]
 	fn create_index_repair_replay_preserves_mysql_options_through_reverse_sql() {
 		// Arrange
@@ -11763,7 +11784,7 @@ mod tests {
 		));
 		assert!(matches!(
 			&reverse,
-			super::super::Operation::CreateIndexRepair {
+			super::super::Operation::CreateNamedIndex {
 				mysql_options: Some(options),
 				..
 			} if *options == mysql_options
@@ -13602,6 +13623,8 @@ mod tests {
 			referenced_column: "id".to_string(),
 			on_delete: ForeignKeyAction::Cascade,
 			on_update: ForeignKeyAction::Cascade,
+			shared_columns: Vec::new(),
+			constraint_name: None,
 		});
 		field
 	}
@@ -19005,6 +19028,8 @@ mod tests {
 				referenced_column: "id".to_string(),
 				on_delete: ForeignKeyAction::Cascade,
 				on_update: ForeignKeyAction::Cascade,
+				shared_columns: Vec::new(),
+				constraint_name: None,
 			},
 		)
 	}
@@ -19305,7 +19330,49 @@ mod state_builder_tests {
 			referenced_column: "id".to_string(),
 			on_delete: ForeignKeyAction::Cascade,
 			on_update: ForeignKeyAction::NoAction,
+			shared_columns: Vec::new(),
+			constraint_name: None,
 		}
+	}
+
+	#[rstest]
+	fn foreign_key_constraint_leads_with_shared_columns_under_its_explicit_name() {
+		// Arrange
+		let mut model = ModelState::new("workspaces", "Artifact");
+		model.table_name = "artifacts".to_string();
+		model.add_field(FieldState::with_foreign_key(
+			"task_id",
+			FieldType::Uuid,
+			false,
+			ForeignKeyInfo {
+				referenced_table: "tasks".to_string(),
+				referenced_column: "id".to_string(),
+				on_delete: ForeignKeyAction::Cascade,
+				on_update: ForeignKeyAction::Restrict,
+				shared_columns: vec![("tenant".to_string(), "tenant".to_string())],
+				constraint_name: Some("artifacts_task_id_fkey".to_string()),
+			},
+		));
+
+		// Act
+		model.add_foreign_key_constraint_from_field("task_id");
+
+		// Assert
+		assert_eq!(
+			model.constraints,
+			vec![ConstraintDefinition {
+				name: "artifacts_task_id_fkey".to_string(),
+				constraint_type: "foreign_key".to_string(),
+				fields: vec!["tenant".to_string(), "task_id".to_string()],
+				expression: None,
+				foreign_key_info: Some(ForeignKeyConstraintInfo {
+					referenced_table: "tasks".to_string(),
+					referenced_columns: vec!["tenant".to_string(), "id".to_string()],
+					on_delete: ForeignKeyAction::Cascade,
+					on_update: ForeignKeyAction::Restrict,
+				}),
+			}]
+		);
 	}
 
 	#[rstest]

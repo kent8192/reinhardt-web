@@ -6,6 +6,10 @@ HTTP request and response handling for the Reinhardt framework
 
 Core HTTP abstractions for the Reinhardt framework. Provides comprehensive request and response types, header handling, cookie management, content negotiation, and streaming support with a Django/DRF-inspired API design.
 
+`ChunkedUploadManager` requires each chunk to match its declared size (the
+final chunk must match the remaining bytes) and rejects excess data before
+writing it to disk.
+
 ## Features
 
 ### Implemented ✓
@@ -102,11 +106,11 @@ Add `reinhardt` to your `Cargo.toml`:
 <!-- reinhardt-version-sync:3 -->
 ```toml
 [dependencies]
-reinhardt = "0.4.0-alpha.20"
+reinhardt = "0.4.0-alpha.22"
 
 # Or use a preset with parsers support:
-# reinhardt = { version = "0.4.0-alpha.20", features = ["standard"] }  # Recommended
-# reinhardt = { version = "0.4.0-alpha.20", features = ["full"] }      # All features
+# reinhardt = { version = "0.4.0-alpha.22", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.4.0-alpha.22", features = ["full"] }      # All features
 ```
 
 **Note:** HTTP types are available through the main `reinhardt` crate, which provides a unified interface to all framework components.

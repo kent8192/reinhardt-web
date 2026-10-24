@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.22](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.4.0-alpha.21...reinhardt-pages@v0.4.0-alpha.22) - 2026-10-22
+
+### Fixed
+
+- *(http)* [**breaking**] validate redirect authorities and referer origins
+
+### Maintenance
+
+- *(release)* target 0.3.24 instead of 0.4.0
+- *(sync)* merge main into develop/0.4.0
+
+### Testing
+
+- *(pages)* cover browser-normalized targets in Redirect::validated
+
+## [0.4.0-alpha.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.4.0-alpha.20...reinhardt-pages@v0.4.0-alpha.21) - 2026-10-18
+
+### Added
+
+- *(pages)* expose the current route to components and add active links
+
+### Documentation
+
+- *(pages)* clarify RouterNotInstalled handling for route readers
+
+### Fixed
+
+- *(pages)* let an explicit class attribute win over Link active_class
+
+### Security
+
+- *(pages)* check Redirect::new targets with the redirect validator
+
+### Testing
+
+- *(pages)* flush passive effects in the active-link wasm test
+- *(pages)* cover quoted targets in Redirect::validated
+
 ## [0.4.0-alpha.19](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.4.0-alpha.18...reinhardt-pages@v0.4.0-alpha.19) - 2026-10-03
 
 ### Documentation
@@ -207,6 +245,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - *(pages)* support optional typed query extraction across route components, layouts, loaders, page props, and manual request props; optional loader cache identity distinguishes missing and present values
+
+## [0.3.25](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.3.24...reinhardt-pages@v0.3.25) - 2026-10-20
+
+### Testing
+
+- *(pages)* cover browser-normalized targets in Redirect::validated
+
+## [0.3.24](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.3.23...reinhardt-pages@v0.3.24) - 2026-10-14
+
+### Fixed
+
+- *(http)* [**breaking**] validate redirect authorities and referer origins
+
 
 ## [0.3.19](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.3.18...reinhardt-pages@v0.3.19) - 2026-09-20
 

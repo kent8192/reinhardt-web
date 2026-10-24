@@ -234,6 +234,31 @@ user: ForeignKeyField<User>,
 Set `db_index = false` when replacing a relationship's default full index with
 a partial index.
 
+### Shared-column foreign keys
+
+List fields that both models carry under the same name in `shared_fields` to
+lead the foreign key with them. A tenant-scoped key then references the
+tenant as well as the primary key:
+
+```rust
+#[field(max_length = 64)]
+tenant: String,
+#[rel(
+    foreign_key,
+    shared_fields = ["tenant"],
+    db_constraint = "artifacts_task_id_fkey",
+    on_delete = Cascade
+)]
+task: ForeignKeyField<Task>,
+```
+
+The constraint is `FOREIGN KEY (tenant, task_id) REFERENCES tasks (tenant, id)`.
+The referenced model needs a unique constraint over the same columns, such as
+`constraints = [unique(fields = ["tenant", "id"], name = "...")]`.
+`shared_fields` applies only to `foreign_key`, and `on_delete` / `on_update`
+cannot be `SetNull` or `SetDefault`, which would overwrite the shared columns.
+`db_constraint` replaces the generated `fk_{table}_{column}` name.
+
 ## `#[admin(model, ...)]` Form Customization
 
 `#[admin(model, ...)]` configures registered model fields only. It does not

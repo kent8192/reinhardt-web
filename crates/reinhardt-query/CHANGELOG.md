@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.22](https://github.com/kent8192/reinhardt-web/compare/reinhardt-query@v0.4.0-alpha.21...reinhardt-query@v0.4.0-alpha.22) - 2026-10-22
+
+### Documentation
+
+- update version references to v0.4.0
+- update version references to v0.3.25
+
+### Fixed
+
+- *(orm)* [**breaking**] prevent SQL structure injection from query inputs
+
+### Maintenance
+
+- *(release)* target 0.3.24 instead of 0.4.0
+- *(sync)* merge main into develop/0.4.0
+
+### Other
+
+- resolve conflicts with origin/main
+
+## [0.4.0-alpha.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-query@v0.4.0-alpha.20...reinhardt-query@v0.4.0-alpha.21) - 2026-10-18
+
+### Added
+
+- feat!(query): make sequence definition types non-exhaustive
+
+### Fixed
+
+- *(query)* preserve MySQL and SQLite boolean grouping
+
+### Maintenance
+
+- *(sync)* merge main into develop/0.4.0
+
 ### Breaking Changes
 
 - `SequenceOption` and `OwnedBy` are now `#[non_exhaustive]` (#6511). Existing variants remain constructible, but downstream `match` expressions must add a wildcard arm; interpreters should return an explicit unsupported-option error from that arm instead of skipping the value. `SequenceDef` is also marked `#[non_exhaustive]`; its fields were already crate-private, so construction through `SequenceDef::new` and its builder methods is unchanged.
@@ -50,6 +84,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - *(query)* integrate main rendering fixes
 - merge main into custom predicate fix
 - *(sync)* merge main into develop/0.4.0
+
+## [0.3.25](https://github.com/kent8192/reinhardt-web/compare/reinhardt-query@v0.3.24...reinhardt-query@v0.3.25) - 2026-10-20
+
+### Other
+
+- resolve conflicts with origin/main
+
+## [0.3.24](https://github.com/kent8192/reinhardt-web/compare/reinhardt-query@v0.3.23...reinhardt-query@v0.3.24) - 2026-10-14
+
+### Fixed
+
+- *(orm)* [**breaking**] prevent SQL structure injection from query inputs
+
 
 ## [0.3.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-query@v0.3.20...reinhardt-query@v0.3.21) - 2026-10-05
 

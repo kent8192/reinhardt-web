@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.22](https://github.com/kent8192/reinhardt-web/compare/reinhardt-utils@v0.4.0-alpha.21...reinhardt-utils@v0.4.0-alpha.22) - 2026-10-22
+
+### Fixed
+
+- *(deps)* remove legacy aws sdk tls transports
+
+### Security
+
+- Use the current AWS SDK HTTPS transport for S3 while preserving SigV4a and HTTP 1.x support, and remove the legacy TLS dependency chain.
+
+## [0.4.0-alpha.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-utils@v0.4.0-alpha.20...reinhardt-utils@v0.4.0-alpha.21) - 2026-10-18
+
+### Added
+
+- *(utils)* add configurable response headers to static file serving
+
+### Documentation
+
+- *(utils)* link static response header builders to the field docs
+
+### Maintenance
+
+- *(sync)* merge main into develop/0.4.0
+
+### Security
+
+- *(staticfiles)* confine hashed and manifest storage paths
+- *(utils)* confine static directory index files to the static root
+
+### Testing
+
+- *(staticfiles)* limit absolute-name storage control to unix
+
 ## [0.4.0-alpha.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-utils@v0.4.0-alpha.17...reinhardt-utils@v0.4.0-alpha.18) - 2026-09-27
 
 ### Documentation
@@ -377,6 +410,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 
 - *(utils)* replace legacy Azure SDK staticfiles backend
+
+## [0.3.25](https://github.com/kent8192/reinhardt-web/compare/reinhardt-utils@v0.3.24...reinhardt-utils@v0.3.25) - 2026-10-20
+
+### Security
+
+- *(utils)* confine static directory index files to the static root
+
 
 ## [0.3.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-utils@v0.3.20...reinhardt-utils@v0.3.21) - 2026-10-05
 
