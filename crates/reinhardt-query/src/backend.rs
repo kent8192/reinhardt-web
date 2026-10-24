@@ -561,6 +561,9 @@ pub trait QueryBuilder {
 	/// Build ALTER TABLE statement
 	///
 	/// Generates SQL and parameter values for an ALTER TABLE statement.
+	/// CockroachDB type changes can produce a semicolon-separated script; use
+	/// [`CockroachDBQueryBuilder::build_alter_table_statements`] to execute those
+	/// changes as individual prepared statements with escaped schema literals.
 	///
 	/// # Arguments
 	///
