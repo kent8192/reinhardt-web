@@ -16,25 +16,13 @@ git-fetch-with-cli = true
 unused-ignored-advisory = "allow"
 ignore = [
   { id = "RUSTSEC-2023-0071", reason = "rsa 0.9.10 is retained by sqlx-mysql and the advisory has no patched release." },
-  # Temporary: AWS SigV4a and elliptic-curve 0.13 require crypto-bigint 0.5;
-  # the timing fixes exist only in >=0.7.6. This accepts the remaining risk,
-  # rather than asserting that secret-dependent arithmetic is unreachable (#6885).
-  # Remove once all signing/authentication parents support a patched version
-  # and fresh full-feature resolution passes without this exception.
-  # Ideal: upstream requirements select patched crypto-bigint without an ignore.
-  { id = "RUSTSEC-2026-0387", reason = "AWS SigV4a and authentication dependencies require crypto-bigint 0.5, with no compatible patched release; temporary timing-risk acceptance and removal conditions are tracked in issue #6885." },
   { id = "RUSTSEC-2025-0141", reason = "bincode 1 and 2 are retained by syntect and the optional authentication serializer; remediation is tracked in issue #5492." },
-  { id = "RUSTSEC-2021-0141", reason = "dotenv remains a direct configuration dependency; migration is tracked in issue #5492." },
   { id = "RUSTSEC-2025-0057", reason = "fxhash is retained transitively by static asset processing dependencies; remediation is tracked in issue #5492." },
-  { id = "RUSTSEC-2026-0174", reason = "http-types is retained by transitive storage dependencies; remediation is tracked in issue #5492." },
-  { id = "RUSTSEC-2024-0384", reason = "instant is retained by transitive dependencies; remediation is tracked in issue #5492." },
   { id = "RUSTSEC-2024-0436", reason = "paste remains a direct workspace dependency; migration is tracked in issue #5492." },
   { id = "RUSTSEC-2024-0370", reason = "proc-macro-error is retained by transitive macro dependencies; remediation is tracked in issue #5492." },
   { id = "RUSTSEC-2026-0173", reason = "proc-macro-error2 is retained by transitive macro dependencies; remediation is tracked in issue #5492." },
   { id = "RUSTSEC-2025-0134", reason = "rustls-pemfile remains a direct commands dependency and is also retained transitively; remediation is tracked in issue #5492." },
-  { id = "RUSTSEC-2024-0320", reason = "yaml-rust is retained by transitive configuration dependencies; remediation is tracked in issue #5492." },
   { id = "RUSTSEC-2026-0249", reason = "smartstring is retained transitively by rhai; no patched release exists, and remediation is tracked in issue #5492." },
-  { id = "RUSTSEC-2026-0258", reason = "h2 0.3.27 is retained by aws-smithy-http-client and hyper 0.14; migration to the patched h2 0.4 line is tracked in issue #5492." },
   # Temporary: unsafe-libyaml is archived upstream and reached only through the
   # deprecated serde_yaml, whose Error type is exposed by reinhardt-urls
   # `to_yaml` methods, so replacing it is a breaking change (issue #6773).
@@ -43,20 +31,14 @@ ignore = [
   # Ideal: YAML output goes through a safe-Rust library such as serde-saphyr,
   # `to_yaml` returns a Reinhardt-owned error, and no RUSTSEC-2024-0449 entry.
   { id = "RUSTSEC-2024-0449", reason = "unsafe-libyaml is unmaintained with no safe upgrade and is retained by the deprecated serde_yaml, a direct dependency exposed in public APIs; migration is tracked in issue #6773." },
-  # Temporary: zip 3.0.0 is only a build-dependency of utoipa-swagger-ui 9.0.2
-  # (reinhardt-rest `openapi-swagger-ui`). No released utoipa-swagger-ui accepts
-  # zip >=9, and the upstream bump (juhaku/utoipa#1645) targets the 10.x line,
-  # which needs utoipa 6; reinhardt-rest re-exports utoipa, so that move is
-  # breaking (issue #6815). The build script never calls the affected `extract`
-  # APIs or creates symlinks, and with the `vendored` feature it only unpacks
-  # the embedded Swagger UI archive, which has no symlinks or SUID/SGID/sticky
-  # bits.
-  # Remove these exceptions once zip 3.x leaves the full-feature graph.
-  # Ideal: reinhardt-rest uses a utoipa-swagger-ui release built against
-  # zip >=9, and no RUSTSEC-2026-0367/0368/0369 entries.
-  { id = "RUSTSEC-2026-0367", reason = "zip 3.0.0 runs only in the utoipa-swagger-ui build script, which unpacks the vendored Swagger UI archive containing no SUID/SGID/sticky bits; no released utoipa-swagger-ui accepts zip >=9 (issue #6815)." },
-  { id = "RUSTSEC-2026-0368", reason = "zip 3.0.0 runs only in the utoipa-swagger-ui build script, which never calls ZipArchive::extract or creates symlinks; no released utoipa-swagger-ui accepts zip >=9 (issue #6815)." },
-  { id = "RUSTSEC-2026-0369", reason = "zip 3.0.0 runs only in the utoipa-swagger-ui build script, which never calls the affected extract APIs or creates symlinks; no released utoipa-swagger-ui accepts zip >=9 (issue #6815)." },
+  # Temporary: astral-tokio-tar is unmaintained with no patched release, and
+  # testcontainers retains it through the latest release, 0.28.0 (issue #6890).
+  # This accepts the abandonment risk for test infrastructure; it makes no
+  # reachability claim.
+  # Remove once testcontainers no longer depends on the crate and fresh
+  # full-feature resolution does not contain it.
+  # Ideal: no astral-tokio-tar in the graph and no RUSTSEC-2026-0440 entry.
+  { id = "RUSTSEC-2026-0440", reason = "astral-tokio-tar is unmaintained with no patched release and is retained by testcontainers; temporary risk acceptance and removal conditions are tracked in issue #6890." },
 ]
 
 [licenses]
@@ -95,9 +77,25 @@ multiple-versions = "deny"
 wildcards = "allow"
 highlight = "simplest-path"
 skip = [
+  # Temporary: wasmtime 36 and psm retain older object-file and DWARF lines while
+  # backtrace 0.3.77 uses the newest ones; upgrading wasmtime does not converge
+  # them (issue #6891).
+  # Remove each allowance once fresh resolution no longer contains that line.
+  # Ideal: no object, gimli, or addr2line entries in bans.skip.
+  { crate = "addr2line:>=0.25,<0.26", reason = "wasmtime 36 retains addr2line 0.25 while backtrace uses the incompatible 0.27 line; tracked in issue #6891." },
+  { crate = "gimli:>=0.32,<0.33", reason = "wasmtime 36 retains gimli 0.32 while backtrace uses the incompatible 0.34 line; tracked in issue #6891." },
+  { crate = "object:>=0.37,<0.40", reason = "wasmtime 36 and psm retain object 0.37 and 0.39 while backtrace uses the incompatible 0.40 line; tracked in issue #6891." },
+  # Temporary: rsa 0.9, jsonwebtoken, and p12-keystore retain older RustCrypto API
+  # lines while aws-sigv4's SigV4a path uses the newer family (issue #6840).
+  # Remove each allowance once fresh resolution no longer contains both lines.
+  # Ideal: one RustCrypto release family and none of these bans.skip entries.
+  { crate = "der:>=0.7,<0.8", reason = "rsa 0.9 and p12-keystore retain der 0.7 while aws-sigv4 uses the incompatible 0.8 line; tracked in issue #6840." },
+  { crate = "pem-rfc7468:>=0.7,<0.8", reason = "der 0.7 retains pem-rfc7468 0.7 while aws-sigv4 uses the incompatible 1.0 line; tracked in issue #6840." },
+  { crate = "pkcs8:>=0.10,<0.11", reason = "rsa 0.9 retains pkcs8 0.10 while aws-sigv4 uses the incompatible 0.11 line; tracked in issue #6840." },
+  { crate = "signature:>=2,<3", reason = "rsa 0.9 and jsonwebtoken retain signature 2 while aws-sigv4 uses the incompatible 3 line; tracked in issue #6840." },
+  { crate = "spki:>=0.7,<0.8", reason = "rsa 0.9 and p12-keystore retain spki 0.7 while aws-sigv4 uses the incompatible 0.8 line; tracked in issue #6840." },
   { crate = "azure_core@0.29.1", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
   { crate = "azure_core_macros@0.3.1", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
-  { crate = "base64@0.21.7", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
   { crate = "base64@0.23.1", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
   { crate = "bincode@1.3.3", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
   # Temporary: proptest 1.12 requires bit-set 0.11 / bit-vec 0.10 while fancy-regex
@@ -177,13 +175,10 @@ skip = [
   { crate = "digest@0.10.7", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
   { crate = "etcetera@0.8.0", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
   { crate = "executor-trait@2.1.2", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
-  { crate = "h2@0.3.27", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
   { crate = "hashbrown@0.14.5", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
   { crate = "hashbrown@0.15.5", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
   { crate = "hmac@0.12.1", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
-  { crate = "http-body@0.4.6", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
   { crate = "http@0.2.12", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
-  { crate = "hyper@0.14.32", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
   { crate = "itertools@0.10.5", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
   { crate = "linux-raw-sys@0.4.15", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
   { crate = "matchit@0.8.4", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
@@ -210,8 +205,6 @@ skip = [
   { crate = "syn@1.0.109", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
   { crate = "thiserror-impl@1.0.69", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
   { crate = "thiserror@1.0.69", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
-  { crate = "tokio-tungstenite@0.21.0", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
-  { crate = "tungstenite@0.21.0", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
   { crate = "untrusted@0.7.1", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
   { crate = "webpki-roots@0.26.11", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
   { crate = "whoami@1.6.1", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
