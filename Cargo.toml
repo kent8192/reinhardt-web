@@ -655,7 +655,6 @@ uuid = { version = "1.23.0", features = ["v4", "v5", "v7", "serde"] }
 
 # GraphQL
 async-graphql = "7.2.1"
-async-graphql-warp = "7.2.1"
 
 # Async traits
 async-trait = "0.1.89"
