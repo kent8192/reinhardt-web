@@ -15,14 +15,14 @@ db-urls = ["https://github.com/rustsec/advisory-db"]
 git-fetch-with-cli = true
 unused-ignored-advisory = "allow"
 ignore = [
-  { id = "RUSTSEC-2023-0071", reason = "rsa 0.9.10 is retained by sqlx-mysql and the advisory has no patched release." },
-  { id = "RUSTSEC-2025-0141", reason = "bincode 1 and 2 are retained by syntect and the optional authentication serializer; remediation is tracked in issue #5492." },
-  { id = "RUSTSEC-2025-0057", reason = "fxhash is retained transitively by static asset processing dependencies; remediation is tracked in issue #5492." },
-  { id = "RUSTSEC-2024-0436", reason = "paste remains a direct workspace dependency; migration is tracked in issue #5492." },
-  { id = "RUSTSEC-2024-0370", reason = "proc-macro-error is retained by transitive macro dependencies; remediation is tracked in issue #5492." },
-  { id = "RUSTSEC-2026-0173", reason = "proc-macro-error2 is retained by transitive macro dependencies; remediation is tracked in issue #5492." },
-  { id = "RUSTSEC-2025-0134", reason = "rustls-pemfile remains a direct commands dependency and is also retained transitively; remediation is tracked in issue #5492." },
-  { id = "RUSTSEC-2026-0249", reason = "smartstring is retained transitively by rhai; no patched release exists, and remediation is tracked in issue #5492." },
+  { id = "RUSTSEC-2023-0071", reason = "rsa 0.9.10 is retained by sqlx-mysql and the advisory has no patched release; tracked in issue #6896." },
+  { id = "RUSTSEC-2025-0141", reason = "bincode 1 and 2 are retained by syntect and the optional authentication serializer; remediation is tracked in issue #6896." },
+  { id = "RUSTSEC-2025-0057", reason = "fxhash is retained transitively by static asset processing dependencies; remediation is tracked in issue #6896." },
+  { id = "RUSTSEC-2024-0436", reason = "paste remains a direct workspace dependency; migration is tracked in issue #6896." },
+  { id = "RUSTSEC-2024-0370", reason = "proc-macro-error is retained by transitive macro dependencies; remediation is tracked in issue #6896." },
+  { id = "RUSTSEC-2026-0173", reason = "proc-macro-error2 is retained by transitive macro dependencies; remediation is tracked in issue #6896." },
+  { id = "RUSTSEC-2025-0134", reason = "rustls-pemfile remains a direct commands dependency and is also retained transitively; remediation is tracked in issue #6896." },
+  { id = "RUSTSEC-2026-0249", reason = "smartstring is retained transitively by rhai; no patched release exists, and remediation is tracked in issue #6896." },
   # Temporary: unsafe-libyaml is archived upstream and reached only through the
   # deprecated serde_yaml, whose Error type is exposed by reinhardt-urls
   # `to_yaml` methods, so replacing it is a breaking change (issue #6773).
