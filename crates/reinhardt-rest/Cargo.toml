@@ -27,7 +27,9 @@ metadata = []
 negotiation = []
 browsable-api = ["dep:tera"]
 openapi = ["dep:reinhardt-openapi-macros", "dep:tera", "dep:utoipa"]
-openapi-swagger-ui = ["openapi", "dep:utoipa-swagger-ui"]
+# Kept so existing feature selections still resolve; the Swagger UI page loads
+# its assets from a pinned CDN, so this feature adds no dependency of its own.
+openapi-swagger-ui = ["openapi"]
 
 # Aggregate all REST features
 rest-full = [
@@ -119,9 +121,6 @@ reinhardt-openapi-macros = { workspace = true, optional = true }
 indexmap = { version = "2.0", features = ["serde"] }
 http = "1.3.1"
 uuid = { workspace = true }
-utoipa-swagger-ui = { version = "^9.0.2", default-features = false, features = [
-    "vendored",
-], optional = true }
 once_cell = { workspace = true }
 base64 = { workspace = true }
 inventory = "0.3"
