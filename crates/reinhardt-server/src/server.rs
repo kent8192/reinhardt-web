@@ -33,6 +33,8 @@
 //! // let handler_clone = server.handler();  // Returns Arc<dyn Handler>
 //! ```
 
+/// What a listener does when accepting a connection fails.
+pub mod accept;
 // Shared request body handling for Hyper adapters.
 mod admission;
 mod body;
@@ -59,6 +61,7 @@ pub mod graphql;
 /// WebSocket server support with broadcast capabilities (requires `websocket` feature).
 pub mod websocket;
 
+pub use accept::{AcceptErrorAction, AcceptErrorHandler, RetryAcceptErrors};
 pub use admission::{AdmittedRequest, PreBodyAdmitted, RequestAdmission, RequestHead};
 pub use http::{HttpServer, serve, serve_with_shutdown};
 pub use http2::{Http2Server, serve_http2, serve_http2_with_shutdown};

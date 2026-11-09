@@ -25,6 +25,8 @@ use tokio::time::timeout;
 
 use crate::shutdown::ShutdownCoordinator;
 
+use super::accept::{AcceptErrorAction, AcceptErrorHandler, RetryAcceptErrors};
+
 use super::body::{RequestBodyPlan, collect_request_body, request_body_plan};
 use super::{PreBodyAdmitted, RequestAdmission, RequestHead};
 
@@ -85,6 +87,7 @@ pub struct HttpServer {
 	/// [`HttpServer::with_exception_handler`].
 	exception_handler: Option<Arc<dyn ExceptionHandler>>,
 	request_admission: Option<Arc<dyn RequestAdmission>>,
+	accept_error_handler: Arc<dyn AcceptErrorHandler>,
 }
 
 impl HttpServer {
@@ -116,6 +119,7 @@ impl HttpServer {
 			di_context: None,
 			exception_handler: None,
 			request_admission: None,
+			accept_error_handler: Arc::new(RetryAcceptErrors::default()),
 		}
 	}
 
@@ -191,6 +195,18 @@ impl HttpServer {
 	/// Check headers and acquire an owned admission resource before reading the body.
 	pub fn with_request_admission(mut self, policy: Arc<dyn RequestAdmission>) -> Self {
 		self.request_admission = Some(policy);
+		self
+	}
+
+	/// Decide what happens when accepting a connection fails.
+	///
+	/// By default the server logs a warning and accepts again after one second
+	/// ([`RetryAcceptErrors`]), because running out of file descriptors is the
+	/// usual cause and ends once connections close. A handler can record the
+	/// failures, change the delay, or return [`AcceptErrorAction::Stop`] to end
+	/// the server with the error.
+	pub fn with_accept_error_handler(mut self, handler: Arc<dyn AcceptErrorHandler>) -> Self {
+		self.accept_error_handler = handler;
 		self
 	}
 
@@ -396,20 +412,35 @@ impl HttpServer {
 		let (upgrade_tx, mut upgrade_rx) = mpsc::unbounded_channel::<UpgradeTask>();
 		let mut tasks = JoinSet::new();
 		let mut accept_error = None;
+		// After a failed accept the listener waits here, still serving accepted
+		// connections and still answering shutdown.
+		let retry = tokio::time::sleep(std::time::Duration::ZERO);
+		tokio::pin!(retry);
+		let mut waiting_to_retry = false;
 
 		loop {
 			if coordinator.is_shutdown() {
 				break;
 			}
 			tokio::select! {
-				result = listener.accept() => {
+				result = listener.accept(), if !waiting_to_retry => {
 					let (stream, socket_addr) = match result {
-						Ok(connection) => connection,
-						Err(error) => {
-							accept_error = Some(error);
-							coordinator.shutdown();
-							break;
+						Ok(connection) => {
+							self.accept_error_handler.on_accepted();
+							connection
 						}
+						Err(error) => match self.accept_error_handler.on_error(&error) {
+							AcceptErrorAction::RetryAfter(delay) => {
+								retry.as_mut().reset(tokio::time::Instant::now() + delay);
+								waiting_to_retry = true;
+								continue;
+							}
+							AcceptErrorAction::Stop => {
+								accept_error = Some(error);
+								coordinator.shutdown();
+								break;
+							}
+						},
 					};
 					let services = services.clone();
 					let conn_shutdown = coordinator.subscribe();
@@ -436,6 +467,9 @@ impl HttpServer {
 					if let Err(error) = result {
 						eprintln!("Server task failed: {error}");
 					}
+				}
+				() = &mut retry, if waiting_to_retry => {
+					waiting_to_retry = false;
 				}
 				_ = shutdown_rx.recv() => break,
 			}
