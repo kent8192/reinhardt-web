@@ -250,7 +250,7 @@ let response = result.into_api_response();
 
 #### Documentation UI
 
-- **Swagger UI Integration**: Built-in Swagger UI via `utoipa-swagger-ui`
+- **Swagger UI Integration**: Swagger UI page that loads pinned CDN assets with SRI hashes
   - HTML rendering with customizable title and spec URL
   - Request handler for serving Swagger UI pages
   - Automatic OpenAPI spec serving at `/api/openapi.json`
