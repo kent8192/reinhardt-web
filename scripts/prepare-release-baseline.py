@@ -29,10 +29,18 @@ def prepare(root):
             # Remove when release baselines resolve a compatible graph unaided.
             # Ideal implementation: use the release-tag manifests without edits.
             constraints.update({
-                "unicode-ident": "=1.0.24",
                 "salsa": "=0.28.2",
                 "salsa-macro-rules": "=0.28.2",
             })
+            if "unicode-properties" not in dependencies:
+                # Shells published before the Unicode pair pin constrain at most
+                # unicode-ident (=1.0.24, Unicode 17). unicode-properties 0.1.5
+                # moved to Unicode 18, so pair it with the Unicode 17 release.
+                # Later shells pin both crates themselves and need no edit.
+                constraints.update({
+                    "unicode-ident": "=1.0.24",
+                    "unicode-properties": "=0.1.4",
+                })
         forwards = {}
         if package["name"] == "reinhardt-test" and package["version"] == "0.4.0-alpha.20":
             # The published pgvector feature enables reinhardt-db/pgvector without
