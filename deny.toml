@@ -39,6 +39,22 @@ ignore = [
   # full-feature resolution does not contain it.
   # Ideal: no astral-tokio-tar in the graph and no RUSTSEC-2026-0440 entry.
   { id = "RUSTSEC-2026-0440", reason = "astral-tokio-tar is unmaintained with no patched release and is retained by testcontainers; temporary risk acceptance and removal conditions are tracked in issue #6890." },
+  # Temporary: the chrono family is unmaintained with no patched release.
+  # chrono types are part of Reinhardt public APIs, and sqlx, tera, cron,
+  # serde_with, and neo4rs also retain chrono or chrono-tz (issue #6914).
+  # This accepts the abandonment risk; it makes no reachability claim.
+  # Remove once fresh full-feature resolution contains no chrono-family crate.
+  # Ideal: public APIs use a maintained date/time library and no entries remain.
+  { id = "RUSTSEC-2026-0543", reason = "chrono is unmaintained with no patched release, exposed in public APIs, and retained by sqlx and other dependencies; tracked in issue #6914." },
+  { id = "RUSTSEC-2026-0555", reason = "chrono-tz is unmaintained with no patched release and is retained by reinhardt-utils, tera, and neo4rs; tracked in issue #6914." },
+  { id = "RUSTSEC-2026-0559", reason = "chrono-tz-build is unmaintained with no patched release and is retained by older chrono-tz lines through tera and neo4rs; tracked in issue #6914." },
+  # Temporary: sqlx-sqlite 0.8.6 bundles SQLite through libsqlite3-sys 0.30.1;
+  # the patched libsqlite3-sys >=0.39 needs sqlx >=0.9.1 (issue #6915).
+  # Exposure is limited to opening SQLite and -wal files that a less trusted
+  # party could write.
+  # Remove once fresh full-feature resolution selects libsqlite3-sys >=0.39.0.
+  # Ideal: Reinhardt depends on a sqlx release bundling patched SQLite.
+  { id = "RUSTSEC-2026-0459", reason = "libsqlite3-sys 0.30.1 is pinned by sqlx-sqlite 0.8.6 and the patched line needs the sqlx 0.9.1 migration; temporary risk acceptance is tracked in issue #6915." },
 ]
 
 [licenses]
@@ -119,6 +135,7 @@ skip = [
   { crate = "icu_provider@1.5.0", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
   { crate = "itertools@0.11.0", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
   { crate = "itertools@0.13.0", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
+  { crate = "itertools:>=0.14,<0.15", reason = "boa_engine, oxc, rav1e, testcontainers, and wasmtime retain itertools 0.14 while prost 0.14.6 uses the incompatible 0.15 line." },
   { crate = "litemap@0.7.5", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
   { crate = "nix@0.30.1", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
   { crate = "num-bigint:>=0.5,<0.6", reason = "Redis uses the 0.5 API while current database and authentication dependencies require the incompatible 0.4 line; allow compatible patch updates without reintroducing the duplicate." },
