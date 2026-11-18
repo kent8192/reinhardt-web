@@ -213,6 +213,14 @@ impl AlterTableStatement {
 
 	/// Modify a column (type or constraints)
 	///
+	/// PostgreSQL-family nullability is preserved unless [`ColumnDef::not_null`]
+	/// is specified. PostgreSQL combines changes into one statement; CockroachDB
+	/// separates changes when a column type changes. MySQL applies the full
+	/// column definition. SQLite requires table recreation instead.
+	/// For CockroachDB prepared execution, use
+	/// [`CockroachDBQueryBuilder::build_alter_table_statements`](crate::backend::CockroachDBQueryBuilder::build_alter_table_statements)
+	/// to obtain individual statements with escaped schema literals.
+	///
 	/// # Examples
 	///
 	/// ```rust,ignore

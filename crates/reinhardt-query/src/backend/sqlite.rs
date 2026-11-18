@@ -1456,7 +1456,7 @@ impl QueryBuilder for SqliteQueryBuilder {
 			}
 
 			// NOT NULL
-			if column.not_null {
+			if column.not_null == Some(true) {
 				writer.push(" NOT NULL");
 			}
 
@@ -1521,7 +1521,7 @@ impl QueryBuilder for SqliteQueryBuilder {
 					if let Some(generated) = &column_def.generated {
 						self.write_generated_column(&mut writer, generated, false);
 					}
-					if column_def.not_null {
+					if column_def.not_null == Some(true) {
 						writer.push(" NOT NULL");
 					}
 					if let Some(default) = &column_def.default {
@@ -4824,7 +4824,7 @@ mod tests {
 		stmt.columns.push(ColumnDef {
 			name: "id".into_iden(),
 			column_type: Some(ColumnType::Integer),
-			not_null: false,
+			not_null: None,
 			unique: false,
 			primary_key: false,
 			auto_increment: false,
@@ -4837,7 +4837,7 @@ mod tests {
 		stmt.columns.push(ColumnDef {
 			name: "name".into_iden(),
 			column_type: Some(ColumnType::String(Some(255))),
-			not_null: false,
+			not_null: None,
 			unique: false,
 			primary_key: false,
 			auto_increment: false,
@@ -4865,7 +4865,7 @@ mod tests {
 		stmt.columns.push(ColumnDef {
 			name: "id".into_iden(),
 			column_type: Some(ColumnType::Integer),
-			not_null: false,
+			not_null: None,
 			unique: false,
 			primary_key: true,
 			auto_increment: true,
@@ -4917,7 +4917,7 @@ mod tests {
 		stmt.columns.push(ColumnDef {
 			name: "id".into_iden(),
 			column_type: Some(ColumnType::Integer),
-			not_null: false,
+			not_null: None,
 			unique: false,
 			primary_key: true,
 			auto_increment: false,
@@ -4930,7 +4930,7 @@ mod tests {
 		stmt.columns.push(ColumnDef {
 			name: "user_id".into_iden(),
 			column_type: Some(ColumnType::Integer),
-			not_null: false,
+			not_null: None,
 			unique: false,
 			primary_key: false,
 			auto_increment: false,
@@ -5125,7 +5125,7 @@ mod tests {
 			.push(AlterTableOperation::AddColumn(ColumnDef {
 				name: "age".into_iden(),
 				column_type: Some(ColumnType::Integer),
-				not_null: false,
+				not_null: None,
 				unique: false,
 				primary_key: false,
 				auto_increment: false,
@@ -5231,7 +5231,7 @@ mod tests {
 			.push(AlterTableOperation::ModifyColumn(ColumnDef {
 				name: "age".into_iden(),
 				column_type: Some(ColumnType::BigInteger),
-				not_null: false,
+				not_null: None,
 				unique: false,
 				primary_key: false,
 				auto_increment: false,
@@ -5274,7 +5274,7 @@ mod tests {
 		stmt.columns.push(ColumnDef {
 			name: "active".into_iden(),
 			column_type: Some(ColumnType::Boolean),
-			not_null: false,
+			not_null: None,
 			unique: false,
 			primary_key: false,
 			auto_increment: false,
