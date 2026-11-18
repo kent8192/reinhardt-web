@@ -295,11 +295,15 @@ and API source remain those of the published tag. This workaround is tracked in
 [issue #6318](https://github.com/kent8192/reinhardt-web/issues/6318) and can be
 removed when the published baselines compile with fresh AWS dependencies.
 
-Baselines using evcxr 0.22 also receive the Unicode and Salsa constraints already
-used by the current Rust shell: `unicode-ident =1.0.24`, `salsa =0.28.2`, and
-`salsa-macro-rules =0.28.2`. Fresh dependency resolution of the alpha.15 tag
-otherwise fails the lexer's Unicode-version assertion; the same graph also
-requires Salsa's older internal trait contract. These constraints are tracked in
+Baselines using evcxr 0.22 also receive the Salsa constraints already used by
+the current Rust shell: `salsa =0.28.2` and `salsa-macro-rules =0.28.2`. A
+baseline that does not pin `unicode-properties` itself (0.4.0-alpha.22 and
+earlier) also receives the Unicode 17 pair `unicode-ident =1.0.24` and
+`unicode-properties =0.1.4`; later shells pin a matching pair in their own
+manifest and are left unchanged. Fresh dependency resolution otherwise fails the
+lexer's Unicode-version assertion, because `unicode-properties` 0.1.5 moved to
+Unicode 18; the same graph also requires Salsa's older internal trait contract.
+These constraints are tracked in
 [issue #6341](https://github.com/kent8192/reinhardt-web/issues/6341) and
 [issue #6342](https://github.com/kent8192/reinhardt-web/issues/6342). Remove them
 when the release baseline resolves a compatible shell dependency graph without
