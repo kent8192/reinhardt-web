@@ -214,11 +214,14 @@ jobs:
     timeout-minutes: 360
     env:
       CARGO_TARGET_DIR: /tmp/cargo_target_intra_cov
-      # cargo-llvm-cov names profiles "<ws>-%p-%Nm.profraw" by default. The %p
-      # gives every nextest process its own profile sized to the whole
-      # instrumented test binary, which exceeded 100 GiB per partition. Without
-      # %p, all processes of one test binary merge online into a single file
-      # (%1m), bounding the total by the number of test binaries.
+      # The instrumented build links over 500 all-features test binaries and
+      # used about 90 GiB of the hosted runner disk with line tables. Coverage
+      # mapping lives in __llvm_covmap, not DWARF, so drop debug info here.
+      CARGO_PROFILE_DEV_DEBUG: 0
+      CARGO_PROFILE_TEST_DEBUG: 0
+      # cargo-llvm-cov names profiles "<ws>-%p-%Nm.profraw" by default, so every
+      # nextest process writes its own profile sized to its test binary. Without
+      # %p, the processes of one test binary merge online into a single file.
       LLVM_PROFILE_FILE_NAME: reinhardt-intra-%1m.profraw
     permissions:
       id-token: write
