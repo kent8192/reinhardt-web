@@ -55,6 +55,7 @@ ignore = [
   # Remove once fresh full-feature resolution selects libsqlite3-sys >=0.39.0.
   # Ideal: Reinhardt depends on a sqlx release bundling patched SQLite.
   { id = "RUSTSEC-2026-0459", reason = "libsqlite3-sys 0.30.1 is pinned by sqlx-sqlite 0.8.6 and the patched line needs the sqlx 0.9.1 migration; temporary risk acceptance is tracked in issue #6915." },
+  { id = "RUSTSEC-2026-0594", reason = "cookie 0.16.2 is retained by webdriver 0.54 (through fantoccini 0.22, the latest releases) without the private feature, so the affected PrivateJar API is not compiled; remove once webdriver adopts cookie >= 0.18.3." },
 ]
 
 [licenses]
@@ -136,6 +137,8 @@ skip = [
   { crate = "itertools@0.11.0", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
   { crate = "itertools@0.13.0", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
   { crate = "itertools:>=0.14,<0.15", reason = "boa_engine, oxc, rav1e, testcontainers, and wasmtime retain itertools 0.14 while prost 0.14.6 uses the incompatible 0.15 line." },
+  { crate = "jiff:>=0.2,<0.3", reason = "google-cloud-auth retains jiff 0.2 while env_logger 0.11.12 (through oxipng) uses the incompatible 1.0 line." },
+  { crate = "jiff-core:>=0.1,<0.2", reason = "jiff 0.2 (through google-cloud-auth) retains jiff-core 0.1 while jiff 1.0 uses the incompatible 1.0 line." },
   { crate = "litemap@0.7.5", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
   { crate = "nix@0.30.1", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
   { crate = "num-bigint:>=0.5,<0.6", reason = "Redis uses the 0.5 API while current database and authentication dependencies require the incompatible 0.4 line; allow compatible patch updates without reintroducing the duplicate." },
@@ -156,6 +159,7 @@ skip = [
   { crate = "syn:>=2,<3", reason = "Workspace macro crates use syn 2 while upstream proc-macro dependencies retain the incompatible syn 3 line." },
   # Remove this exception when the proc-macro dependencies converge on one line.
   { crate = "synstructure:>=0.13,<0.14", reason = "ASN.1, Boa, and older ICU proc macros require synstructure 0.13 while current yoke-derive and zerofrom-derive use the incompatible 0.14 line." },
+  { crate = "system-configuration:>=0.7,<0.8", reason = "hyper-util 0.1.21 retains system-configuration 0.7 while hickory-resolver 0.26 uses the incompatible 0.8 line." },
   { crate = "tinystr@0.7.6", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
   { crate = "toml@0.8.23", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
   { crate = "toml_datetime@0.6.11", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
