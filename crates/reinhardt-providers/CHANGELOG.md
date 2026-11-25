@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-providers@v0.3.25...reinhardt-providers@v0.4.0) - 2026-11-25
+
+### Testing
+
+- *(providers)* receive request before truncating S3 response
+
 ## [0.3.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-providers@v0.3.17...reinhardt-providers@v0.3.18) - 2026-09-16
 
 ### Fixed

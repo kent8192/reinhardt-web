@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-rest@v0.3.25...reinhardt-rest@v0.4.0) - 2026-11-25
+
+### Fixed
+
+- *(rest)* remove the unused utoipa-swagger-ui dependency
+
 ## [0.3.25](https://github.com/kent8192/reinhardt-web/compare/reinhardt-rest@v0.3.24...reinhardt-rest@v0.3.25) - 2026-10-20
 
 ### Documentation

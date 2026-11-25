@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.3.25...reinhardt-web@v0.4.0) - 2026-11-25
+
+### Documentation
+
+- add release announcement(s)
+
+### Fixed
+
+- *(deps)* remove legacy aws tls from the stable line
+- *(graphql)* remove the unused async-graphql-warp dependency
+- *(conf)* remove the unused dotenv dependency
+- *(deps)* remove the AWS Smithy compatibility pin
+- *(rest)* remove the unused utoipa-swagger-ui dependency
+- *(auth)* remove the unused p256 dependency
+- *(ci)* drop resolved advisory exceptions from the dependency policy
+- *(ci)* allow chrono-family and bundled SQLite advisories
+- *(ci)* accept new upstream advisory and duplicate lines in deny policy
+- *(ci)* build wasm-bindgen-cli from source on main
+- *(ci)* retry DTO schema fixture after offline dependency resolution
+- *(test)* retry the facade binary-model consumer after offline cache misses
+- *(test)* retry the REST scaffold routing consumer after offline cache misses
+
+### Maintenance
+
+- *(deps)* track the retained crypto-bigint timing risk
+
 ## [0.3.25](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.3.24...reinhardt-web@v0.3.25) - 2026-10-20
 
 ### Documentation
