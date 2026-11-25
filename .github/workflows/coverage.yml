@@ -222,6 +222,12 @@ jobs:
         partition: [1, 2, 3, 4]
     env:
       CARGO_TARGET_DIR: /tmp/cargo_target_intra_cov
+      # cargo-llvm-cov names profiles "<ws>-%p-%Nm.profraw" by default. The %p
+      # gives every nextest process its own profile sized to the whole
+      # instrumented test binary, which exceeded 100 GiB per partition. Without
+      # %p, all processes of one test binary merge online into a single file
+      # (%1m), bounding the total by the number of test binaries.
+      LLVM_PROFILE_FILE_NAME: reinhardt-intra-%1m.profraw
     permissions:
       id-token: write
       contents: read
