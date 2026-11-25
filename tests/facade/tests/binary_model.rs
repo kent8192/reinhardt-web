@@ -3,7 +3,7 @@
 use rstest::{fixture, rstest};
 use std::fs;
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, Output};
 use tempfile::TempDir;
 
 #[fixture]
@@ -76,14 +76,29 @@ ctor = "0.8"
 			),
 		)
 		.expect("write facade-only consumer manifest");
-		let output = Command::new(env!("CARGO"))
-			.args(["run", "--quiet", "--offline", "--manifest-path"])
-			.arg(consumer.path().join("Cargo.toml"))
-			.current_dir(consumer.path())
-			.env("CARGO_TARGET_DIR", consumer.path().join("target"))
-			.env("CARGO_BUILD_BUILD_DIR", consumer.path().join("build"))
-			.output()
-			.expect("run isolated consumer");
+		let run_consumer = |offline: bool| {
+			let mut command = Command::new(env!("CARGO"));
+			command.args(["run", "--quiet"]);
+			if offline {
+				command.arg("--offline");
+			}
+			command
+				.arg("--manifest-path")
+				.arg(consumer.path().join("Cargo.toml"))
+				.current_dir(consumer.path())
+				.env("CARGO_TARGET_DIR", consumer.path().join("target"))
+				.env("CARGO_BUILD_BUILD_DIR", consumer.path().join("build"))
+				.output()
+				.expect("run isolated consumer")
+		};
+		let output = run_consumer(true);
+		// Fresh resolution can select a release that is not in the local registry
+		// cache yet; retry only those cache misses online.
+		let output = if !output.status.success() && offline_dependency_resolution_failed(&output) {
+			run_consumer(false)
+		} else {
+			output
+		};
 
 		// Assert: compilation and runtime registration both work through public features.
 		assert_eq!(
@@ -93,4 +108,12 @@ ctor = "0.8"
 			String::from_utf8_lossy(&output.stderr),
 		);
 	}
+}
+
+fn offline_dependency_resolution_failed(output: &Output) -> bool {
+	let stderr = String::from_utf8_lossy(&output.stderr);
+	stderr.contains("--offline")
+		|| stderr.contains("no matching package named")
+		|| stderr.contains("failed to download")
+		|| stderr.contains("candidate versions found which didn't match")
 }
