@@ -219,6 +219,17 @@ impl MockServiceWorker {
 		}
 	}
 
+	/// Panics if a handler registered with `expect(n)` did not answer exactly
+	/// `n` requests. Dropping the worker runs the same check.
+	pub fn verify(&self) {
+		let unmet = self.handlers.unmet_expectations();
+		assert!(
+			unmet.is_empty(),
+			"MockServiceWorker: unmet call expectations:\n{}",
+			unmet.join("\n")
+		);
+	}
+
 	/// All recorded calls.
 	pub fn all_calls(&self) -> Vec<RecordedRequest> {
 		self.recorder.all()
@@ -229,6 +240,10 @@ impl Drop for MockServiceWorker {
 	fn drop(&mut self) {
 		if self.active.get() {
 			restore_interceptor_if_owned(self.worker_id);
+		}
+		// Check expectations unless the test is already failing.
+		if !std::thread::panicking() {
+			self.verify();
 		}
 	}
 }

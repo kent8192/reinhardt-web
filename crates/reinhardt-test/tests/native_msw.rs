@@ -426,3 +426,136 @@ async fn native_worker_stop_closes_keep_alive_connections() {
 		Err(_) => panic!("stopped worker should close keep-alive connections promptly"),
 	}
 }
+
+#[tokio::test]
+async fn native_worker_routes_one_path_by_body_and_header() {
+	// Arrange: two handlers share a path and differ only by request content.
+	let worker = MockServiceWorker::new();
+	worker.handle(
+		rest::post("/oauth/token")
+			.body_contains("grant_type=refresh_token")
+			.respond(MockResponse::json(json!({ "grant": "refresh" }))),
+	);
+	worker.handle(
+		rest::post("/oauth/token")
+			.header("Authorization", "Bearer canary")
+			.respond(MockResponse::json(json!({ "grant": "bearer" }))),
+	);
+	worker.start().await;
+	let client = reqwest::Client::new();
+
+	// Act
+	let refresh = client
+		.post(endpoint(&worker, "/oauth/token"))
+		.body("grant_type=refresh_token&refresh_token=r1")
+		.send()
+		.await
+		.expect("mock request should succeed");
+	let bearer = client
+		.post(endpoint(&worker, "/oauth/token"))
+		.bearer_auth("canary")
+		.body("grant_type=client_credentials")
+		.send()
+		.await
+		.expect("mock request should succeed");
+	let unmatched = client
+		.post(endpoint(&worker, "/oauth/token"))
+		.body("grant_type=client_credentials")
+		.send()
+		.await
+		.expect("mock request should succeed");
+
+	// Assert
+	let refresh: serde_json::Value = refresh.json().await.expect("JSON body");
+	let bearer: serde_json::Value = bearer.json().await.expect("JSON body");
+	assert_eq!(refresh, json!({ "grant": "refresh" }));
+	assert_eq!(bearer, json!({ "grant": "bearer" }));
+	assert_eq!(unmatched.status().as_u16(), 500);
+	worker.calls_to("/oauth/token").assert_count(3);
+}
+
+#[tokio::test]
+async fn native_worker_matches_with_a_custom_predicate_and_parses_recorded_json() {
+	// Arrange
+	let worker = MockServiceWorker::new();
+	worker.handle(
+		rest::post("/mcp")
+			.matching(|request| {
+				request
+					.body_json::<serde_json::Value>()
+					.is_ok_and(|body| body["method"] == "tools/call")
+			})
+			.respond(MockResponse::json(json!({ "result": "called" }))),
+	);
+	worker.start().await;
+
+	// Act
+	let response = reqwest::Client::new()
+		.post(endpoint(&worker, "/mcp"))
+		.json(&json!({ "jsonrpc": "2.0", "method": "tools/call" }))
+		.send()
+		.await
+		.expect("mock request should succeed");
+
+	// Assert
+	assert_eq!(response.status().as_u16(), 200);
+	let recorded = worker
+		.calls_to("/mcp")
+		.last()
+		.expect("call should be recorded");
+	let body: serde_json::Value = recorded.body_json().expect("recorded JSON body");
+	assert_eq!(body["method"], "tools/call");
+}
+
+#[tokio::test]
+async fn native_worker_verify_accepts_met_expectations() {
+	// Arrange
+	let worker = MockServiceWorker::new();
+	worker.handle(
+		rest::get("/api/policy")
+			.expect(2)
+			.respond(MockResponse::json(json!({ "ok": true }))),
+	);
+	worker.start().await;
+
+	// Act
+	for _ in 0..2 {
+		reqwest::get(endpoint(&worker, "/api/policy"))
+			.await
+			.expect("mock request should succeed");
+	}
+
+	// Assert
+	worker.verify();
+}
+
+#[tokio::test]
+#[should_panic(expected = "expected 1 call(s), received 0")]
+async fn native_worker_verify_reports_unmet_expectations() {
+	// Arrange
+	let worker = MockServiceWorker::new();
+	worker.handle(
+		rest::post("/oauth/token")
+			.body_contains("grant_type=authorization_code")
+			.expect(1)
+			.respond(MockResponse::empty()),
+	);
+	worker.start().await;
+
+	// Act / Assert
+	worker.verify();
+}
+
+#[tokio::test]
+#[should_panic(expected = "expected 0 call(s), received 1")]
+async fn native_worker_checks_expectations_when_dropped() {
+	// Arrange
+	let worker = MockServiceWorker::new();
+	worker.handle(rest::get("/never").expect(0).respond(MockResponse::empty()));
+	worker.start().await;
+
+	// Act: the drop at the end of the test runs the check.
+	reqwest::get(endpoint(&worker, "/never"))
+		.await
+		.expect("mock request should succeed");
+}

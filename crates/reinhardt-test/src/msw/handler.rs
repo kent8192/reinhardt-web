@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use super::matcher::{UrlMatcher, extract_path};
 use super::response::MockResponse;
-use super::state::{HandlerThreadSafety, OnceFlag, ResponseFn};
+use super::state::{HandlerThreadSafety, HitCounter, OnceFlag, PredicateFn, ResponseFn};
 
 /// An intercepted HTTP request extracted from JS.
 #[derive(Debug, Clone)]
@@ -18,6 +18,13 @@ pub struct InterceptedRequest {
 	pub headers: HashMap<String, String>,
 	/// Request body, if present.
 	pub body: Option<String>,
+}
+
+impl InterceptedRequest {
+	/// Parses the request body as JSON.
+	pub fn body_json<T: serde::de::DeserializeOwned>(&self) -> serde_json::Result<T> {
+		serde_json::from_str(self.body.as_deref().unwrap_or_default())
+	}
 }
 
 /// HTTP method for handler matching.
@@ -52,9 +59,28 @@ pub(crate) trait ErasedHandler: HandlerThreadSafety {
 	fn delay(&self) -> Option<Duration>;
 	/// Returns true if this is a network error handler.
 	fn is_network_error(&self) -> bool;
+	/// Describes a call expectation this handler has not met, if any.
+	fn unmet_expectation(&self) -> Option<String> {
+		None
+	}
 }
 
 /// Handler for REST endpoints.
+/// Request conditions beyond method and URL, plus a call expectation.
+pub(crate) struct RequestRules {
+	pub(crate) predicates: Vec<(String, Box<PredicateFn>)>,
+	pub(crate) expected: Option<usize>,
+}
+
+impl RequestRules {
+	pub(crate) fn new() -> Self {
+		Self {
+			predicates: Vec::new(),
+			expected: None,
+		}
+	}
+}
+
 pub struct RestHandler {
 	method: Method,
 	matcher: UrlMatcher,
@@ -63,6 +89,8 @@ pub struct RestHandler {
 	consumed: OnceFlag,
 	delay: Option<Duration>,
 	network_error: bool,
+	rules: RequestRules,
+	hits: HitCounter,
 }
 
 impl RestHandler {
@@ -72,6 +100,7 @@ impl RestHandler {
 		response_fn: Box<ResponseFn>,
 		once: bool,
 		delay: Option<Duration>,
+		rules: RequestRules,
 	) -> Self {
 		Self {
 			method,
@@ -81,10 +110,17 @@ impl RestHandler {
 			consumed: OnceFlag::new(false),
 			delay,
 			network_error: false,
+			rules,
+			hits: HitCounter::new(),
 		}
 	}
 
-	pub(crate) fn network_error(method: Method, matcher: UrlMatcher, once: bool) -> Self {
+	pub(crate) fn network_error(
+		method: Method,
+		matcher: UrlMatcher,
+		once: bool,
+		rules: RequestRules,
+	) -> Self {
 		Self {
 			method,
 			matcher,
@@ -93,7 +129,18 @@ impl RestHandler {
 			consumed: OnceFlag::new(false),
 			delay: None,
 			network_error: true,
+			rules,
+			hits: HitCounter::new(),
 		}
+	}
+
+	fn describe(&self) -> String {
+		let mut description = format!("{} {:?}", self.method.as_str(), self.matcher);
+		for (condition, _) in &self.rules.predicates {
+			description.push_str(" and ");
+			description.push_str(condition);
+		}
+		description
 	}
 }
 
@@ -102,13 +149,20 @@ impl ErasedHandler for RestHandler {
 		if self.consumed.get() {
 			return false;
 		}
-		req.method == self.method.as_str() && self.matcher.matches(&req.url)
+		req.method == self.method.as_str()
+			&& self.matcher.matches(&req.url)
+			&& self
+				.rules
+				.predicates
+				.iter()
+				.all(|(_, predicate)| predicate(req))
 	}
 
 	fn respond(&self, req: &InterceptedRequest) -> Option<MockResponse> {
 		if self.once {
 			self.consumed.set(true);
 		}
+		self.hits.increment();
 		self.response_fn.as_ref().map(|f| f(req))
 	}
 
@@ -122,6 +176,17 @@ impl ErasedHandler for RestHandler {
 
 	fn is_network_error(&self) -> bool {
 		self.network_error
+	}
+
+	fn unmet_expectation(&self) -> Option<String> {
+		let expected = self.rules.expected?;
+		let received = self.hits.get();
+		(received != expected).then(|| {
+			format!(
+				"{}: expected {expected} call(s), received {received}",
+				self.describe()
+			)
+		})
 	}
 }
 
@@ -337,6 +402,7 @@ mod tests {
 			Box::new(|_| MockResponse::empty()),
 			false,
 			None,
+			RequestRules::new(),
 		);
 		assert!(handler.matches(&make_intercepted("/api/users", "GET")));
 		assert!(!handler.matches(&make_intercepted("/api/users", "POST")));
@@ -351,6 +417,7 @@ mod tests {
 			Box::new(|_| MockResponse::empty()),
 			true,
 			None,
+			RequestRules::new(),
 		);
 		assert!(!handler.is_consumed());
 		let _ = handler.respond(&make_intercepted("/api/users", "GET"));
@@ -365,6 +432,7 @@ mod tests {
 			Box::new(|_| MockResponse::empty()),
 			false,
 			None,
+			RequestRules::new(),
 		);
 		let _ = handler.respond(&make_intercepted("/api/users", "GET"));
 		let _ = handler.respond(&make_intercepted("/api/users", "GET"));
@@ -379,13 +447,15 @@ mod tests {
 			Box::new(|_| MockResponse::empty()),
 			false,
 			Some(Duration::from_millis(100)),
+			RequestRules::new(),
 		);
 		assert_eq!(handler.delay(), Some(Duration::from_millis(100)));
 	}
 
 	#[rstest]
 	fn network_error_handler() {
-		let handler = RestHandler::network_error(Method::Get, "/api/fail".into(), false);
+		let handler =
+			RestHandler::network_error(Method::Get, "/api/fail".into(), false, RequestRules::new());
 		assert!(handler.matches(&make_intercepted("/api/fail", "GET")));
 		assert!(handler.is_network_error());
 		assert!(

@@ -9,9 +9,6 @@
 //! pass `worker.url()` into the HTTP client, SDK endpoint, or service
 //! configuration under test.
 //!
-//! On native targets the module also re-exports the `wiremock` crate for tests that need
-//! header or body matchers, call expectations, or streamed responses.
-//!
 //! # WASM example
 //!
 //! ```rust,ignore
@@ -77,11 +74,3 @@ pub use worker::{MockServiceWorker, UnhandledPolicy};
 
 #[cfg(native)]
 pub use native::{MockServiceWorker, UnhandledPolicy};
-
-/// Matcher-based HTTP mock servers for native integration tests.
-///
-/// [`MockServiceWorker`] covers route-level stubs. Use `wiremock` when a test
-/// needs header or body matchers, declarative `expect`/`verify`, or streamed
-/// responses.
-#[cfg(native)]
-pub use wiremock;

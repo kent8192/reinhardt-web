@@ -50,8 +50,6 @@ msw = [
   "dep:hyper",
   "dep:hyper-util",
   "dep:http-body-util",
-  # Native only: matcher-based HTTP mock servers, re-exported as `msw::wiremock`.
-  "dep:wiremock",
 ]
 model-server-fnset-msw = ["msw", "reinhardt-pages/model-server-fnset"]
 # Server function testing utilities
@@ -143,9 +141,6 @@ cfg_aliases = "0.2"
 [target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dependencies]
 # Core: delegate to reinhardt-testkit
 reinhardt-testkit = { workspace = true }
-
-# Optional HTTP mock server re-exported as `msw::wiremock` by the `msw` feature
-wiremock = { version = "0.6", optional = true }
 
 # Dependencies required by reinhardt-test's own modules (auth, admin)
 reinhardt-auth = { workspace = true, features = ["jwt", "argon2-hasher", "sessions", "oauth", "token"] }

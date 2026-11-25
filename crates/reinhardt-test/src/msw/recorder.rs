@@ -20,6 +20,13 @@ pub struct RecordedRequest {
 	pub timestamp: f64,
 }
 
+impl RecordedRequest {
+	/// Parses the recorded body as JSON.
+	pub fn body_json<T: serde::de::DeserializeOwned>(&self) -> serde_json::Result<T> {
+		serde_json::from_str(self.body.as_deref().unwrap_or_default())
+	}
+}
+
 /// Internal store for recorded requests.
 pub(crate) struct RequestRecorder {
 	calls: Vec<RecordedRequest>,
