@@ -58,6 +58,8 @@ server-fn-test = ["reinhardt-pages/testing"]
 e2e = ["dep:fantoccini", "dep:url"]
 # E2E browser testing via Chrome DevTools Protocol (chromiumoxide) + containerized Chrome
 e2e-cdp = ["dep:chromiumoxide", "dep:futures", "dep:testcontainers", "dep:url"]
+# HTTP mock servers for native integration tests (re-exports `wiremock`).
+wiremock = ["dep:wiremock"]
 full = ["testcontainers", "static", "websockets", "graphql", "property-based", "viewsets", "messages", "tasks", "admin"]
 
 [dependencies]
@@ -141,6 +143,9 @@ cfg_aliases = "0.2"
 [target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dependencies]
 # Core: delegate to reinhardt-testkit
 reinhardt-testkit = { workspace = true }
+
+# Optional HTTP mock server re-exported through the `wiremock` feature
+wiremock = { version = "0.6", optional = true }
 
 # Dependencies required by reinhardt-test's own modules (auth, admin)
 reinhardt-auth = { workspace = true, features = ["jwt", "argon2-hasher", "sessions", "oauth", "token"] }

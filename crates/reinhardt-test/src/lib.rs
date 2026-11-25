@@ -95,6 +95,10 @@ pub use reinhardt_testkit::testcontainers;
 #[cfg(all(native, feature = "testcontainers"))]
 pub use reinhardt_testkit::testcontainers_modules;
 
+// Re-export wiremock so downstream crates mock HTTP services through reinhardt-test
+#[cfg(all(native, feature = "wiremock"))]
+pub use wiremock;
+
 // Re-export reinhardt_urls for downstream crates
 #[cfg(native)]
 pub use reinhardt_testkit::reinhardt_urls;
