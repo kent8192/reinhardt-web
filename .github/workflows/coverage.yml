@@ -544,6 +544,8 @@ jobs:
             exit 1
           fi
           echo "${ENV_KEY}=/tmp/clang-mold-wrapper" >> "$GITHUB_ENV"
+          HOST_TARGET="$(rustc -vV | awk '/^host:/{print $2}')"
+          echo "COVERAGE_HOST_TARGET=$HOST_TARGET" >> "$GITHUB_ENV"
 
       - name: Clean coverage artifacts
         run: |
@@ -559,8 +561,14 @@ jobs:
           if [[ "$RUN_ALL" != "true" && -n "$NEXTEST_FILTER_EXPR" ]]; then
             FILTER_EXPR="($FILTER_EXPR) & ($NEXTEST_FILTER_EXPR)"
           fi
+          # Restrict LLVM coverage instrumentation to the native test target.
+          # Nested fixture builds (url_patterns_target_parity) target
+          # wasm32-unknown-unknown, whose toolchain does not include the
+          # profiler runtime required by instrument-coverage.
           set +e
           cargo llvm-cov nextest \
+            --target "$COVERAGE_HOST_TARGET" \
+            --coverage-target-only \
             --no-report \
             --package reinhardt-integration-tests \
             --all-features \
@@ -584,6 +592,8 @@ jobs:
           done < <(jq -r '.packages[].name' <<< "$report_metadata")
           cargo llvm-cov \
             report \
+            --target "$COVERAGE_HOST_TARGET" \
+            --coverage-target-only \
             "${report_args[@]}" \
             --lcov \
             --output-path /tmp/cross-crate-lcov.info
