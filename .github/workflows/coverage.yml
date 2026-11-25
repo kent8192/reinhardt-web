@@ -49,7 +49,7 @@ jobs:
           android: true
           dotnet: true
           haskell: true
-          large-packages: false
+          large-packages: true
           docker-images: true
           swap-storage: true
 
@@ -226,7 +226,7 @@ jobs:
           android: true
           dotnet: true
           haskell: true
-          large-packages: false
+          large-packages: true
           docker-images: true
           swap-storage: true
 
@@ -375,6 +375,29 @@ jobs:
           else
             FILTER_EXPR="not binary(/ui/)"
           fi
+          # Disk guard: this job has exhausted the runner disk, which kills the
+          # runner before any step log is uploaded. Log usage periodically and,
+          # below the floor, record where the space went and stop the tests so
+          # the job fails with diagnostics instead of losing the runner.
+          disk_guard() {
+            local floor_kb=$((6 * 1024 * 1024))
+            while sleep 120; do
+              local avail_kb
+              avail_kb=$(df --output=avail -k / | tail -1 | tr -d ' ')
+              echo "::group::disk $(date -u +%H:%M:%S) avail=$((avail_kb / 1024))MiB"
+              df -h / /tmp
+              echo "::endgroup::"
+              if (( avail_kb < floor_kb )); then
+                echo "::error::Disk below $((floor_kb / 1024 / 1024))GiB; stopping tests to keep the runner alive"
+                sudo du -xh --max-depth=2 /tmp "$HOME" /var/lib/docker 2>/dev/null | sort -rh | head -40
+                docker system df || true
+                pkill -f cargo-nextest || true
+                return
+              fi
+            done
+          }
+          disk_guard &
+          DISK_GUARD_PID=$!
           # Restrict LLVM coverage instrumentation to the native test target.
           # Nested fixture builds target wasm32-unknown-unknown, whose toolchain
           # does not include the profiler runtime required by instrument-coverage.
@@ -390,6 +413,8 @@ jobs:
             --all-features \
             --no-fail-fast
           EXIT_CODE=$?
+          kill "$DISK_GUARD_PID" 2>/dev/null || true
+          df -h / /tmp
           set -e
           if [[ $EXIT_CODE -eq 4 ]]; then
             echo "::notice::No tests matched the filter — treating as success"
@@ -452,7 +477,7 @@ jobs:
           android: true
           dotnet: true
           haskell: true
-          large-packages: false
+          large-packages: true
           docker-images: true
           swap-storage: true
 
