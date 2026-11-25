@@ -2,7 +2,7 @@ use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use reqwest::Client;
 use rstest::rstest;
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 use tokio::task::JoinHandle;
 use wiremock::matchers::any;
@@ -43,6 +43,12 @@ impl RawHttpServer {
 		let address = listener.local_addr().expect("fixture address");
 		let task = tokio::spawn(async move {
 			let (mut socket, _) = listener.accept().await.expect("accept one request");
+			// Finish receiving the GET before closing the connection, so the client
+			// observes a truncated response body rather than a canceled request.
+			let mut request = Vec::new();
+			while !request.ends_with(b"\r\n\r\n") {
+				request.push(socket.read_u8().await.expect("read request headers"));
+			}
 			socket
 				.write_all(
 					b"HTTP/1.1 500 Internal Server Error\r\nContent-Length: 100\r\nConnection: close\r\n\r\nshort",
