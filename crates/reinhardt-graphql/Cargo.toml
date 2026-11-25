@@ -34,7 +34,6 @@ test-utils = ["dep:reinhardt-test", "reinhardt-test/testcontainers"]
 [dependencies]
 # Core dependencies (merged from graphql-core)
 async-graphql = "7.0"
-async-graphql-warp = "7.0"
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
