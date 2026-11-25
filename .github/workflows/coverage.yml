@@ -209,17 +209,9 @@ jobs:
         run: docker system prune -af
 
   intra-crate-integration-coverage:
-    name: Intra-Crate Integration Coverage (${{ matrix.partition }}/4)
+    name: Intra-Crate Integration Coverage
     runs-on: ${{ fromJSON(inputs.runner) }}
     timeout-minutes: 360
-    # Partitioned like intra-crate-integration-test.yml: every nextest process
-    # writes a profraw sized to its whole instrumented test binary, and the full
-    # suite produced over 100 GiB of profraw on one hosted runner. Splitting the
-    # run keeps each runner's llvm-cov-target within its disk.
-    strategy:
-      fail-fast: false
-      matrix:
-        partition: [1, 2, 3, 4]
     env:
       CARGO_TARGET_DIR: /tmp/cargo_target_intra_cov
       # cargo-llvm-cov names profiles "<ws>-%p-%Nm.profraw" by default. The %p
@@ -425,7 +417,6 @@ jobs:
             --exclude reinhardt-integration-tests \
             -E "$FILTER_EXPR" \
             --all-features \
-            --partition "hash:${{ matrix.partition }}/4" \
             --no-fail-fast
           EXIT_CODE=$?
           kill "$DISK_GUARD_PID" 2>/dev/null || true
@@ -451,20 +442,20 @@ jobs:
             --coverage-target-only \
             "${report_args[@]}" \
             --lcov \
-            --output-path /tmp/intra-crate-lcov-${{ matrix.partition }}.info
-          bash scripts/validate-lcov-hits.sh /tmp/intra-crate-lcov-${{ matrix.partition }}.info
+            --output-path /tmp/intra-crate-lcov.info
+          bash scripts/validate-lcov-hits.sh /tmp/intra-crate-lcov.info
 
       - name: Upload intra-crate coverage artifact
         uses: actions/upload-artifact@v4
         with:
-          name: intra-crate-${{ matrix.partition }}-lcov
-          path: /tmp/intra-crate-lcov-${{ matrix.partition }}.info
+          name: intra-crate-lcov
+          path: /tmp/intra-crate-lcov.info
           retention-days: 1
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
         with:
-          files: /tmp/intra-crate-lcov-${{ matrix.partition }}.info
+          files: /tmp/intra-crate-lcov.info
           flags: intra-crate-integration
           fail_ci_if_error: true
           use_oidc: true
@@ -693,10 +684,7 @@ jobs:
         run: |
           for report in \
             /tmp/combined-lcov/unit-lcov.info \
-            /tmp/combined-lcov/intra-crate-lcov-1.info \
-            /tmp/combined-lcov/intra-crate-lcov-2.info \
-            /tmp/combined-lcov/intra-crate-lcov-3.info \
-            /tmp/combined-lcov/intra-crate-lcov-4.info \
+            /tmp/combined-lcov/intra-crate-lcov.info \
             /tmp/combined-lcov/cross-crate-lcov.info; do
             bash scripts/validate-lcov-hits.sh "$report"
           done
