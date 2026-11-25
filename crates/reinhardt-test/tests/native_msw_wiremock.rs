@@ -1,10 +1,10 @@
 #![cfg(all(
 	not(all(target_family = "wasm", target_os = "unknown")),
-	feature = "wiremock"
+	feature = "msw"
 ))]
 
-use reinhardt_test::wiremock::matchers::{header, method, path};
-use reinhardt_test::wiremock::{Mock, MockServer, ResponseTemplate};
+use reinhardt_test::msw::wiremock::matchers::{header, method, path};
+use reinhardt_test::msw::wiremock::{Mock, MockServer, ResponseTemplate};
 use rstest::rstest;
 use serde_json::json;
 
