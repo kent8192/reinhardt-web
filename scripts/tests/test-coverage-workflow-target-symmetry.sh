@@ -8,6 +8,8 @@ require "yaml"
 
 workflow = YAML.load_file(ARGV.fetch(0))
 jobs = workflow.fetch("jobs")
+INTRA_LCOV = "/tmp/intra-crate-lcov-${{ matrix.partition }}.info"
+INTRA_PARTITION_LCOVS = (1..4).map { |partition| "intra-crate-lcov-#{partition}.info" }
 steps = jobs
   .fetch("intra-crate-integration-coverage")
   .fetch("steps")
@@ -36,7 +38,10 @@ raise "test phase must use --coverage-target-only exactly once" unless
 raise "report phase must use --coverage-target-only exactly once" unless
   report.scan("--coverage-target-only").length == 1
 raise "intra-crate LCOV must use the non-empty validator exactly once" unless
-  report.scan("bash scripts/validate-lcov-hits.sh /tmp/intra-crate-lcov.info").length == 1
+  report.scan("bash scripts/validate-lcov-hits.sh #{INTRA_LCOV}").length == 1
+raise "intra-crate coverage must run as four nextest partitions" unless
+  jobs.fetch("intra-crate-integration-coverage").dig("strategy", "matrix", "partition") == [1, 2, 3, 4] &&
+  test_run.scan('--partition "hash:${{ matrix.partition }}/4"').length == 1
 raise "LCOV validation must run before Codecov upload" unless
   report_index && upload_index && report_index < upload_index
 raise "intra-crate Codecov upload must remain fail-closed" if upload.key?("if")
@@ -50,7 +55,7 @@ raise "unit coverage must select --lib exactly once" unless unit_run.scan("--lib
 
 reports = [
   ["unit-coverage", "Generate unit coverage report", "/tmp/unit-lcov.info", "unit-lcov"],
-  ["intra-crate-integration-coverage", "Generate intra-crate coverage report", "/tmp/intra-crate-lcov.info", "intra-crate-lcov"],
+  ["intra-crate-integration-coverage", "Generate intra-crate coverage report", INTRA_LCOV, "intra-crate-${{ matrix.partition }}-lcov"],
   ["cross-crate-integration-coverage", "Generate cross-crate coverage report", "/tmp/cross-crate-lcov.info", "cross-crate-lcov"],
 ]
 reports.each do |job_name, report_name, lcov_path, artifact_name|
@@ -107,11 +112,12 @@ raise "aggregate coverage must merge the LCOV artifacts" unless
 aggregate_validation = aggregate_steps
   .find { |candidate| candidate["run"]&.include?("scripts/validate-lcov-hits.sh") }
   &.fetch("run") || raise("missing aggregate LCOV validation")
-expected_paths = reports.map { |_, _, lcov_path, _| "/tmp/combined-lcov/#{File.basename(lcov_path)}" }
-raise "aggregate coverage must validate exactly the three LCOV reports" unless
+expected_paths = (["unit-lcov.info", "cross-crate-lcov.info"] + INTRA_PARTITION_LCOVS)
+  .map { |name| "/tmp/combined-lcov/#{name}" }
+raise "aggregate coverage must validate the unit, cross-crate, and every intra-crate partition LCOV report" unless
   !aggregate_validation.include?("--require-complete") &&
   expected_paths.all? { |path| aggregate_validation.scan(path).length == 1 } &&
-  aggregate_validation.scan("/tmp/combined-lcov/").length == 3
+  aggregate_validation.scan("/tmp/combined-lcov/").length == expected_paths.length
 
 puts "PASS: intra-crate coverage target symmetry"
 RUBY
