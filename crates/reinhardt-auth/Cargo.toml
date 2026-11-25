@@ -36,7 +36,10 @@ token = []
 basic = ["dep:argon2", "dep:password-hash"]
 argon2-hasher = ["basic"]
 bcrypt-hasher = ["basic", "dep:bcrypt"]
-social = ["dep:jsonwebtoken", "p256"]
+social = ["dep:jsonwebtoken"]
+# Kept so existing feature selections still resolve; ES256 verification uses
+# jsonwebtoken, so this feature no longer activates a p256 dependency.
+p256 = []
 
 # Database and session storage (ORM model support)
 database = ["ctor", "reinhardt-apps", "reinhardt-query", "sqlx", "reinhardt-db/postgres", "dep:reinhardt-query-sqlx"]
@@ -93,7 +96,6 @@ bcrypt = { workspace = true, optional = true }
 rand = { workspace = true }
 jsonwebtoken = { workspace = true, optional = true }
 rsa = { version = "0.9", features = ["sha2"], optional = true }
-p256 = { version = "0.13", optional = true }
 clap = { version = "4.5", features = ["derive"] }
 console = "0.16.1"
 dialoguer = "0.12.0"

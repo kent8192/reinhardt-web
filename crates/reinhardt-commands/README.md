@@ -659,9 +659,10 @@ enter WASM builds. `config::shell` defines the aliases used by the evaluator,
 and `get_shell_config()` identifies the package, crate, settings factory,
 installed apps, and optional project prelude.
 
-The `shell` feature constrains `unicode-ident` to 1.0.24 so evcxr's Rust lexer
-uses Unicode 17 tables consistently with `unicode-properties` 0.1.4. This
-compatibility dependency also applies to fresh downstream builds; see
+The `shell` feature pins `unicode-ident` to 1.0.27 and `unicode-properties` to
+0.1.5 so evcxr's Rust lexer sees the same Unicode version (18.0.0) in both
+crates; the lexer rejects a mismatched pair at compile time. These
+compatibility dependencies also apply to fresh downstream builds; see
 [the internal compatibility record](https://github.com/kent8192/reinhardt-web/issues/6341).
 It also constrains Salsa and its macro-rules to 0.28.2 because rust-analyzer
 0.0.347 implements an internal trait method removed in later Salsa releases;

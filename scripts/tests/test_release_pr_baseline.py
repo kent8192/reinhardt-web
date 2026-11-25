@@ -254,12 +254,36 @@ sys.exit(int(os.environ.get("RELEASE_TEST_EXIT_CODE", "0")))
         record = json.loads(self.capture.read_text())
         dependencies = {dep["name"]: dep for dep in record["dependencies"]}
         self.assertEqual(dependencies["unicode-ident"]["req"], "=1.0.24")
+        self.assertEqual(dependencies["unicode-properties"]["req"], "=0.1.4")
         self.assertEqual(dependencies["salsa"]["req"], "=0.28.2")
         self.assertFalse(dependencies["salsa"]["uses_default_features"])
         self.assertEqual(dependencies["salsa-macro-rules"]["req"], "=0.28.2")
         self.assertEqual(dependencies["aws-smithy-types"]["req"], "=1.6.3")
         self.assertEqual(record["source"], "pub fn stable_api() { /* fixed */ }\n")
         self.assertEqual(manifest.read_text(), original)
+        self.assert_no_baseline_left()
+
+    def test_shell_baseline_with_unicode_ident_pin_gets_matching_properties(self):
+        # Published shells up to 0.4.0-alpha.22 pin only unicode-ident to Unicode 17.
+        self.shell_baseline('unicode-ident = { version = "=1.0.24", optional = true }\n')
+        result = self.invoke("update")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        record = json.loads(self.capture.read_text())
+        dependencies = {dep["name"]: dep for dep in record["dependencies"]}
+        self.assertEqual(dependencies["unicode-ident"]["req"], "=1.0.24")
+        self.assertEqual(dependencies["unicode-properties"]["req"], "=0.1.4")
+        self.assert_no_baseline_left()
+
+    def test_shell_baseline_with_unicode_pair_keeps_published_pins(self):
+        self.shell_baseline('unicode-ident = { version = "=1.0.27", optional = true }\n'
+                            'unicode-properties = { version = "=0.1.5", optional = true }\n')
+        result = self.invoke("update")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        record = json.loads(self.capture.read_text())
+        dependencies = {dep["name"]: dep for dep in record["dependencies"]}
+        self.assertEqual(dependencies["unicode-ident"]["req"], "=1.0.27")
+        self.assertEqual(dependencies["unicode-properties"]["req"], "=0.1.5")
+        self.assertEqual(dependencies["salsa"]["req"], "=0.28.2")
         self.assert_no_baseline_left()
 
     def test_shell_baseline_preparation_is_idempotent(self):

@@ -13783,7 +13783,9 @@
       "kind": "execution-wrapper",
       "line": 1001,
       "fingerprint": "c9b6c9fb23710b8f330ebe655e826fc7923ddd009801e7bc75750dee70ef0b21",
-      "conditions": [],
+      "conditions": [
+        "# [cfg (any (feature = \"orm\" , feature = \"migrations\"))]"
+      ],
       "test_only": false,
       "category": "review-required",
       "ownership": "application-raw",
@@ -13791,7 +13793,7 @@
       "operation": "caller-defined",
       "representation": "caller-raw",
       "feature_reachability": [
-        "backends; caller-provided native or custom backend"
+        "backends + orm or migrations; caller-provided native or custom backend"
       ],
       "rationale": "Explicit raw provider receives SQL and legacy QueryValue arguments from its caller. Reviewed bodies forward the supplied SQL unchanged, bind supplied parameters, execute on the caller-selected pool/transaction and decode rows without constructing framework SQL. Higher-level framework statements remain separately audited; this provider classification does not exempt their SQL construction.",
       "backends": [
@@ -13800,7 +13802,8 @@
       "evidence": [
         "Reviewed public DatabaseBackend and TransactionExecutor raw SQL signatures and contextual forwarding defaults.",
         "Reviewed pool, managed-transaction and raw-transaction execute/fetch bodies in this dialect; no local framework statement assembly occurs. Raw streaming bodies and generated providers retain their separately reviewed classifications.",
-        "Reviewed Backend/TransactionExecutor context defaults, FlavoredTransactionExecutor, backend DatabaseConnection and ORM DatabaseConnection/OrmExecutor forwarding bodies: caller SQL/parameters pass through unchanged; resolver ownership, savepoint delegation, row conversion and error context remain intact."
+        "Reviewed Backend/TransactionExecutor context defaults, FlavoredTransactionExecutor, backend DatabaseConnection and ORM DatabaseConnection/OrmExecutor forwarding bodies: caller SQL/parameters pass through unchanged; resolver ownership, savepoint delegation, row conversion and error context remain intact.",
+        "Reviewed the #6880 feature gate: `execute_with_context` now compiles only when its orm or migrations callers are enabled; the forwarding body and fingerprint are unchanged."
       ]
     },
     {
@@ -13865,7 +13868,9 @@
       "kind": "execution-wrapper",
       "line": 1066,
       "fingerprint": "e6d89fbe3497c9f344c4129745c4204821e1a80f64b61effe932a30445109f8f",
-      "conditions": [],
+      "conditions": [
+        "# [cfg (feature = \"orm\")]"
+      ],
       "test_only": false,
       "category": "review-required",
       "ownership": "application-raw",
@@ -13873,7 +13878,7 @@
       "operation": "caller-defined",
       "representation": "caller-raw",
       "feature_reachability": [
-        "backends; caller-provided native or custom backend"
+        "backends + orm; caller-provided native or custom backend"
       ],
       "rationale": "Explicit raw provider receives SQL and legacy QueryValue arguments from its caller. Reviewed bodies forward the supplied SQL unchanged, bind supplied parameters, execute on the caller-selected pool/transaction and decode rows without constructing framework SQL. Higher-level framework statements remain separately audited; this provider classification does not exempt their SQL construction.",
       "backends": [
@@ -13882,7 +13887,8 @@
       "evidence": [
         "Reviewed public DatabaseBackend and TransactionExecutor raw SQL signatures and contextual forwarding defaults.",
         "Reviewed pool, managed-transaction and raw-transaction execute/fetch bodies in this dialect; no local framework statement assembly occurs. Raw streaming bodies and generated providers retain their separately reviewed classifications.",
-        "Reviewed Backend/TransactionExecutor context defaults, FlavoredTransactionExecutor, backend DatabaseConnection and ORM DatabaseConnection/OrmExecutor forwarding bodies: caller SQL/parameters pass through unchanged; resolver ownership, savepoint delegation, row conversion and error context remain intact."
+        "Reviewed Backend/TransactionExecutor context defaults, FlavoredTransactionExecutor, backend DatabaseConnection and ORM DatabaseConnection/OrmExecutor forwarding bodies: caller SQL/parameters pass through unchanged; resolver ownership, savepoint delegation, row conversion and error context remain intact.",
+        "Reviewed the #6880 feature gate: `fetch_all_with_context` now compiles only when its orm callers are enabled; the forwarding body and fingerprint are unchanged."
       ]
     },
     {
@@ -13947,7 +13953,9 @@
       "kind": "execution-wrapper",
       "line": 1021,
       "fingerprint": "130f6133053e400e7f190e0eadbb23a3d21d458fee18824c97a0b0d5a123e80e",
-      "conditions": [],
+      "conditions": [
+        "# [cfg (feature = \"orm\")]"
+      ],
       "test_only": false,
       "category": "review-required",
       "ownership": "application-raw",
@@ -13955,7 +13963,7 @@
       "operation": "caller-defined",
       "representation": "caller-raw",
       "feature_reachability": [
-        "backends; caller-provided native or custom backend"
+        "backends + orm; caller-provided native or custom backend"
       ],
       "rationale": "Explicit raw provider receives SQL and legacy QueryValue arguments from its caller. Reviewed bodies forward the supplied SQL unchanged, bind supplied parameters, execute on the caller-selected pool/transaction and decode rows without constructing framework SQL. Higher-level framework statements remain separately audited; this provider classification does not exempt their SQL construction.",
       "backends": [
@@ -13964,7 +13972,8 @@
       "evidence": [
         "Reviewed public DatabaseBackend and TransactionExecutor raw SQL signatures and contextual forwarding defaults.",
         "Reviewed pool, managed-transaction and raw-transaction execute/fetch bodies in this dialect; no local framework statement assembly occurs. Raw streaming bodies and generated providers retain their separately reviewed classifications.",
-        "Reviewed Backend/TransactionExecutor context defaults, FlavoredTransactionExecutor, backend DatabaseConnection and ORM DatabaseConnection/OrmExecutor forwarding bodies: caller SQL/parameters pass through unchanged; resolver ownership, savepoint delegation, row conversion and error context remain intact."
+        "Reviewed Backend/TransactionExecutor context defaults, FlavoredTransactionExecutor, backend DatabaseConnection and ORM DatabaseConnection/OrmExecutor forwarding bodies: caller SQL/parameters pass through unchanged; resolver ownership, savepoint delegation, row conversion and error context remain intact.",
+        "Reviewed the #6880 feature gate: `fetch_one_with_context` now compiles only when its orm callers are enabled; the forwarding body and fingerprint are unchanged."
       ]
     },
     {
@@ -14029,7 +14038,9 @@
       "kind": "execution-wrapper",
       "line": 1086,
       "fingerprint": "d4ca7c31d62c39d4959bb27e72fd4339d76415bc9155304bfa2650b8593eeff9",
-      "conditions": [],
+      "conditions": [
+        "# [cfg (feature = \"orm\")]"
+      ],
       "test_only": false,
       "category": "review-required",
       "ownership": "application-raw",
@@ -14037,7 +14048,7 @@
       "operation": "caller-defined",
       "representation": "caller-raw",
       "feature_reachability": [
-        "backends; caller-provided native or custom backend"
+        "backends + orm; caller-provided native or custom backend"
       ],
       "rationale": "Explicit raw provider receives SQL and legacy QueryValue arguments from its caller. Reviewed bodies forward the supplied SQL unchanged, bind supplied parameters, execute on the caller-selected pool/transaction and decode rows without constructing framework SQL. Higher-level framework statements remain separately audited; this provider classification does not exempt their SQL construction.",
       "backends": [
@@ -14046,7 +14057,8 @@
       "evidence": [
         "Reviewed public DatabaseBackend and TransactionExecutor raw SQL signatures and contextual forwarding defaults.",
         "Reviewed pool, managed-transaction and raw-transaction execute/fetch bodies in this dialect; no local framework statement assembly occurs. Raw streaming bodies and generated providers retain their separately reviewed classifications.",
-        "Reviewed Backend/TransactionExecutor context defaults, FlavoredTransactionExecutor, backend DatabaseConnection and ORM DatabaseConnection/OrmExecutor forwarding bodies: caller SQL/parameters pass through unchanged; resolver ownership, savepoint delegation, row conversion and error context remain intact."
+        "Reviewed Backend/TransactionExecutor context defaults, FlavoredTransactionExecutor, backend DatabaseConnection and ORM DatabaseConnection/OrmExecutor forwarding bodies: caller SQL/parameters pass through unchanged; resolver ownership, savepoint delegation, row conversion and error context remain intact.",
+        "Reviewed the #6880 feature gate: `fetch_optional_with_context` now compiles only when its orm callers are enabled; the forwarding body and fingerprint are unchanged."
       ]
     },
     {
@@ -14111,7 +14123,9 @@
       "kind": "execution-wrapper",
       "line": 1052,
       "fingerprint": "8d2a22ea6c53293ac24238382b58f33ab2745b13b34dc4e3ee25b26a4d596fa1",
-      "conditions": [],
+      "conditions": [
+        "# [cfg (feature = \"orm\")]"
+      ],
       "test_only": false,
       "category": "review-required",
       "ownership": "application-raw",
@@ -14119,7 +14133,7 @@
       "operation": "caller-defined",
       "representation": "caller-raw",
       "feature_reachability": [
-        "backends; caller-provided native or custom backend"
+        "backends + orm; caller-provided native or custom backend"
       ],
       "rationale": "Explicit raw provider receives SQL and legacy QueryValue arguments from its caller. Reviewed bodies forward the supplied SQL unchanged, bind supplied parameters, execute on the caller-selected pool/transaction and decode rows without constructing framework SQL. Higher-level framework statements remain separately audited; this provider classification does not exempt their SQL construction.",
       "backends": [
@@ -14128,7 +14142,8 @@
       "evidence": [
         "Reviewed public DatabaseBackend and TransactionExecutor raw SQL signatures and contextual forwarding defaults.",
         "Reviewed pool, managed-transaction and raw-transaction execute/fetch bodies in this dialect; no local framework statement assembly occurs. Raw streaming bodies and generated providers retain their separately reviewed classifications.",
-        "Reviewed Backend/TransactionExecutor context defaults, FlavoredTransactionExecutor, backend DatabaseConnection and ORM DatabaseConnection/OrmExecutor forwarding bodies: caller SQL/parameters pass through unchanged; resolver ownership, savepoint delegation, row conversion and error context remain intact."
+        "Reviewed Backend/TransactionExecutor context defaults, FlavoredTransactionExecutor, backend DatabaseConnection and ORM DatabaseConnection/OrmExecutor forwarding bodies: caller SQL/parameters pass through unchanged; resolver ownership, savepoint delegation, row conversion and error context remain intact.",
+        "Reviewed the #6880 feature gate: `fetch_stream_with_context` now compiles only when its orm callers are enabled; the forwarding body and fingerprint are unchanged."
       ]
     },
     {
