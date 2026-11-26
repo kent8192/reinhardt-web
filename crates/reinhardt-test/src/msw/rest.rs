@@ -96,6 +96,9 @@ impl RestHandlerBuilder {
 	}
 
 	/// Match only requests for which `predicate` returns `true`.
+	///
+	/// The predicate runs while the worker's handler list is locked, so it must
+	/// not call back into the worker, and a panic in it poisons the worker.
 	#[cfg(native)]
 	pub fn matching(
 		self,
@@ -111,7 +114,12 @@ impl RestHandlerBuilder {
 	}
 
 	/// Expect this handler to answer exactly `calls` requests. The worker checks
-	/// the expectation in `verify()` and when it is dropped.
+	/// the expectation in `verify()` and when it is dropped (unless the thread is
+	/// already panicking).
+	///
+	/// Only requests this handler answers count. `reset()` and
+	/// `reset_handlers()` remove the handler together with its expectation, so
+	/// call `verify()` first if the expectation should still be checked.
 	pub fn expect(mut self, calls: usize) -> Self {
 		self.rules.expected = Some(calls);
 		self

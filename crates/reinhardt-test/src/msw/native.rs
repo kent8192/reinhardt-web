@@ -122,12 +122,18 @@ impl MockServiceWorker {
 	}
 
 	/// Remove all handlers and recorded requests.
+	///
+	/// Expectations set with `expect(n)` are removed unchecked; call `verify()`
+	/// first to check them.
 	pub fn reset(&self) {
 		self.handlers.clear();
 		self.recorder.clear();
 	}
 
 	/// Remove all handlers but keep recorded requests.
+	///
+	/// Expectations set with `expect(n)` are removed unchecked; call `verify()`
+	/// first to check them.
 	pub fn reset_handlers(&self) {
 		self.handlers.clear();
 	}

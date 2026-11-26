@@ -220,17 +220,18 @@ mod wasm_impl {
 		Ok(text.as_string())
 	}
 
+	/// Collects every request header, keyed by lowercase name, so header
+	/// matchers see the same headers as on native targets.
 	fn extract_headers(headers: &Headers) -> std::collections::HashMap<String, String> {
 		let mut map = std::collections::HashMap::new();
-		for name in [
-			"content-type",
-			"authorization",
-			"accept",
-			"x-csrftoken",
-			"x-requested-with",
-		] {
-			if let Ok(Some(value)) = headers.get(name) {
-				map.insert(name.to_string(), value);
+		let Ok(Some(entries)) = js_sys::try_iter(headers.as_ref()) else {
+			return map;
+		};
+		for entry in entries.flatten() {
+			// Each entry of a `Headers` iterator is a `[name, value]` pair.
+			let pair = js_sys::Array::from(&entry);
+			if let (Some(name), Some(value)) = (pair.get(0).as_string(), pair.get(1).as_string()) {
+				map.insert(name.to_ascii_lowercase(), value);
 			}
 		}
 		map

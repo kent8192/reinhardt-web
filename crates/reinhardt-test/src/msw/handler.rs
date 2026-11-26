@@ -65,7 +65,6 @@ pub(crate) trait ErasedHandler: HandlerThreadSafety {
 	}
 }
 
-/// Handler for REST endpoints.
 /// Request conditions beyond method and URL, plus a call expectation.
 pub(crate) struct RequestRules {
 	pub(crate) predicates: Vec<(String, Box<PredicateFn>)>,
@@ -81,6 +80,7 @@ impl RequestRules {
 	}
 }
 
+/// Handler for REST endpoints.
 pub struct RestHandler {
 	method: Method,
 	matcher: UrlMatcher,
