@@ -49,7 +49,7 @@ jobs:
           android: true
           dotnet: true
           haskell: true
-          large-packages: false
+          large-packages: true
           docker-images: true
           swap-storage: true
 
@@ -214,6 +214,15 @@ jobs:
     timeout-minutes: 360
     env:
       CARGO_TARGET_DIR: /tmp/cargo_target_intra_cov
+      # The instrumented build links over 500 all-features test binaries and
+      # used about 90 GiB of the hosted runner disk with line tables. Coverage
+      # mapping lives in __llvm_covmap, not DWARF, so drop debug info here.
+      CARGO_PROFILE_DEV_DEBUG: 0
+      CARGO_PROFILE_TEST_DEBUG: 0
+      # cargo-llvm-cov names profiles "<ws>-%p-%Nm.profraw" by default, so every
+      # nextest process writes its own profile sized to its test binary. Without
+      # %p, the processes of one test binary merge online into a single file.
+      LLVM_PROFILE_FILE_NAME: reinhardt-intra-%1m.profraw
     permissions:
       id-token: write
       contents: read
@@ -226,7 +235,7 @@ jobs:
           android: true
           dotnet: true
           haskell: true
-          large-packages: false
+          large-packages: true
           docker-images: true
           swap-storage: true
 
@@ -375,6 +384,29 @@ jobs:
           else
             FILTER_EXPR="not binary(/ui/)"
           fi
+          # Disk guard: this job has exhausted the runner disk, which kills the
+          # runner before any step log is uploaded. Log usage periodically and,
+          # below the floor, record where the space went and stop the tests so
+          # the job fails with diagnostics instead of losing the runner.
+          disk_guard() {
+            local floor_kb=$((6 * 1024 * 1024))
+            while sleep 120; do
+              local avail_kb
+              avail_kb=$(df --output=avail -k / | tail -1 | tr -d ' ')
+              echo "::group::disk $(date -u +%H:%M:%S) avail=$((avail_kb / 1024))MiB"
+              df -h / /tmp
+              echo "::endgroup::"
+              if (( avail_kb < floor_kb )); then
+                echo "::error::Disk below $((floor_kb / 1024 / 1024))GiB; stopping tests to keep the runner alive"
+                sudo du -xh --max-depth=2 /tmp "$HOME" /var/lib/docker 2>/dev/null | sort -rh | head -40
+                docker system df || true
+                pkill -f cargo-nextest || true
+                return
+              fi
+            done
+          }
+          disk_guard &
+          DISK_GUARD_PID=$!
           # Restrict LLVM coverage instrumentation to the native test target.
           # Nested fixture builds target wasm32-unknown-unknown, whose toolchain
           # does not include the profiler runtime required by instrument-coverage.
@@ -390,6 +422,8 @@ jobs:
             --all-features \
             --no-fail-fast
           EXIT_CODE=$?
+          kill "$DISK_GUARD_PID" 2>/dev/null || true
+          df -h / /tmp
           set -e
           if [[ $EXIT_CODE -eq 4 ]]; then
             echo "::notice::No tests matched the filter — treating as success"
@@ -452,7 +486,7 @@ jobs:
           android: true
           dotnet: true
           haskell: true
-          large-packages: false
+          large-packages: true
           docker-images: true
           swap-storage: true
 
