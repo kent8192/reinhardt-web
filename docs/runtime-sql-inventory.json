@@ -13783,7 +13783,9 @@
       "kind": "execution-wrapper",
       "line": 1001,
       "fingerprint": "c9b6c9fb23710b8f330ebe655e826fc7923ddd009801e7bc75750dee70ef0b21",
-      "conditions": [],
+      "conditions": [
+        "# [cfg (any (feature = \"orm\" , feature = \"migrations\"))]"
+      ],
       "test_only": false,
       "category": "review-required",
       "ownership": "application-raw",
@@ -13791,7 +13793,7 @@
       "operation": "caller-defined",
       "representation": "caller-raw",
       "feature_reachability": [
-        "backends; caller-provided native or custom backend"
+        "backends + orm or migrations; caller-provided native or custom backend"
       ],
       "rationale": "Explicit raw provider receives SQL and legacy QueryValue arguments from its caller. Reviewed bodies forward the supplied SQL unchanged, bind supplied parameters, execute on the caller-selected pool/transaction and decode rows without constructing framework SQL. Higher-level framework statements remain separately audited; this provider classification does not exempt their SQL construction.",
       "backends": [
@@ -13800,7 +13802,8 @@
       "evidence": [
         "Reviewed public DatabaseBackend and TransactionExecutor raw SQL signatures and contextual forwarding defaults.",
         "Reviewed pool, managed-transaction and raw-transaction execute/fetch bodies in this dialect; no local framework statement assembly occurs. Raw streaming bodies and generated providers retain their separately reviewed classifications.",
-        "Reviewed Backend/TransactionExecutor context defaults, FlavoredTransactionExecutor, backend DatabaseConnection and ORM DatabaseConnection/OrmExecutor forwarding bodies: caller SQL/parameters pass through unchanged; resolver ownership, savepoint delegation, row conversion and error context remain intact."
+        "Reviewed Backend/TransactionExecutor context defaults, FlavoredTransactionExecutor, backend DatabaseConnection and ORM DatabaseConnection/OrmExecutor forwarding bodies: caller SQL/parameters pass through unchanged; resolver ownership, savepoint delegation, row conversion and error context remain intact.",
+        "Reviewed the #6880 feature gate: `execute_with_context` now compiles only when its orm or migrations callers are enabled; the forwarding body and fingerprint are unchanged."
       ]
     },
     {
@@ -13865,7 +13868,9 @@
       "kind": "execution-wrapper",
       "line": 1066,
       "fingerprint": "e6d89fbe3497c9f344c4129745c4204821e1a80f64b61effe932a30445109f8f",
-      "conditions": [],
+      "conditions": [
+        "# [cfg (feature = \"orm\")]"
+      ],
       "test_only": false,
       "category": "review-required",
       "ownership": "application-raw",
@@ -13873,7 +13878,7 @@
       "operation": "caller-defined",
       "representation": "caller-raw",
       "feature_reachability": [
-        "backends; caller-provided native or custom backend"
+        "backends + orm; caller-provided native or custom backend"
       ],
       "rationale": "Explicit raw provider receives SQL and legacy QueryValue arguments from its caller. Reviewed bodies forward the supplied SQL unchanged, bind supplied parameters, execute on the caller-selected pool/transaction and decode rows without constructing framework SQL. Higher-level framework statements remain separately audited; this provider classification does not exempt their SQL construction.",
       "backends": [
@@ -13882,7 +13887,8 @@
       "evidence": [
         "Reviewed public DatabaseBackend and TransactionExecutor raw SQL signatures and contextual forwarding defaults.",
         "Reviewed pool, managed-transaction and raw-transaction execute/fetch bodies in this dialect; no local framework statement assembly occurs. Raw streaming bodies and generated providers retain their separately reviewed classifications.",
-        "Reviewed Backend/TransactionExecutor context defaults, FlavoredTransactionExecutor, backend DatabaseConnection and ORM DatabaseConnection/OrmExecutor forwarding bodies: caller SQL/parameters pass through unchanged; resolver ownership, savepoint delegation, row conversion and error context remain intact."
+        "Reviewed Backend/TransactionExecutor context defaults, FlavoredTransactionExecutor, backend DatabaseConnection and ORM DatabaseConnection/OrmExecutor forwarding bodies: caller SQL/parameters pass through unchanged; resolver ownership, savepoint delegation, row conversion and error context remain intact.",
+        "Reviewed the #6880 feature gate: `fetch_all_with_context` now compiles only when its orm callers are enabled; the forwarding body and fingerprint are unchanged."
       ]
     },
     {
@@ -13947,7 +13953,9 @@
       "kind": "execution-wrapper",
       "line": 1021,
       "fingerprint": "130f6133053e400e7f190e0eadbb23a3d21d458fee18824c97a0b0d5a123e80e",
-      "conditions": [],
+      "conditions": [
+        "# [cfg (feature = \"orm\")]"
+      ],
       "test_only": false,
       "category": "review-required",
       "ownership": "application-raw",
@@ -13955,7 +13963,7 @@
       "operation": "caller-defined",
       "representation": "caller-raw",
       "feature_reachability": [
-        "backends; caller-provided native or custom backend"
+        "backends + orm; caller-provided native or custom backend"
       ],
       "rationale": "Explicit raw provider receives SQL and legacy QueryValue arguments from its caller. Reviewed bodies forward the supplied SQL unchanged, bind supplied parameters, execute on the caller-selected pool/transaction and decode rows without constructing framework SQL. Higher-level framework statements remain separately audited; this provider classification does not exempt their SQL construction.",
       "backends": [
@@ -13964,7 +13972,8 @@
       "evidence": [
         "Reviewed public DatabaseBackend and TransactionExecutor raw SQL signatures and contextual forwarding defaults.",
         "Reviewed pool, managed-transaction and raw-transaction execute/fetch bodies in this dialect; no local framework statement assembly occurs. Raw streaming bodies and generated providers retain their separately reviewed classifications.",
-        "Reviewed Backend/TransactionExecutor context defaults, FlavoredTransactionExecutor, backend DatabaseConnection and ORM DatabaseConnection/OrmExecutor forwarding bodies: caller SQL/parameters pass through unchanged; resolver ownership, savepoint delegation, row conversion and error context remain intact."
+        "Reviewed Backend/TransactionExecutor context defaults, FlavoredTransactionExecutor, backend DatabaseConnection and ORM DatabaseConnection/OrmExecutor forwarding bodies: caller SQL/parameters pass through unchanged; resolver ownership, savepoint delegation, row conversion and error context remain intact.",
+        "Reviewed the #6880 feature gate: `fetch_one_with_context` now compiles only when its orm callers are enabled; the forwarding body and fingerprint are unchanged."
       ]
     },
     {
@@ -14029,7 +14038,9 @@
       "kind": "execution-wrapper",
       "line": 1086,
       "fingerprint": "d4ca7c31d62c39d4959bb27e72fd4339d76415bc9155304bfa2650b8593eeff9",
-      "conditions": [],
+      "conditions": [
+        "# [cfg (feature = \"orm\")]"
+      ],
       "test_only": false,
       "category": "review-required",
       "ownership": "application-raw",
@@ -14037,7 +14048,7 @@
       "operation": "caller-defined",
       "representation": "caller-raw",
       "feature_reachability": [
-        "backends; caller-provided native or custom backend"
+        "backends + orm; caller-provided native or custom backend"
       ],
       "rationale": "Explicit raw provider receives SQL and legacy QueryValue arguments from its caller. Reviewed bodies forward the supplied SQL unchanged, bind supplied parameters, execute on the caller-selected pool/transaction and decode rows without constructing framework SQL. Higher-level framework statements remain separately audited; this provider classification does not exempt their SQL construction.",
       "backends": [
@@ -14046,7 +14057,8 @@
       "evidence": [
         "Reviewed public DatabaseBackend and TransactionExecutor raw SQL signatures and contextual forwarding defaults.",
         "Reviewed pool, managed-transaction and raw-transaction execute/fetch bodies in this dialect; no local framework statement assembly occurs. Raw streaming bodies and generated providers retain their separately reviewed classifications.",
-        "Reviewed Backend/TransactionExecutor context defaults, FlavoredTransactionExecutor, backend DatabaseConnection and ORM DatabaseConnection/OrmExecutor forwarding bodies: caller SQL/parameters pass through unchanged; resolver ownership, savepoint delegation, row conversion and error context remain intact."
+        "Reviewed Backend/TransactionExecutor context defaults, FlavoredTransactionExecutor, backend DatabaseConnection and ORM DatabaseConnection/OrmExecutor forwarding bodies: caller SQL/parameters pass through unchanged; resolver ownership, savepoint delegation, row conversion and error context remain intact.",
+        "Reviewed the #6880 feature gate: `fetch_optional_with_context` now compiles only when its orm callers are enabled; the forwarding body and fingerprint are unchanged."
       ]
     },
     {
@@ -14111,7 +14123,9 @@
       "kind": "execution-wrapper",
       "line": 1052,
       "fingerprint": "8d2a22ea6c53293ac24238382b58f33ab2745b13b34dc4e3ee25b26a4d596fa1",
-      "conditions": [],
+      "conditions": [
+        "# [cfg (feature = \"orm\")]"
+      ],
       "test_only": false,
       "category": "review-required",
       "ownership": "application-raw",
@@ -14119,7 +14133,7 @@
       "operation": "caller-defined",
       "representation": "caller-raw",
       "feature_reachability": [
-        "backends; caller-provided native or custom backend"
+        "backends + orm; caller-provided native or custom backend"
       ],
       "rationale": "Explicit raw provider receives SQL and legacy QueryValue arguments from its caller. Reviewed bodies forward the supplied SQL unchanged, bind supplied parameters, execute on the caller-selected pool/transaction and decode rows without constructing framework SQL. Higher-level framework statements remain separately audited; this provider classification does not exempt their SQL construction.",
       "backends": [
@@ -14128,7 +14142,8 @@
       "evidence": [
         "Reviewed public DatabaseBackend and TransactionExecutor raw SQL signatures and contextual forwarding defaults.",
         "Reviewed pool, managed-transaction and raw-transaction execute/fetch bodies in this dialect; no local framework statement assembly occurs. Raw streaming bodies and generated providers retain their separately reviewed classifications.",
-        "Reviewed Backend/TransactionExecutor context defaults, FlavoredTransactionExecutor, backend DatabaseConnection and ORM DatabaseConnection/OrmExecutor forwarding bodies: caller SQL/parameters pass through unchanged; resolver ownership, savepoint delegation, row conversion and error context remain intact."
+        "Reviewed Backend/TransactionExecutor context defaults, FlavoredTransactionExecutor, backend DatabaseConnection and ORM DatabaseConnection/OrmExecutor forwarding bodies: caller SQL/parameters pass through unchanged; resolver ownership, savepoint delegation, row conversion and error context remain intact.",
+        "Reviewed the #6880 feature gate: `fetch_stream_with_context` now compiles only when its orm callers are enabled; the forwarding body and fingerprint are unchanged."
       ]
     },
     {
@@ -32510,8 +32525,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_reverse_sql",
       "kind": "macro-sql-literal",
-      "line": 4665,
-      "fingerprint": "7d55425556219d61a90e841e8dcbee121571ea62e32fb5c58299956294e5adb0",
+      "line": 4705,
+      "fingerprint": "603e225fa342ef8bd51a9ecb4f2d968d71de41857ba024ef566d4b3551835792",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -32533,8 +32548,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_reverse_sql",
       "kind": "macro-sql-literal",
-      "line": 4792,
-      "fingerprint": "e96c99002d87034f89feae8864312107faaf65ba9b07f3bc4050c43fd6bb71b8",
+      "line": 4832,
+      "fingerprint": "963679f8005a58455fae0b63b472afdc62aed77a8de43573426093ad8930e171",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -32556,8 +32571,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_reverse_sql",
       "kind": "macro-sql-literal",
-      "line": 4840,
-      "fingerprint": "35300b7d0791c5ceac6473050daacf8c4c9a663435b2af663d934d6507b8aa03",
+      "line": 4880,
+      "fingerprint": "8e7f3d696bebe890fa7328fa82f651f813e98c0658ea69202ae9963d09525241",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -32579,8 +32594,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_reverse_sql",
       "kind": "macro-sql-literal",
-      "line": 4905,
-      "fingerprint": "6e46e681983fc2b92d7aafb8d1b582dca7f3e40d35fe52bbaefd05dc77c8ed7f",
+      "line": 4950,
+      "fingerprint": "f08d6291499da3fbd7607f2e7da36105784336bd7a71caecd633c4b7b6a8b003",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -32602,8 +32617,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_reverse_sql",
       "kind": "macro-sql-literal",
-      "line": 4912,
-      "fingerprint": "f8ae574efad9769aef69746923bc1da90ca9a086afb256c501416079ac324390",
+      "line": 4957,
+      "fingerprint": "17395588fb473d72f40c6a32ee6fe8a165f59b5286c45d29455b58b72102024c",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -32625,8 +32640,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_reverse_sql",
       "kind": "macro-sql-literal",
-      "line": 4918,
-      "fingerprint": "f613c39f4822c14141aa4f9fa201d6e4bc825864d3ea0881ee6f67f03a3a6b18",
+      "line": 4963,
+      "fingerprint": "850906915dbf334e21a6662193281d123a402fec9c3955ff51337cbb3c1a2d8b",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -32648,8 +32663,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_reverse_sql",
       "kind": "macro-sql-literal",
-      "line": 4926,
-      "fingerprint": "65589dd6e46fd2e006d0a7e39c4fe9cd79dd33395204573b0ed73c4332805ce0",
+      "line": 4971,
+      "fingerprint": "2d0671be8087ade8bb0e9598933c6ea2eea340481af27bd102a5089b422d5969",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -32671,8 +32686,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_reverse_sql",
       "kind": "macro-sql-literal",
-      "line": 4935,
-      "fingerprint": "556f26cf3a4d848c559017d1b8335c00e8aa12a8d54b1e5694e43c9a6c27e008",
+      "line": 4984,
+      "fingerprint": "8768829d95759f00def6373b1e7c375bef86253036d795af53c0e18997822bd6",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -32694,8 +32709,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_reverse_sql",
       "kind": "macro-sql-literal",
-      "line": 4949,
-      "fingerprint": "61f76f57e7ca113861a3221821a23fc2161481df1fb0fd630e74a6583be73242",
+      "line": 4998,
+      "fingerprint": "35bb05309cb4a4119ecd5c0bf2ffd12221d747fad8d272bd76fcb28227c53d56",
       "conditions": [],
       "test_only": false,
       "category": "control",
@@ -32717,8 +32732,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_reverse_sql",
       "kind": "macro-sql-literal",
-      "line": 4951,
-      "fingerprint": "6f7319c27ef9b84ffd8f2c60705f1a23adb520eb043a11af8f310663fd27892d",
+      "line": 5000,
+      "fingerprint": "397b0425511967b1606f2c8928a7e4592165a315928290190cee043fee6cb85c",
       "conditions": [],
       "test_only": false,
       "category": "control",
@@ -32740,8 +32755,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_reverse_sql",
       "kind": "macro-sql-literal",
-      "line": 4956,
-      "fingerprint": "8127484fd37aa1c17b8e4434abc427252aaaf0924d6981041d46652ac95e9776",
+      "line": 5005,
+      "fingerprint": "a84ed3cb6841d185b00bd40b61910361831a5f92907d0c4564dce37ed3121283",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -32763,8 +32778,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_reverse_sql",
       "kind": "macro-sql-literal",
-      "line": 4669,
-      "fingerprint": "10c4678eee8524c911fe3afa9d5bc23d60e383982a7e6e761c4193d0420cd473",
+      "line": 4709,
+      "fingerprint": "9109986c83796beda56d7301f198295791cfde7d19652bc8c77a989836fa6c55",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -32786,8 +32801,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_reverse_sql",
       "kind": "macro-sql-literal",
-      "line": 4997,
-      "fingerprint": "9db11b7faea86cec0c3943c4a4771b27ee866b6835141f46b5a356109d31f02b",
+      "line": 5046,
+      "fingerprint": "fc6165738bb46629f57c9c7d2f294d0392989d5503aae5838d968fac9da69ad8",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -32809,8 +32824,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_reverse_sql",
       "kind": "macro-sql-literal",
-      "line": 5055,
-      "fingerprint": "bcf255ef9406fc6268902fd6ffa33106a7accd52bd1c0c3c589334fe5d849b22",
+      "line": 5104,
+      "fingerprint": "532d5e704324d93adc2730a3e867b02826b08aee29370740e402018d1cc85bea",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -32832,8 +32847,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_reverse_sql",
       "kind": "macro-sql-literal",
-      "line": 5097,
-      "fingerprint": "772212a8cc8975cb78dab01af7e008bb068b0b3a534703de0c5e2d3b1ed0cc5b",
+      "line": 5146,
+      "fingerprint": "987e7c15017d36edfed1104655cf123c034b0fb33774df1bd666a7fd67fe2514",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -32855,8 +32870,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_reverse_sql",
       "kind": "macro-sql-literal",
-      "line": 5153,
-      "fingerprint": "66d95ffeefa77e1237be3d6045080a7b59fca38de33972c30c5c0584aa803776",
+      "line": 5202,
+      "fingerprint": "a29b1189c923e3648dcfdd76d7c1440a2977119bb27b9f9d53b3ae5ff20de117",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -32878,8 +32893,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_reverse_sql",
       "kind": "macro-sql-literal",
-      "line": 4684,
-      "fingerprint": "0a105dd9c92a6b7aecb34b886264d2ce4b3b360d650450c57dcc6d8689f17fdf",
+      "line": 4724,
+      "fingerprint": "6fc84d3742bff362ca5a22ab264eee9216d1196c0b1e1061150f46cbb6aac087",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -32901,8 +32916,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_reverse_sql",
       "kind": "macro-sql-literal",
-      "line": 4693,
-      "fingerprint": "a9f8899f78310fe9f781a416743fae673633c204b7205ca0bbf648b9e26513d9",
+      "line": 4733,
+      "fingerprint": "93f10c683b48100fc23a005f8567488b8a64a063e35017da8d345593d3ae7d20",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -32924,8 +32939,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_reverse_sql",
       "kind": "macro-sql-literal",
-      "line": 4718,
-      "fingerprint": "f11eae15fa6081ef94481e7d9afe4e986b8c0913f02872f1c37b5621d872df7c",
+      "line": 4758,
+      "fingerprint": "e9c39cc6cd74b24369f7aea4025ec0cca1e527d36ce499060652ff1f2ef6f794",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -32947,8 +32962,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_reverse_sql",
       "kind": "macro-sql-literal",
-      "line": 4724,
-      "fingerprint": "622223ba40e9bacd7d1c7029f883f6aadba7b8bd3dc0e5dac1b3f49adea5eb67",
+      "line": 4764,
+      "fingerprint": "280ed4c4956b0d56a46054d5967cbd1fc1aa0e241c316f26ca75d967ce938018",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -32970,8 +32985,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_reverse_sql",
       "kind": "macro-sql-literal",
-      "line": 4734,
-      "fingerprint": "f11eae15fa6081ef94481e7d9afe4e986b8c0913f02872f1c37b5621d872df7c",
+      "line": 4774,
+      "fingerprint": "e9c39cc6cd74b24369f7aea4025ec0cca1e527d36ce499060652ff1f2ef6f794",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -32993,8 +33008,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_reverse_sql",
       "kind": "macro-sql-literal",
-      "line": 4739,
-      "fingerprint": "622223ba40e9bacd7d1c7029f883f6aadba7b8bd3dc0e5dac1b3f49adea5eb67",
+      "line": 4779,
+      "fingerprint": "280ed4c4956b0d56a46054d5967cbd1fc1aa0e241c316f26ca75d967ce938018",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -33016,8 +33031,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_reverse_sql",
       "kind": "macro-sql-literal",
-      "line": 4786,
-      "fingerprint": "e96c99002d87034f89feae8864312107faaf65ba9b07f3bc4050c43fd6bb71b8",
+      "line": 4826,
+      "fingerprint": "963679f8005a58455fae0b63b472afdc62aed77a8de43573426093ad8930e171",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -33039,8 +33054,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_reverse_sql",
       "kind": "possible-inline-render",
-      "line": 4647,
-      "fingerprint": "7a50742ac221b94dc77e92b3643660d5fdefee878e6f74d760311322b4678f20",
+      "line": 4687,
+      "fingerprint": "7d716338e1c35fdb869d2159bd28dbd04ac443ba2f19abb57ffdc700c180cb20",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -33062,8 +33077,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_reverse_sql",
       "kind": "possible-inline-render",
-      "line": 5142,
-      "fingerprint": "e85b34ed79a7d5e5047808f4dd485a999a392cb1460190c525f63154cc83f19e",
+      "line": 5191,
+      "fingerprint": "5923ab20424bff903f4fd23ecb3aca27ac97ff9c62837246121a6eed777954cf",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -33085,8 +33100,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_reverse_sql",
       "kind": "sql-literal",
-      "line": 4895,
-      "fingerprint": "d07563ff80aa9c5c1305f604433d67563de655a4213b98ebca1305d9901ed076",
+      "line": 4935,
+      "fingerprint": "d92f24cd5694fc6249e40e86ab5e097f0f62432a2362b32eefccf828f55a722c",
       "conditions": [],
       "test_only": false,
       "category": "control",
@@ -33108,8 +33123,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_reverse_sql",
       "kind": "sql-literal",
-      "line": 4897,
-      "fingerprint": "53ae1f00fb255b5f52a98b7bd9221523f3520464a6040daf9f00f98684b160ec",
+      "line": 4937,
+      "fingerprint": "1cf991a343e7492c867fcad9df0024698e2880e04e63316747ac4ff9348e8814",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -33131,8 +33146,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_reverse_sql",
       "kind": "sql-literal",
-      "line": 4953,
-      "fingerprint": "23a07b4ce44ce31f09eacd8cbe7f328b88006fa60d9b28d58dbd9f23b9245be3",
+      "line": 5002,
+      "fingerprint": "3f1f367bfa6d5910fc035e3496955c969af017ac9fb5abcfbfa340897e42276e",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -33154,8 +33169,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_sql",
       "kind": "macro-sql-literal",
-      "line": 3262,
-      "fingerprint": "a005b1b07e21c45647ac03af131c57194ff7782f563f3abc0091ddcd2b9aebf4",
+      "line": 3265,
+      "fingerprint": "53820bf4288536186f1806c2567cd1540c481badadf73d2117e3b8c834765d11",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -33177,8 +33192,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_sql",
       "kind": "macro-sql-literal",
-      "line": 3435,
-      "fingerprint": "6a1c04a220f10724647b641e4c3b7930ebbc326c508bb085ac873b7cdc14a96e",
+      "line": 3438,
+      "fingerprint": "fe1c1eae81763e753f46c43f522a1fbfb6aae0d7a7bf175d3255a058237ba075",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -33200,8 +33215,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_sql",
       "kind": "macro-sql-literal",
-      "line": 3438,
-      "fingerprint": "567ef42420625f57adb66c60d5bf09c310bc6a466bca721d635a5baab5ad7745",
+      "line": 3441,
+      "fingerprint": "5a6ad78adcc12ebc59c24bef5bcca55469d96a1dde9ea12e01a3268737deef0f",
       "conditions": [],
       "test_only": false,
       "category": "control",
@@ -33223,8 +33238,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_sql",
       "kind": "macro-sql-literal",
-      "line": 3438,
-      "fingerprint": "59b8fa39b5bf9a9d83958d379ee8118533337baa2afc39b6092164849a57554a",
+      "line": 3441,
+      "fingerprint": "31c193314e7f943db9126d5df5c58e7c31b08de9af514546fe90a4178e508dd4",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -33246,8 +33261,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_sql",
       "kind": "macro-sql-literal",
-      "line": 3445,
-      "fingerprint": "d59e9389d228ece1446c989c562c1777efd30a5f6b84cfa80588cdc94ed90f2f",
+      "line": 3452,
+      "fingerprint": "edba4bf4b5dfdf2df92030f97c479d6748bfb3dab03c3774b47c30c1a53edd3c",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -33269,8 +33284,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_sql",
       "kind": "macro-sql-literal",
-      "line": 3474,
-      "fingerprint": "3de8c0c8f8ab813629f1ee6eca3ab2f0ca18e194d3488ed974e7deb9e3cf9107",
+      "line": 3481,
+      "fingerprint": "eb005cf3afeaf56b9acc85ea0b2c60ba27fd04c48e559734c6cb843a911174aa",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -33292,8 +33307,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_sql",
       "kind": "macro-sql-literal",
-      "line": 3482,
-      "fingerprint": "5d989daee7e2ad3d4eabedc008a4c298cac1e29b6e7cdfd8acb7fed6020a8686",
+      "line": 3489,
+      "fingerprint": "b0671248f293a487cf04a5b33c7c23ea94e5b349f33127fe2705c7e0991860f1",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -33315,8 +33330,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_sql",
       "kind": "macro-sql-literal",
-      "line": 3501,
-      "fingerprint": "cc98e1e3d45aa0a6e8bdc9cf84fb22018a1501d0c4069aec6211457ad27fe0ee",
+      "line": 3508,
+      "fingerprint": "d1d19f17968e503cfcb3fceec6797469fde04c3a4a316c81230631e73abd6235",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -33338,8 +33353,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_sql",
       "kind": "macro-sql-literal",
-      "line": 3507,
-      "fingerprint": "cc98e1e3d45aa0a6e8bdc9cf84fb22018a1501d0c4069aec6211457ad27fe0ee",
+      "line": 3514,
+      "fingerprint": "d1d19f17968e503cfcb3fceec6797469fde04c3a4a316c81230631e73abd6235",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -33361,8 +33376,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_sql",
       "kind": "macro-sql-literal",
-      "line": 3519,
-      "fingerprint": "4cc8195e1cc32dc85b50f9d6a0f767a4dfede22cdbcc0bf76cbc33bb57f87f14",
+      "line": 3526,
+      "fingerprint": "5d84c16c42350fba38aeb1a8118f0d47624da6c4bbaa3337da578380bead8368",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -33384,8 +33399,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_sql",
       "kind": "macro-sql-literal",
-      "line": 3525,
-      "fingerprint": "4cc8195e1cc32dc85b50f9d6a0f767a4dfede22cdbcc0bf76cbc33bb57f87f14",
+      "line": 3532,
+      "fingerprint": "5d84c16c42350fba38aeb1a8118f0d47624da6c4bbaa3337da578380bead8368",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -33407,8 +33422,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_sql",
       "kind": "macro-sql-literal",
-      "line": 3303,
-      "fingerprint": "42adb30ee1d5e4414c2c8d44621150bd9a3c626a1e7ae90aae937bea7449fb0a",
+      "line": 3306,
+      "fingerprint": "f7ff22b70f7a554093b31e2f2146cf49f6fc96f2aa0499ff68f4ba31bcfa1ef3",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -33430,8 +33445,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_sql",
       "kind": "macro-sql-literal",
-      "line": 3650,
-      "fingerprint": "6c7175c803040833af75d6fa94a2c1132fd42b632eb73a2f545592355c762eba",
+      "line": 3657,
+      "fingerprint": "469035078d99f53ec6c6c1f5c3e052b2747fd2456df66b96d3d6802ed69be09c",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -33453,8 +33468,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_sql",
       "kind": "macro-sql-literal",
-      "line": 3659,
-      "fingerprint": "9eb7bd51214e07f67e1fef30cf170661e83c95a36b74423fb5c76792521559d8",
+      "line": 3666,
+      "fingerprint": "ff4ca22d2d6775d12dfd676bdc7bad2d7810e0a273559beda7da8264edfba42d",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -33476,8 +33491,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_sql",
       "kind": "macro-sql-literal",
-      "line": 3668,
-      "fingerprint": "153bb09749184fd6df187adff56fff1a1197f37eeccbfce362cd3c5d862add47",
+      "line": 3675,
+      "fingerprint": "fef5ad8c046423db8cc95d30616cf65478d55a20e27976af9d49c1958cd72031",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -33499,8 +33514,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_sql",
       "kind": "macro-sql-literal",
-      "line": 3740,
-      "fingerprint": "5fb79e829818532dba60ea39c1f4be5d7b73daedad5568352c4859879b73f730",
+      "line": 3747,
+      "fingerprint": "3a1d0612eae9c6055c21fb36782295a4508ded9125746f4febed15a5d699af84",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -33522,8 +33537,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_sql",
       "kind": "macro-sql-literal",
-      "line": 3747,
-      "fingerprint": "7e4280b24d82c73e945d9bcc43c7d79e4f8b8f95d95646116e3afe04d21090f0",
+      "line": 3754,
+      "fingerprint": "c9d394a9bc684d12766dbdd874485f2b7b3b3e7533efd80531398bd2f383d016",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -33545,8 +33560,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_sql",
       "kind": "macro-sql-literal",
-      "line": 3755,
-      "fingerprint": "5fb79e829818532dba60ea39c1f4be5d7b73daedad5568352c4859879b73f730",
+      "line": 3762,
+      "fingerprint": "3a1d0612eae9c6055c21fb36782295a4508ded9125746f4febed15a5d699af84",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -33568,8 +33583,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_sql",
       "kind": "macro-sql-literal",
-      "line": 3761,
-      "fingerprint": "7e4280b24d82c73e945d9bcc43c7d79e4f8b8f95d95646116e3afe04d21090f0",
+      "line": 3768,
+      "fingerprint": "c9d394a9bc684d12766dbdd874485f2b7b3b3e7533efd80531398bd2f383d016",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -33591,8 +33606,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_sql",
       "kind": "macro-sql-literal",
-      "line": 3775,
-      "fingerprint": "61fdb08757a3faaa6bae8365ea33ef77ca6c7409f755628ae244714d242cb7f4",
+      "line": 3782,
+      "fingerprint": "ab4a9571aee08f6edc034785ca996e7c50befbebcc335204912211d4739b87aa",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -33614,8 +33629,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_sql",
       "kind": "macro-sql-literal",
-      "line": 3781,
-      "fingerprint": "22772fe623203d73c3d96199705fd4d86850879e7e0dc707fa4bbdf0725b9804",
+      "line": 3788,
+      "fingerprint": "6e2f0a757d8b11d6e14dd4afe3609afae144bb802371739226324a464a244db1",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -33637,8 +33652,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_sql",
       "kind": "macro-sql-literal",
-      "line": 3789,
-      "fingerprint": "417934d144428ae24753ac17b37d6c017dd16ca8c3511cb0c6018e23c6918c86",
+      "line": 3796,
+      "fingerprint": "3a151801b5d430727bc7c46e37ee8a8b052e623b6845a43557ba4367194a11ff",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -33660,8 +33675,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_sql",
       "kind": "macro-sql-literal",
-      "line": 3321,
-      "fingerprint": "f93d189d7f31566ccba5905dd3636c3185d115ccf26a62c4c233418d63474588",
+      "line": 3324,
+      "fingerprint": "e8ae508b6a7f2c8c0b29391f266074cca6428f2ffe2d916aa4201da70c81e2e6",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -33683,8 +33698,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_sql",
       "kind": "macro-sql-literal",
-      "line": 3795,
-      "fingerprint": "530ce0b951eff6a42f57c14954edcbafad801a6de21477a2bf46c6a2434e13d4",
+      "line": 3802,
+      "fingerprint": "427655b16830e2c5d11ae0d1d01d69c515517e1b26c4fc06ee525e8a0ad1ec17",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -33706,8 +33721,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_sql",
       "kind": "macro-sql-literal",
-      "line": 3815,
-      "fingerprint": "feea0f3667e347a18e6a31008ffd8d76c2384bcf43b4ad05627eeb11c82dbf06",
+      "line": 3822,
+      "fingerprint": "bb18485a98c14cff897f2138ed412de2448d62443cbbc89ba486d08a8e2c8126",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -33729,8 +33744,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_sql",
       "kind": "macro-sql-literal",
-      "line": 3840,
-      "fingerprint": "591a63fb2e26fca62fe5457f170206152a6888c36e2a1da13d29c177c334828e",
+      "line": 3847,
+      "fingerprint": "3d84e8a715ff56585b58c75afd594a0617ef5007a887166a0834f7a140f75b67",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -33752,8 +33767,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_sql",
       "kind": "macro-sql-literal",
-      "line": 3851,
-      "fingerprint": "765f43c81a6c34a40a5fc7dfb470c6f752ff8d640cfa775cec1efdedb82b01ac",
+      "line": 3858,
+      "fingerprint": "78994c3f4eeee782a17fe9e3a3db5fabdd4a9748dd8af193ec52bcc07af4bd10",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -33775,8 +33790,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_sql",
       "kind": "macro-sql-literal",
-      "line": 3870,
-      "fingerprint": "5d989daee7e2ad3d4eabedc008a4c298cac1e29b6e7cdfd8acb7fed6020a8686",
+      "line": 3877,
+      "fingerprint": "b0671248f293a487cf04a5b33c7c23ea94e5b349f33127fe2705c7e0991860f1",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -33798,8 +33813,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_sql",
       "kind": "macro-sql-literal",
-      "line": 3897,
-      "fingerprint": "6ccdcfeba6d87c98f5d39257005c347339314acb75e4e7fc54466ae49a73b714",
+      "line": 3904,
+      "fingerprint": "f17028e8314681a16d4f9f9df3a7ab25ff1e80b2fe648ea75809dc8ab442cb27",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -33821,8 +33836,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_sql",
       "kind": "macro-sql-literal",
-      "line": 3910,
-      "fingerprint": "fcb40a84326fdbac304903413cab1664b1e8583d19bc1b1187be6d38bd47690a",
+      "line": 3917,
+      "fingerprint": "a45d2c63b03837a7461f0a977e056ff8bd5344ec9cbe4f2f511fd4b4f71aa5c6",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -33844,8 +33859,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_sql",
       "kind": "macro-sql-literal",
-      "line": 3929,
-      "fingerprint": "31efa14d6caeefc4daa1643d66caf0df6ce56b32c9478c3732a4ad60e118dfc4",
+      "line": 3936,
+      "fingerprint": "a6f035627e3998d30305462b30b52683ebe4931cdc8ca1f3e6e1f33773e886d6",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -33867,8 +33882,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_sql",
       "kind": "macro-sql-literal",
-      "line": 3940,
-      "fingerprint": "4d871a3c9c5dfbb629d167c964072b6112da869564217ea2517a2f173f5a0b0f",
+      "line": 3947,
+      "fingerprint": "de42fb6e22d51f127a5b912e8ea248e459d3fa240290777106c3dff371b0536b",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -33890,8 +33905,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_sql",
       "kind": "macro-sql-literal",
-      "line": 3340,
-      "fingerprint": "30c27c8109eb84ebf812ae7e85b8fee8f787c180dcae640f09d685c2cd8682c7",
+      "line": 3343,
+      "fingerprint": "218f3c8b9ac6b113ebdf40ec6c270dbaa8b2092787aa6121958f3569c96fb6e5",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -33913,8 +33928,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_sql",
       "kind": "macro-sql-literal",
-      "line": 3362,
-      "fingerprint": "745902d6deec5f190b6c24760869e72432d7e46188fc151c63a7333b43a3574f",
+      "line": 3372,
+      "fingerprint": "58f767dc8486ef71475f4d73e69506ddac79373c09ed71ae1316c77391761a26",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -33936,8 +33951,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_sql",
       "kind": "macro-sql-literal",
-      "line": 3368,
-      "fingerprint": "feeea53758b10acaf9fa15ea01437c7d546c4851cb70d31d9029e595ea2f314d",
+      "line": 3378,
+      "fingerprint": "eb42fba681a5fbd50010b13ce9c2db0d010b9e7d35ed552b1dc9ff5a58d825f3",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -33959,8 +33974,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_sql",
       "kind": "macro-sql-literal",
-      "line": 3377,
-      "fingerprint": "29abaae4ecb3c4902a4058000663fde1b71e634436261b24b40fd281792a3575",
+      "line": 3387,
+      "fingerprint": "379a2b9373e3b0298b261a8275e1b7158bf5c02dd280d1038d92b8f292c23c1e",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -33982,8 +33997,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_sql",
       "kind": "macro-sql-literal",
-      "line": 3385,
-      "fingerprint": "29abaae4ecb3c4902a4058000663fde1b71e634436261b24b40fd281792a3575",
+      "line": 3395,
+      "fingerprint": "379a2b9373e3b0298b261a8275e1b7158bf5c02dd280d1038d92b8f292c23c1e",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -34005,8 +34020,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_sql",
       "kind": "macro-sql-literal",
-      "line": 3405,
-      "fingerprint": "133f0c2599bcc9032f6266c98e145bf605ee91fb1cd8558d8146ec6f04be7828",
+      "line": 3415,
+      "fingerprint": "70095e20e3a77ee8b0ea2ab08f0908eae333181b613cc74fc51cbdd5e4b76b31",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -34028,8 +34043,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_sql",
       "kind": "possible-inline-render",
-      "line": 3213,
-      "fingerprint": "832c08800acde673995dd46f9fd14bacdc038c1d73ef534ec53867a9e22b57a2",
+      "line": 3216,
+      "fingerprint": "c85e5d670e5a74fa8bc8e7730112802a0eae4883cb44cb21729ecefb6520cf3e",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -34051,8 +34066,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_sql",
       "kind": "possible-inline-render",
-      "line": 3214,
-      "fingerprint": "832c08800acde673995dd46f9fd14bacdc038c1d73ef534ec53867a9e22b57a2",
+      "line": 3217,
+      "fingerprint": "c85e5d670e5a74fa8bc8e7730112802a0eae4883cb44cb21729ecefb6520cf3e",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -34074,8 +34089,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_sql",
       "kind": "possible-inline-render",
-      "line": 3279,
-      "fingerprint": "c2edaeac8e851ad93ef61852407d07efab3ace3891403715cdfeff2694bb351b",
+      "line": 3282,
+      "fingerprint": "182dfe1459dd468bd581c4362a1cc6b5945a8b309e7fabd9de84d074d7d01d03",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -34097,8 +34112,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_sql",
       "kind": "possible-inline-render",
-      "line": 3719,
-      "fingerprint": "764b497aa1561810844b5e4ab78869aa465067c780e83c661b3f1a0ed95529a8",
+      "line": 3726,
+      "fingerprint": "e4ae907344b7fffb0b6fb75918e81876d567c418be23db7c4e0f15547608d747",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -34120,8 +34135,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_statement",
       "kind": "macro-sql-literal",
-      "line": 7285,
-      "fingerprint": "f868fb149f7772b1300483170ea32665a809950c9e1fc269806215296c59bff3",
+      "line": 7340,
+      "fingerprint": "7c6dea8c4bad778d1b1c623326a915dc86b7d63be8205ac3a79fb03b1b4ca6a4",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -34143,8 +34158,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_statement",
       "kind": "macro-sql-literal",
-      "line": 7540,
-      "fingerprint": "852ab268d9a6b6e7af390ae642c749daa7bddabc64f06dd78d5241c20c0bad54",
+      "line": 7595,
+      "fingerprint": "58e5c01871e8f6e0a5998f2fb8e2496d1ddcc8354a9abbcd3cd251b2af78fb57",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -34166,8 +34181,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_statement",
       "kind": "macro-sql-literal",
-      "line": 7575,
-      "fingerprint": "50bf73614d8af37da2ff11f86cd38ba40f24dffa1140b00146d9c203af64b2fe",
+      "line": 7630,
+      "fingerprint": "03cadbc3f8e32a5da5d27d0b5bcf1ebc87aebfe858e34ff6df791b3c407e5f55",
       "conditions": [],
       "test_only": false,
       "category": "dml",
@@ -34189,8 +34204,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_statement",
       "kind": "macro-sql-literal",
-      "line": 7303,
-      "fingerprint": "107c4e352c8ff0dca7bcd5359af28c9176dcb5f9879e55a782b6d3cc6011baf7",
+      "line": 7358,
+      "fingerprint": "c8f9145cdb101730e40d8a104b485fb1cf81fc264c30b2af0151d7c321c0ac80",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -34212,8 +34227,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_statement",
       "kind": "macro-sql-literal",
-      "line": 7319,
-      "fingerprint": "f14d5c75ddfdf439fc8cc25bd0f0ceec6207fe769bbc05709c866261d4c610a0",
+      "line": 7374,
+      "fingerprint": "83bf6c21cbdfe06ea6ec9a9ce5af728fa9466aea4bd4ae97ae2b3fc674cd9528",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -34235,8 +34250,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_statement",
       "kind": "macro-sql-literal",
-      "line": 7404,
-      "fingerprint": "710549fa7c34f737f4ed4845cf6e72c7d611a006ddc8bc221805831a5a854582",
+      "line": 7459,
+      "fingerprint": "0b15614600fa5f14347779fbb6d73ec465850dc1ac404b16cd36099211473c9d",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -34258,8 +34273,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_statement",
       "kind": "macro-sql-literal",
-      "line": 7409,
-      "fingerprint": "bf6f6f90077f7e0ffc8773f95fa8abf006dad0c420be19bbfe1b804579552f8b",
+      "line": 7464,
+      "fingerprint": "e4aa6b5d3b52dce1967fb6b81df13ef5f0d81edd1f1c55cf6a3a486cd29c2af0",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -34281,8 +34296,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_statement",
       "kind": "macro-sql-literal",
-      "line": 7424,
-      "fingerprint": "efac8aa55d2d2602612a5165285f8bdd5c3d1fc2d27efb1c2be0cc8fc2ece462",
+      "line": 7479,
+      "fingerprint": "e709d91385c3ef0b51f6f6f337e43ff06c327f567b435593d2f2dba2094bd4e0",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -34304,8 +34319,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_statement",
       "kind": "macro-sql-literal",
-      "line": 7505,
-      "fingerprint": "e7052389bc189cfed35315867f0afe1fa81b9eae93a4cd26658cc5cac68c6d13",
+      "line": 7560,
+      "fingerprint": "fbbd1eaaaff102fb775e4cab4d757694eb6cc94f1a9e6382dd2c47cfb37bc899",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -34327,8 +34342,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_statement",
       "kind": "macro-sql-literal",
-      "line": 7507,
-      "fingerprint": "6f93c0a0d8c1eadb44c299d7cbf00d797419c894cbe22c92f6affbfb06d14685",
+      "line": 7562,
+      "fingerprint": "425075e0e8a303c78fce3305776586ce93427361d9f86f10a8dd6652eef1ca87",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -34350,8 +34365,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_statement",
       "kind": "macro-sql-literal",
-      "line": 7520,
-      "fingerprint": "13ddefba7589acbb3331754bf16130ec5106e6eac8ee55d719408d6ae6554f1c",
+      "line": 7575,
+      "fingerprint": "4ddde717d73c51636eff63fd0e5e8e22d673c8ad8ed3860a1c484a12c4cafd6d",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -34373,8 +34388,8 @@
       "path": "crates/reinhardt-db/src/migrations/operations.rs",
       "symbol": "Operation::to_statement",
       "kind": "possible-inline-render",
-      "line": 7548,
-      "fingerprint": "937a181cc872944a97342bf7ae612fe2c8d22d227804138bf39d33a261d58742",
+      "line": 7603,
+      "fingerprint": "232cd7366574489e24cc2ceab70e4097109657eb2daeed01c3db7b048433651b",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -54520,7 +54535,7 @@
       "symbol": "MySqlQueryBuilder as QueryBuilder::build_alter_table",
       "kind": "sql-literal",
       "line": 1570,
-      "fingerprint": "e52c98795b1147779fdfa4c9649c7ff321c570d615ce20d881c614592d917610",
+      "fingerprint": "19a16728d233c27ca4ffa079736831abe317a4f90049a25b1e16371ef0ebae69",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -54536,7 +54551,8 @@
         "renderer-selected"
       ],
       "evidence": [
-        "Reviewed reinhardt-query dependency/renderer boundary; query unit and executable rustdoc coverage."
+        "Reviewed reinhardt-query dependency/renderer boundary; query unit and executable rustdoc coverage.",
+        "Re-reviewed after the main forward merge (#6887): NOT NULL is rendered only for `not_null == Some(true)`; rendering stays executor-independent."
       ]
     },
     {
@@ -54545,7 +54561,7 @@
       "symbol": "MySqlQueryBuilder as QueryBuilder::build_alter_table",
       "kind": "sql-literal",
       "line": 1616,
-      "fingerprint": "962b21283b1233fc14e708e9354bea100f806c53198cb5cad87f955257e74aee",
+      "fingerprint": "9079253fc7e64e325efd088f1c91dede8c451ec302af17d747ef773f7875cc1f",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -54561,7 +54577,8 @@
         "renderer-selected"
       ],
       "evidence": [
-        "Reviewed reinhardt-query dependency/renderer boundary; query unit and executable rustdoc coverage."
+        "Reviewed reinhardt-query dependency/renderer boundary; query unit and executable rustdoc coverage.",
+        "Re-reviewed after the main forward merge (#6887): NOT NULL is rendered only for `not_null == Some(true)`; rendering stays executor-independent."
       ]
     },
     {
@@ -54570,7 +54587,7 @@
       "symbol": "MySqlQueryBuilder as QueryBuilder::build_alter_table",
       "kind": "sql-literal",
       "line": 1621,
-      "fingerprint": "519f4f050a9fd01e9a7ce7034a29c102e6c315f2d8d728f33467a35c4f742a5c",
+      "fingerprint": "3b23853d6a7b10fdfe9092045e79dc2cb98558d4dacb0ed5a53f472b962b8c2e",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -54586,7 +54603,8 @@
         "renderer-selected"
       ],
       "evidence": [
-        "Reviewed reinhardt-query dependency/renderer boundary; query unit and executable rustdoc coverage."
+        "Reviewed reinhardt-query dependency/renderer boundary; query unit and executable rustdoc coverage.",
+        "Re-reviewed after the main forward merge (#6887): NOT NULL is rendered only for `not_null == Some(true)`; rendering stays executor-independent."
       ]
     },
     {
@@ -54595,7 +54613,7 @@
       "symbol": "MySqlQueryBuilder as QueryBuilder::build_alter_table",
       "kind": "sql-literal",
       "line": 1661,
-      "fingerprint": "6cf0c1c03271a353d8ceedb5ac6a54a60edc82a02ff4e359a5f2281fd39dbd24",
+      "fingerprint": "96afbdf428d7917c9674e11cb58fe0b2d91930dac40ac2ae336cf1b0c8f71009",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -54611,7 +54629,8 @@
         "renderer-selected"
       ],
       "evidence": [
-        "Reviewed reinhardt-query dependency/renderer boundary; query unit and executable rustdoc coverage."
+        "Reviewed reinhardt-query dependency/renderer boundary; query unit and executable rustdoc coverage.",
+        "Re-reviewed after the main forward merge (#6887): NOT NULL is rendered only for `not_null == Some(true)`; rendering stays executor-independent."
       ]
     },
     {
@@ -54921,7 +54940,7 @@
       "symbol": "MySqlQueryBuilder as QueryBuilder::build_create_table",
       "kind": "sql-literal",
       "line": 1477,
-      "fingerprint": "73ef84114b83cf22b6cbb892911230d453deeeb6c68bc068db972cd94faeef3a",
+      "fingerprint": "b7f0403412b67b61ad225bea1d6e262d865fc4f259368d85ee3e0aff220de497",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -54937,7 +54956,8 @@
         "renderer-selected"
       ],
       "evidence": [
-        "Reviewed reinhardt-query dependency/renderer boundary; query unit and executable rustdoc coverage."
+        "Reviewed reinhardt-query dependency/renderer boundary; query unit and executable rustdoc coverage.",
+        "Re-reviewed after the main forward merge (#6887): NOT NULL is rendered only for `not_null == Some(true)`; rendering stays executor-independent."
       ]
     },
     {
@@ -54946,7 +54966,7 @@
       "symbol": "MySqlQueryBuilder as QueryBuilder::build_create_table",
       "kind": "sql-literal",
       "line": 1550,
-      "fingerprint": "8bcfbac9f7b76b08f5f2881e3b5cd863e508669f0b5c38c11e466c42917ca50a",
+      "fingerprint": "c15c1032ef633ddb19dc1e6ce67282490fcca31a71f59db514654fb39a1c10a2",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -54962,7 +54982,8 @@
         "renderer-selected"
       ],
       "evidence": [
-        "Reviewed reinhardt-query dependency/renderer boundary; query unit and executable rustdoc coverage."
+        "Reviewed reinhardt-query dependency/renderer boundary; query unit and executable rustdoc coverage.",
+        "Re-reviewed after the main forward merge (#6887): NOT NULL is rendered only for `not_null == Some(true)`; rendering stays executor-independent."
       ]
     },
     {
@@ -57667,12 +57688,12 @@
       ]
     },
     {
-      "id": "crates/reinhardt-query/src/backend/postgres.rs::PostgresQueryBuilder::build_alter_table_with_writer::macro-sql-literal#1",
+      "id": "crates/reinhardt-query/src/backend/postgres.rs::PostgresQueryBuilder::build_alter_table_with_mode::macro-sql-literal#1",
       "path": "crates/reinhardt-query/src/backend/postgres.rs",
-      "symbol": "PostgresQueryBuilder::build_alter_table_with_writer",
+      "symbol": "PostgresQueryBuilder::build_alter_table_with_mode",
       "kind": "macro-sql-literal",
-      "line": 2377,
-      "fingerprint": "d1c423e0165ec603821ddd9911c16822bb038df56aca929474179ff40cb841a9",
+      "line": 2408,
+      "fingerprint": "e6368912cb690d9ccf78bfc3f88a78e3b8970c4f2ba282570289eed3b1a323a9",
       "conditions": [],
       "test_only": false,
       "category": "control",
@@ -57689,19 +57710,398 @@
       ],
       "evidence": [
         "crates/reinhardt-query/src/backend",
-        "crates/reinhardt-query/tests"
+        "crates/reinhardt-query/tests",
+        "Renamed from build_alter_table_with_writer by the main forward merge (#6887); the PostgreSQL renderer can now separate ALTER TABLE actions into statements for CockroachDB batches and still only renders typed AST nodes."
       ]
     },
     {
-      "id": "crates/reinhardt-query/src/backend/postgres.rs::PostgresQueryBuilder::build_alter_table_with_writer::macro-sql-literal#2",
+      "id": "crates/reinhardt-query/src/backend/postgres.rs::PostgresQueryBuilder::build_alter_table_with_mode::macro-sql-literal#2",
       "path": "crates/reinhardt-query/src/backend/postgres.rs",
-      "symbol": "PostgresQueryBuilder::build_alter_table_with_writer",
+      "symbol": "PostgresQueryBuilder::build_alter_table_with_mode",
       "kind": "macro-sql-literal",
+      "line": 2419,
+      "fingerprint": "0c3518f067dabf3aec22dcb7ef1cf0f4d799e938e9c70f6406c463efc6ff4563",
+      "conditions": [],
+      "test_only": false,
+      "category": "control",
+      "ownership": "renderer",
+      "status": "excluded",
+      "operation": "not-executed",
+      "representation": "not-executed",
+      "feature_reachability": [
+        "reinhardt-query"
+      ],
+      "rationale": "Dialect renderer spells SQL grammar for typed statement AST nodes; it does not construct or execute framework runtime queries.",
+      "backends": [
+        "postgres"
+      ],
+      "evidence": [
+        "crates/reinhardt-query/src/backend",
+        "crates/reinhardt-query/tests",
+        "Renamed from build_alter_table_with_writer by the main forward merge (#6887); the PostgreSQL renderer can now separate ALTER TABLE actions into statements for CockroachDB batches and still only renders typed AST nodes."
+      ]
+    },
+    {
+      "id": "crates/reinhardt-query/src/backend/postgres.rs::PostgresQueryBuilder::build_alter_table_with_mode::macro-sql-literal#3",
+      "path": "crates/reinhardt-query/src/backend/postgres.rs",
+      "symbol": "PostgresQueryBuilder::build_alter_table_with_mode",
+      "kind": "macro-sql-literal",
+      "line": 2426,
+      "fingerprint": "aade0a171473f94c5bffc5f3bace8e26003bb54e7c16fc0b1c4ca11eff79de43",
+      "conditions": [],
+      "test_only": false,
+      "category": "control",
+      "ownership": "renderer",
+      "status": "excluded",
+      "operation": "not-executed",
+      "representation": "not-executed",
+      "feature_reachability": [
+        "reinhardt-query"
+      ],
+      "rationale": "Dialect renderer spells SQL grammar for typed statement AST nodes; it does not construct or execute framework runtime queries.",
+      "backends": [
+        "postgres"
+      ],
+      "evidence": [
+        "crates/reinhardt-query/src/backend",
+        "crates/reinhardt-query/tests",
+        "Renamed from build_alter_table_with_writer by the main forward merge (#6887); the PostgreSQL renderer can now separate ALTER TABLE actions into statements for CockroachDB batches and still only renders typed AST nodes."
+      ]
+    },
+    {
+      "id": "crates/reinhardt-query/src/backend/postgres.rs::PostgresQueryBuilder::build_alter_table_with_mode::macro-sql-literal#4",
+      "path": "crates/reinhardt-query/src/backend/postgres.rs",
+      "symbol": "PostgresQueryBuilder::build_alter_table_with_mode",
+      "kind": "macro-sql-literal",
+      "line": 2427,
+      "fingerprint": "c1a3be50a51f2d20507441a09710de71254820957712dc24361c6dd6c19e950c",
+      "conditions": [],
+      "test_only": false,
+      "category": "control",
+      "ownership": "renderer",
+      "status": "excluded",
+      "operation": "not-executed",
+      "representation": "not-executed",
+      "feature_reachability": [
+        "reinhardt-query"
+      ],
+      "rationale": "Dialect renderer spells SQL grammar for typed statement AST nodes; it does not construct or execute framework runtime queries.",
+      "backends": [
+        "postgres"
+      ],
+      "evidence": [
+        "crates/reinhardt-query/src/backend",
+        "crates/reinhardt-query/tests",
+        "Renamed from build_alter_table_with_writer by the main forward merge (#6887); the PostgreSQL renderer can now separate ALTER TABLE actions into statements for CockroachDB batches and still only renders typed AST nodes."
+      ]
+    },
+    {
+      "id": "crates/reinhardt-query/src/backend/postgres.rs::PostgresQueryBuilder::build_alter_table_with_mode::macro-sql-literal#5",
+      "path": "crates/reinhardt-query/src/backend/postgres.rs",
+      "symbol": "PostgresQueryBuilder::build_alter_table_with_mode",
+      "kind": "macro-sql-literal",
+      "line": 2432,
+      "fingerprint": "cae7b68c1399671eea44b699a02f5a6b01941873cb8aa45a49b6b354b19f3929",
+      "conditions": [],
+      "test_only": false,
+      "category": "control",
+      "ownership": "renderer",
+      "status": "excluded",
+      "operation": "not-executed",
+      "representation": "not-executed",
+      "feature_reachability": [
+        "reinhardt-query"
+      ],
+      "rationale": "Dialect renderer spells SQL grammar for typed statement AST nodes; it does not construct or execute framework runtime queries.",
+      "backends": [
+        "postgres"
+      ],
+      "evidence": [
+        "crates/reinhardt-query/src/backend",
+        "crates/reinhardt-query/tests",
+        "Renamed from build_alter_table_with_writer by the main forward merge (#6887); the PostgreSQL renderer can now separate ALTER TABLE actions into statements for CockroachDB batches and still only renders typed AST nodes."
+      ]
+    },
+    {
+      "id": "crates/reinhardt-query/src/backend/postgres.rs::PostgresQueryBuilder::build_alter_table_with_mode::macro-sql-literal#6",
+      "path": "crates/reinhardt-query/src/backend/postgres.rs",
+      "symbol": "PostgresQueryBuilder::build_alter_table_with_mode",
+      "kind": "macro-sql-literal",
+      "line": 2435,
+      "fingerprint": "dfa792d532883d356d12aa9d241c8c5ae5d5a0ea272fa2ee7a887b3bf941dbc8",
+      "conditions": [],
+      "test_only": false,
+      "category": "control",
+      "ownership": "renderer",
+      "status": "excluded",
+      "operation": "not-executed",
+      "representation": "not-executed",
+      "feature_reachability": [
+        "reinhardt-query"
+      ],
+      "rationale": "Dialect renderer spells SQL grammar for typed statement AST nodes; it does not construct or execute framework runtime queries.",
+      "backends": [
+        "postgres"
+      ],
+      "evidence": [
+        "crates/reinhardt-query/src/backend",
+        "crates/reinhardt-query/tests",
+        "Renamed from build_alter_table_with_writer by the main forward merge (#6887); the PostgreSQL renderer can now separate ALTER TABLE actions into statements for CockroachDB batches and still only renders typed AST nodes."
+      ]
+    },
+    {
+      "id": "crates/reinhardt-query/src/backend/postgres.rs::PostgresQueryBuilder::build_alter_table_with_mode::sql-literal#1",
+      "path": "crates/reinhardt-query/src/backend/postgres.rs",
+      "symbol": "PostgresQueryBuilder::build_alter_table_with_mode",
+      "kind": "sql-literal",
+      "line": 2282,
+      "fingerprint": "77b976d376313570280ad136e0a3b2f18a81346f47b5b734e9b6d45835f332a4",
+      "conditions": [],
+      "test_only": false,
+      "category": "schema",
+      "ownership": "renderer",
+      "status": "excluded",
+      "operation": "not-executed",
+      "representation": "not-executed",
+      "feature_reachability": [
+        "reinhardt-query"
+      ],
+      "rationale": "Dialect renderer spells SQL grammar for typed statement AST nodes; it does not construct or execute framework runtime queries.",
+      "backends": [
+        "postgres"
+      ],
+      "evidence": [
+        "crates/reinhardt-query/src/backend",
+        "crates/reinhardt-query/tests",
+        "Renamed from build_alter_table_with_writer by the main forward merge (#6887); the PostgreSQL renderer can now separate ALTER TABLE actions into statements for CockroachDB batches and still only renders typed AST nodes."
+      ]
+    },
+    {
+      "id": "crates/reinhardt-query/src/backend/postgres.rs::PostgresQueryBuilder::build_alter_table_with_mode::sql-literal#10",
+      "path": "crates/reinhardt-query/src/backend/postgres.rs",
+      "symbol": "PostgresQueryBuilder::build_alter_table_with_mode",
+      "kind": "sql-literal",
+      "line": 2438,
+      "fingerprint": "4c8ff65d524c72e07f7c33613f15bfd8b3ff13eab4c0905aacff14f8a492dfb5",
+      "conditions": [],
+      "test_only": false,
+      "category": "control",
+      "ownership": "renderer",
+      "status": "excluded",
+      "operation": "not-executed",
+      "representation": "not-executed",
+      "feature_reachability": [
+        "reinhardt-query"
+      ],
+      "rationale": "Dialect renderer spells SQL grammar for typed statement AST nodes; it does not construct or execute framework runtime queries.",
+      "backends": [
+        "postgres"
+      ],
+      "evidence": [
+        "crates/reinhardt-query/src/backend",
+        "crates/reinhardt-query/tests",
+        "Renamed from build_alter_table_with_writer by the main forward merge (#6887); the PostgreSQL renderer can now separate ALTER TABLE actions into statements for CockroachDB batches and still only renders typed AST nodes."
+      ]
+    },
+    {
+      "id": "crates/reinhardt-query/src/backend/postgres.rs::PostgresQueryBuilder::build_alter_table_with_mode::sql-literal#11",
+      "path": "crates/reinhardt-query/src/backend/postgres.rs",
+      "symbol": "PostgresQueryBuilder::build_alter_table_with_mode",
+      "kind": "sql-literal",
+      "line": 2438,
+      "fingerprint": "d3236fcb41925ffce64f65f7be4daed289de04528ad9220dc5e157fa4ee8a2d6",
+      "conditions": [],
+      "test_only": false,
+      "category": "control",
+      "ownership": "renderer",
+      "status": "excluded",
+      "operation": "not-executed",
+      "representation": "not-executed",
+      "feature_reachability": [
+        "reinhardt-query"
+      ],
+      "rationale": "Dialect renderer spells SQL grammar for typed statement AST nodes; it does not construct or execute framework runtime queries.",
+      "backends": [
+        "postgres"
+      ],
+      "evidence": [
+        "crates/reinhardt-query/src/backend",
+        "crates/reinhardt-query/tests",
+        "Renamed from build_alter_table_with_writer by the main forward merge (#6887); the PostgreSQL renderer can now separate ALTER TABLE actions into statements for CockroachDB batches and still only renders typed AST nodes."
+      ]
+    },
+    {
+      "id": "crates/reinhardt-query/src/backend/postgres.rs::PostgresQueryBuilder::build_alter_table_with_mode::sql-literal#12",
+      "path": "crates/reinhardt-query/src/backend/postgres.rs",
+      "symbol": "PostgresQueryBuilder::build_alter_table_with_mode",
+      "kind": "sql-literal",
+      "line": 2442,
+      "fingerprint": "054cdf854881915033d7353e2801321ef5593f8eba42564db38bfc88030c272e",
+      "conditions": [],
+      "test_only": false,
+      "category": "schema",
+      "ownership": "renderer",
+      "status": "excluded",
+      "operation": "not-executed",
+      "representation": "not-executed",
+      "feature_reachability": [
+        "reinhardt-query"
+      ],
+      "rationale": "Dialect renderer spells SQL grammar for typed statement AST nodes; it does not construct or execute framework runtime queries.",
+      "backends": [
+        "postgres"
+      ],
+      "evidence": [
+        "crates/reinhardt-query/src/backend",
+        "crates/reinhardt-query/tests",
+        "Renamed from build_alter_table_with_writer by the main forward merge (#6887); the PostgreSQL renderer can now separate ALTER TABLE actions into statements for CockroachDB batches and still only renders typed AST nodes."
+      ]
+    },
+    {
+      "id": "crates/reinhardt-query/src/backend/postgres.rs::PostgresQueryBuilder::build_alter_table_with_mode::sql-literal#13",
+      "path": "crates/reinhardt-query/src/backend/postgres.rs",
+      "symbol": "PostgresQueryBuilder::build_alter_table_with_mode",
+      "kind": "sql-literal",
+      "line": 2444,
+      "fingerprint": "467029da9f9cc99a627ac36f2b87cf56fc4eb99b65f99c11b31cd613ac587ecc",
+      "conditions": [],
+      "test_only": false,
+      "category": "schema",
+      "ownership": "renderer",
+      "status": "excluded",
+      "operation": "not-executed",
+      "representation": "not-executed",
+      "feature_reachability": [
+        "reinhardt-query"
+      ],
+      "rationale": "Dialect renderer spells SQL grammar for typed statement AST nodes; it does not construct or execute framework runtime queries.",
+      "backends": [
+        "postgres"
+      ],
+      "evidence": [
+        "crates/reinhardt-query/src/backend",
+        "crates/reinhardt-query/tests",
+        "Renamed from build_alter_table_with_writer by the main forward merge (#6887); the PostgreSQL renderer can now separate ALTER TABLE actions into statements for CockroachDB batches and still only renders typed AST nodes."
+      ]
+    },
+    {
+      "id": "crates/reinhardt-query/src/backend/postgres.rs::PostgresQueryBuilder::build_alter_table_with_mode::sql-literal#14",
+      "path": "crates/reinhardt-query/src/backend/postgres.rs",
+      "symbol": "PostgresQueryBuilder::build_alter_table_with_mode",
+      "kind": "sql-literal",
+      "line": 2451,
+      "fingerprint": "569a1609482e193353ba5338b2f3525151d086124d7df7a0c71baba7483f7a47",
+      "conditions": [],
+      "test_only": false,
+      "category": "schema",
+      "ownership": "renderer",
+      "status": "excluded",
+      "operation": "not-executed",
+      "representation": "not-executed",
+      "feature_reachability": [
+        "reinhardt-query"
+      ],
+      "rationale": "Dialect renderer spells SQL grammar for typed statement AST nodes; it does not construct or execute framework runtime queries.",
+      "backends": [
+        "postgres"
+      ],
+      "evidence": [
+        "crates/reinhardt-query/src/backend",
+        "crates/reinhardt-query/tests",
+        "Renamed from build_alter_table_with_writer by the main forward merge (#6887); the PostgreSQL renderer can now separate ALTER TABLE actions into statements for CockroachDB batches and still only renders typed AST nodes."
+      ]
+    },
+    {
+      "id": "crates/reinhardt-query/src/backend/postgres.rs::PostgresQueryBuilder::build_alter_table_with_mode::sql-literal#2",
+      "path": "crates/reinhardt-query/src/backend/postgres.rs",
+      "symbol": "PostgresQueryBuilder::build_alter_table_with_mode",
+      "kind": "sql-literal",
+      "line": 2336,
+      "fingerprint": "8e60f5965e4f99904f3b7d043817d2eb32c9742a126a680567ac5ca109df7c66",
+      "conditions": [],
+      "test_only": false,
+      "category": "schema",
+      "ownership": "renderer",
+      "status": "excluded",
+      "operation": "not-executed",
+      "representation": "not-executed",
+      "feature_reachability": [
+        "reinhardt-query"
+      ],
+      "rationale": "Dialect renderer spells SQL grammar for typed statement AST nodes; it does not construct or execute framework runtime queries.",
+      "backends": [
+        "postgres"
+      ],
+      "evidence": [
+        "crates/reinhardt-query/src/backend",
+        "crates/reinhardt-query/tests",
+        "Renamed from build_alter_table_with_writer by the main forward merge (#6887); the PostgreSQL renderer can now separate ALTER TABLE actions into statements for CockroachDB batches and still only renders typed AST nodes."
+      ]
+    },
+    {
+      "id": "crates/reinhardt-query/src/backend/postgres.rs::PostgresQueryBuilder::build_alter_table_with_mode::sql-literal#3",
+      "path": "crates/reinhardt-query/src/backend/postgres.rs",
+      "symbol": "PostgresQueryBuilder::build_alter_table_with_mode",
+      "kind": "sql-literal",
+      "line": 2368,
+      "fingerprint": "054cdf854881915033d7353e2801321ef5593f8eba42564db38bfc88030c272e",
+      "conditions": [],
+      "test_only": false,
+      "category": "schema",
+      "ownership": "renderer",
+      "status": "excluded",
+      "operation": "not-executed",
+      "representation": "not-executed",
+      "feature_reachability": [
+        "reinhardt-query"
+      ],
+      "rationale": "Dialect renderer spells SQL grammar for typed statement AST nodes; it does not construct or execute framework runtime queries.",
+      "backends": [
+        "postgres"
+      ],
+      "evidence": [
+        "crates/reinhardt-query/src/backend",
+        "crates/reinhardt-query/tests",
+        "Renamed from build_alter_table_with_writer by the main forward merge (#6887); the PostgreSQL renderer can now separate ALTER TABLE actions into statements for CockroachDB batches and still only renders typed AST nodes."
+      ]
+    },
+    {
+      "id": "crates/reinhardt-query/src/backend/postgres.rs::PostgresQueryBuilder::build_alter_table_with_mode::sql-literal#4",
+      "path": "crates/reinhardt-query/src/backend/postgres.rs",
+      "symbol": "PostgresQueryBuilder::build_alter_table_with_mode",
+      "kind": "sql-literal",
+      "line": 2386,
+      "fingerprint": "dc9fb2176067c37ce5bd8afa825d304eefa8c44fc266f3af6e0ca2083bc27ca8",
+      "conditions": [],
+      "test_only": false,
+      "category": "control",
+      "ownership": "renderer",
+      "status": "excluded",
+      "operation": "not-executed",
+      "representation": "not-executed",
+      "feature_reachability": [
+        "reinhardt-query"
+      ],
+      "rationale": "Dialect renderer spells SQL grammar for typed statement AST nodes; it does not construct or execute framework runtime queries.",
+      "backends": [
+        "postgres"
+      ],
+      "evidence": [
+        "crates/reinhardt-query/src/backend",
+        "crates/reinhardt-query/tests",
+        "Renamed from build_alter_table_with_writer by the main forward merge (#6887); the PostgreSQL renderer can now separate ALTER TABLE actions into statements for CockroachDB batches and still only renders typed AST nodes."
+      ]
+    },
+    {
+      "id": "crates/reinhardt-query/src/backend/postgres.rs::PostgresQueryBuilder::build_alter_table_with_mode::sql-literal#5",
+      "path": "crates/reinhardt-query/src/backend/postgres.rs",
+      "symbol": "PostgresQueryBuilder::build_alter_table_with_mode",
+      "kind": "sql-literal",
       "line": 2388,
-      "fingerprint": "8e021f086470b66078a4c12b2f52032707c2c881b3dd9d564aa10687d75498d4",
+      "fingerprint": "f7598ceb9810a5920885fb9a501c24dcb49a3b219ba2cf4574a7e0810f772970",
       "conditions": [],
       "test_only": false,
-      "category": "control",
+      "category": "schema",
       "ownership": "renderer",
       "status": "excluded",
       "operation": "not-executed",
@@ -57715,16 +58115,17 @@
       ],
       "evidence": [
         "crates/reinhardt-query/src/backend",
-        "crates/reinhardt-query/tests"
+        "crates/reinhardt-query/tests",
+        "Renamed from build_alter_table_with_writer by the main forward merge (#6887); the PostgreSQL renderer can now separate ALTER TABLE actions into statements for CockroachDB batches and still only renders typed AST nodes."
       ]
     },
     {
-      "id": "crates/reinhardt-query/src/backend/postgres.rs::PostgresQueryBuilder::build_alter_table_with_writer::macro-sql-literal#3",
+      "id": "crates/reinhardt-query/src/backend/postgres.rs::PostgresQueryBuilder::build_alter_table_with_mode::sql-literal#6",
       "path": "crates/reinhardt-query/src/backend/postgres.rs",
-      "symbol": "PostgresQueryBuilder::build_alter_table_with_writer",
-      "kind": "macro-sql-literal",
+      "symbol": "PostgresQueryBuilder::build_alter_table_with_mode",
+      "kind": "sql-literal",
       "line": 2395,
-      "fingerprint": "94fd92bce506ac260a409244de2c24d163502d65baf8cc05c7d583f1bf2cb891",
+      "fingerprint": "adf71e5ddb18192aca10afa7945d6f7301545e77c9dad085a660700b5e6ba37e",
       "conditions": [],
       "test_only": false,
       "category": "control",
@@ -57741,145 +58142,17 @@
       ],
       "evidence": [
         "crates/reinhardt-query/src/backend",
-        "crates/reinhardt-query/tests"
+        "crates/reinhardt-query/tests",
+        "Renamed from build_alter_table_with_writer by the main forward merge (#6887); the PostgreSQL renderer can now separate ALTER TABLE actions into statements for CockroachDB batches and still only renders typed AST nodes."
       ]
     },
     {
-      "id": "crates/reinhardt-query/src/backend/postgres.rs::PostgresQueryBuilder::build_alter_table_with_writer::macro-sql-literal#4",
+      "id": "crates/reinhardt-query/src/backend/postgres.rs::PostgresQueryBuilder::build_alter_table_with_mode::sql-literal#7",
       "path": "crates/reinhardt-query/src/backend/postgres.rs",
-      "symbol": "PostgresQueryBuilder::build_alter_table_with_writer",
-      "kind": "macro-sql-literal",
-      "line": 2396,
-      "fingerprint": "16f79ed6321e5d0a1f17d6cfa3db079f2c70ecf6542f4405e7437cb3d6694cbe",
-      "conditions": [],
-      "test_only": false,
-      "category": "control",
-      "ownership": "renderer",
-      "status": "excluded",
-      "operation": "not-executed",
-      "representation": "not-executed",
-      "feature_reachability": [
-        "reinhardt-query"
-      ],
-      "rationale": "Dialect renderer spells SQL grammar for typed statement AST nodes; it does not construct or execute framework runtime queries.",
-      "backends": [
-        "postgres"
-      ],
-      "evidence": [
-        "crates/reinhardt-query/src/backend",
-        "crates/reinhardt-query/tests"
-      ]
-    },
-    {
-      "id": "crates/reinhardt-query/src/backend/postgres.rs::PostgresQueryBuilder::build_alter_table_with_writer::macro-sql-literal#5",
-      "path": "crates/reinhardt-query/src/backend/postgres.rs",
-      "symbol": "PostgresQueryBuilder::build_alter_table_with_writer",
-      "kind": "macro-sql-literal",
-      "line": 2401,
-      "fingerprint": "fbcaa0d5d75bc626ab4b843932e8a6f0b03224c55c7f7aef035e19d67d73820d",
-      "conditions": [],
-      "test_only": false,
-      "category": "control",
-      "ownership": "renderer",
-      "status": "excluded",
-      "operation": "not-executed",
-      "representation": "not-executed",
-      "feature_reachability": [
-        "reinhardt-query"
-      ],
-      "rationale": "Dialect renderer spells SQL grammar for typed statement AST nodes; it does not construct or execute framework runtime queries.",
-      "backends": [
-        "postgres"
-      ],
-      "evidence": [
-        "crates/reinhardt-query/src/backend",
-        "crates/reinhardt-query/tests"
-      ]
-    },
-    {
-      "id": "crates/reinhardt-query/src/backend/postgres.rs::PostgresQueryBuilder::build_alter_table_with_writer::macro-sql-literal#6",
-      "path": "crates/reinhardt-query/src/backend/postgres.rs",
-      "symbol": "PostgresQueryBuilder::build_alter_table_with_writer",
-      "kind": "macro-sql-literal",
-      "line": 2404,
-      "fingerprint": "7e5cf71cffbd98704969e5a71538146476aa7c1452b7fd35fa7dc900936d27c6",
-      "conditions": [],
-      "test_only": false,
-      "category": "control",
-      "ownership": "renderer",
-      "status": "excluded",
-      "operation": "not-executed",
-      "representation": "not-executed",
-      "feature_reachability": [
-        "reinhardt-query"
-      ],
-      "rationale": "Dialect renderer spells SQL grammar for typed statement AST nodes; it does not construct or execute framework runtime queries.",
-      "backends": [
-        "postgres"
-      ],
-      "evidence": [
-        "crates/reinhardt-query/src/backend",
-        "crates/reinhardt-query/tests"
-      ]
-    },
-    {
-      "id": "crates/reinhardt-query/src/backend/postgres.rs::PostgresQueryBuilder::build_alter_table_with_writer::sql-literal#1",
-      "path": "crates/reinhardt-query/src/backend/postgres.rs",
-      "symbol": "PostgresQueryBuilder::build_alter_table_with_writer",
+      "symbol": "PostgresQueryBuilder::build_alter_table_with_mode",
       "kind": "sql-literal",
-      "line": 2273,
-      "fingerprint": "158266c97ebd13d39f269cdfc2f50f3eb1a5548f0c30bb06d232ab8e5adb5517",
-      "conditions": [],
-      "test_only": false,
-      "category": "schema",
-      "ownership": "renderer",
-      "status": "excluded",
-      "operation": "not-executed",
-      "representation": "not-executed",
-      "feature_reachability": [
-        "native and wasm; query feature selections"
-      ],
-      "rationale": "Executor-independent query rendering and caller-requested raw/inlined SQL capabilities; no runtime database execution.",
-      "backends": [
-        "renderer-selected"
-      ],
-      "evidence": [
-        "Reviewed reinhardt-query dependency/renderer boundary; query unit and executable rustdoc coverage."
-      ]
-    },
-    {
-      "id": "crates/reinhardt-query/src/backend/postgres.rs::PostgresQueryBuilder::build_alter_table_with_writer::sql-literal#10",
-      "path": "crates/reinhardt-query/src/backend/postgres.rs",
-      "symbol": "PostgresQueryBuilder::build_alter_table_with_writer",
-      "kind": "sql-literal",
-      "line": 2407,
-      "fingerprint": "3981bfffacb6125e37417055c152017e584b67e18e2ea8f5a7d65770f6f1a7c5",
-      "conditions": [],
-      "test_only": false,
-      "category": "control",
-      "ownership": "renderer",
-      "status": "excluded",
-      "operation": "not-executed",
-      "representation": "not-executed",
-      "feature_reachability": [
-        "reinhardt-query"
-      ],
-      "rationale": "Dialect renderer spells SQL grammar for typed statement AST nodes; it does not construct or execute framework runtime queries.",
-      "backends": [
-        "postgres"
-      ],
-      "evidence": [
-        "crates/reinhardt-query/src/backend",
-        "crates/reinhardt-query/tests"
-      ]
-    },
-    {
-      "id": "crates/reinhardt-query/src/backend/postgres.rs::PostgresQueryBuilder::build_alter_table_with_writer::sql-literal#11",
-      "path": "crates/reinhardt-query/src/backend/postgres.rs",
-      "symbol": "PostgresQueryBuilder::build_alter_table_with_writer",
-      "kind": "sql-literal",
-      "line": 2411,
-      "fingerprint": "b08f9421efc541661c69ffb7771ab98f3290c4118bda631d12dc23bb306c8308",
+      "line": 2400,
+      "fingerprint": "054cdf854881915033d7353e2801321ef5593f8eba42564db38bfc88030c272e",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -57896,16 +58169,17 @@
       ],
       "evidence": [
         "crates/reinhardt-query/src/backend",
-        "crates/reinhardt-query/tests"
+        "crates/reinhardt-query/tests",
+        "Renamed from build_alter_table_with_writer by the main forward merge (#6887); the PostgreSQL renderer can now separate ALTER TABLE actions into statements for CockroachDB batches and still only renders typed AST nodes."
       ]
     },
     {
-      "id": "crates/reinhardt-query/src/backend/postgres.rs::PostgresQueryBuilder::build_alter_table_with_writer::sql-literal#12",
+      "id": "crates/reinhardt-query/src/backend/postgres.rs::PostgresQueryBuilder::build_alter_table_with_mode::sql-literal#8",
       "path": "crates/reinhardt-query/src/backend/postgres.rs",
-      "symbol": "PostgresQueryBuilder::build_alter_table_with_writer",
+      "symbol": "PostgresQueryBuilder::build_alter_table_with_mode",
       "kind": "sql-literal",
-      "line": 2413,
-      "fingerprint": "0fa881e990ab2cf6e456c65371e5b43b426538d5a5784c5a2184529a1756a183",
+      "line": 2410,
+      "fingerprint": "054cdf854881915033d7353e2801321ef5593f8eba42564db38bfc88030c272e",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -57922,193 +58196,17 @@
       ],
       "evidence": [
         "crates/reinhardt-query/src/backend",
-        "crates/reinhardt-query/tests"
+        "crates/reinhardt-query/tests",
+        "Renamed from build_alter_table_with_writer by the main forward merge (#6887); the PostgreSQL renderer can now separate ALTER TABLE actions into statements for CockroachDB batches and still only renders typed AST nodes."
       ]
     },
     {
-      "id": "crates/reinhardt-query/src/backend/postgres.rs::PostgresQueryBuilder::build_alter_table_with_writer::sql-literal#13",
+      "id": "crates/reinhardt-query/src/backend/postgres.rs::PostgresQueryBuilder::build_alter_table_with_mode::sql-literal#9",
       "path": "crates/reinhardt-query/src/backend/postgres.rs",
-      "symbol": "PostgresQueryBuilder::build_alter_table_with_writer",
+      "symbol": "PostgresQueryBuilder::build_alter_table_with_mode",
       "kind": "sql-literal",
-      "line": 2420,
-      "fingerprint": "1f8d58b472ebc8bc5460b7b6ab5fdc8196261643abb8892ce2fa8ce6d34095e1",
-      "conditions": [],
-      "test_only": false,
-      "category": "schema",
-      "ownership": "renderer",
-      "status": "excluded",
-      "operation": "not-executed",
-      "representation": "not-executed",
-      "feature_reachability": [
-        "reinhardt-query"
-      ],
-      "rationale": "Dialect renderer spells SQL grammar for typed statement AST nodes; it does not construct or execute framework runtime queries.",
-      "backends": [
-        "postgres"
-      ],
-      "evidence": [
-        "crates/reinhardt-query/src/backend",
-        "crates/reinhardt-query/tests"
-      ]
-    },
-    {
-      "id": "crates/reinhardt-query/src/backend/postgres.rs::PostgresQueryBuilder::build_alter_table_with_writer::sql-literal#2",
-      "path": "crates/reinhardt-query/src/backend/postgres.rs",
-      "symbol": "PostgresQueryBuilder::build_alter_table_with_writer",
-      "kind": "sql-literal",
-      "line": 2320,
-      "fingerprint": "fa943d6446d00c1022114f656bbd5f5ce1eeb1aa5d7418ec3d5fb193e02bbc32",
-      "conditions": [],
-      "test_only": false,
-      "category": "schema",
-      "ownership": "renderer",
-      "status": "excluded",
-      "operation": "not-executed",
-      "representation": "not-executed",
-      "feature_reachability": [
-        "native and wasm; query feature selections"
-      ],
-      "rationale": "Executor-independent query rendering and caller-requested raw/inlined SQL capabilities; no runtime database execution.",
-      "backends": [
-        "renderer-selected"
-      ],
-      "evidence": [
-        "Reviewed reinhardt-query dependency/renderer boundary; query unit and executable rustdoc coverage."
-      ]
-    },
-    {
-      "id": "crates/reinhardt-query/src/backend/postgres.rs::PostgresQueryBuilder::build_alter_table_with_writer::sql-literal#3",
-      "path": "crates/reinhardt-query/src/backend/postgres.rs",
-      "symbol": "PostgresQueryBuilder::build_alter_table_with_writer",
-      "kind": "sql-literal",
-      "line": 2339,
-      "fingerprint": "d5b41bfea4c6f97a4130d36ba80004fdd7d02a092805b9d96ec8a035ecd7c40a",
-      "conditions": [],
-      "test_only": false,
-      "category": "schema",
-      "ownership": "renderer",
-      "status": "excluded",
-      "operation": "not-executed",
-      "representation": "not-executed",
-      "feature_reachability": [
-        "native and wasm; query feature selections"
-      ],
-      "rationale": "Executor-independent query rendering and caller-requested raw/inlined SQL capabilities; no runtime database execution.",
-      "backends": [
-        "renderer-selected"
-      ],
-      "evidence": [
-        "Reviewed reinhardt-query dependency/renderer boundary; query unit and executable rustdoc coverage."
-      ]
-    },
-    {
-      "id": "crates/reinhardt-query/src/backend/postgres.rs::PostgresQueryBuilder::build_alter_table_with_writer::sql-literal#4",
-      "path": "crates/reinhardt-query/src/backend/postgres.rs",
-      "symbol": "PostgresQueryBuilder::build_alter_table_with_writer",
-      "kind": "sql-literal",
-      "line": 2356,
-      "fingerprint": "43cd440315deabd1e51ccf6e962552a6d78cf145790fc0dc1124225a9289ced7",
-      "conditions": [],
-      "test_only": false,
-      "category": "control",
-      "ownership": "renderer",
-      "status": "excluded",
-      "operation": "not-executed",
-      "representation": "not-executed",
-      "feature_reachability": [
-        "native and wasm; query feature selections"
-      ],
-      "rationale": "Executor-independent query rendering and caller-requested raw/inlined SQL capabilities; no runtime database execution.",
-      "backends": [
-        "renderer-selected"
-      ],
-      "evidence": [
-        "Reviewed reinhardt-query dependency/renderer boundary; query unit and executable rustdoc coverage."
-      ]
-    },
-    {
-      "id": "crates/reinhardt-query/src/backend/postgres.rs::PostgresQueryBuilder::build_alter_table_with_writer::sql-literal#5",
-      "path": "crates/reinhardt-query/src/backend/postgres.rs",
-      "symbol": "PostgresQueryBuilder::build_alter_table_with_writer",
-      "kind": "sql-literal",
-      "line": 2364,
-      "fingerprint": "de41358f6bba409989c05cbd0624d8a6547c3d8c40ca391da88893170df7b693",
-      "conditions": [],
-      "test_only": false,
-      "category": "control",
-      "ownership": "renderer",
-      "status": "excluded",
-      "operation": "not-executed",
-      "representation": "not-executed",
-      "feature_reachability": [
-        "native and wasm; query feature selections"
-      ],
-      "rationale": "Executor-independent query rendering and caller-requested raw/inlined SQL capabilities; no runtime database execution.",
-      "backends": [
-        "renderer-selected"
-      ],
-      "evidence": [
-        "Reviewed reinhardt-query dependency/renderer boundary; query unit and executable rustdoc coverage."
-      ]
-    },
-    {
-      "id": "crates/reinhardt-query/src/backend/postgres.rs::PostgresQueryBuilder::build_alter_table_with_writer::sql-literal#6",
-      "path": "crates/reinhardt-query/src/backend/postgres.rs",
-      "symbol": "PostgresQueryBuilder::build_alter_table_with_writer",
-      "kind": "sql-literal",
-      "line": 2369,
-      "fingerprint": "b08f9421efc541661c69ffb7771ab98f3290c4118bda631d12dc23bb306c8308",
-      "conditions": [],
-      "test_only": false,
-      "category": "schema",
-      "ownership": "renderer",
-      "status": "excluded",
-      "operation": "not-executed",
-      "representation": "not-executed",
-      "feature_reachability": [
-        "native and wasm; query feature selections"
-      ],
-      "rationale": "Executor-independent query rendering and caller-requested raw/inlined SQL capabilities; no runtime database execution.",
-      "backends": [
-        "renderer-selected"
-      ],
-      "evidence": [
-        "Reviewed reinhardt-query dependency/renderer boundary; query unit and executable rustdoc coverage."
-      ]
-    },
-    {
-      "id": "crates/reinhardt-query/src/backend/postgres.rs::PostgresQueryBuilder::build_alter_table_with_writer::sql-literal#7",
-      "path": "crates/reinhardt-query/src/backend/postgres.rs",
-      "symbol": "PostgresQueryBuilder::build_alter_table_with_writer",
-      "kind": "sql-literal",
-      "line": 2379,
-      "fingerprint": "b08f9421efc541661c69ffb7771ab98f3290c4118bda631d12dc23bb306c8308",
-      "conditions": [],
-      "test_only": false,
-      "category": "schema",
-      "ownership": "renderer",
-      "status": "excluded",
-      "operation": "not-executed",
-      "representation": "not-executed",
-      "feature_reachability": [
-        "reinhardt-query"
-      ],
-      "rationale": "Dialect renderer spells SQL grammar for typed statement AST nodes; it does not construct or execute framework runtime queries.",
-      "backends": [
-        "postgres"
-      ],
-      "evidence": [
-        "crates/reinhardt-query/src/backend",
-        "crates/reinhardt-query/tests"
-      ]
-    },
-    {
-      "id": "crates/reinhardt-query/src/backend/postgres.rs::PostgresQueryBuilder::build_alter_table_with_writer::sql-literal#8",
-      "path": "crates/reinhardt-query/src/backend/postgres.rs",
-      "symbol": "PostgresQueryBuilder::build_alter_table_with_writer",
-      "kind": "sql-literal",
-      "line": 2381,
-      "fingerprint": "8f92be74a71f79bdb620b9f36f29dc7cf6dd5f19a945575c867993a031846b8b",
+      "line": 2412,
+      "fingerprint": "4440d061fe9f7784e1dd9d3d4f2b6951b478c149a8abfa369a2a4d32dee07fe6",
       "conditions": [],
       "test_only": false,
       "category": "control",
@@ -58125,33 +58223,8 @@
       ],
       "evidence": [
         "crates/reinhardt-query/src/backend",
-        "crates/reinhardt-query/tests"
-      ]
-    },
-    {
-      "id": "crates/reinhardt-query/src/backend/postgres.rs::PostgresQueryBuilder::build_alter_table_with_writer::sql-literal#9",
-      "path": "crates/reinhardt-query/src/backend/postgres.rs",
-      "symbol": "PostgresQueryBuilder::build_alter_table_with_writer",
-      "kind": "sql-literal",
-      "line": 2407,
-      "fingerprint": "4cf93e9051635c0fe8afd465e23bfbef7a54dbe29531e6833d56756612953b7a",
-      "conditions": [],
-      "test_only": false,
-      "category": "control",
-      "ownership": "renderer",
-      "status": "excluded",
-      "operation": "not-executed",
-      "representation": "not-executed",
-      "feature_reachability": [
-        "reinhardt-query"
-      ],
-      "rationale": "Dialect renderer spells SQL grammar for typed statement AST nodes; it does not construct or execute framework runtime queries.",
-      "backends": [
-        "postgres"
-      ],
-      "evidence": [
-        "crates/reinhardt-query/src/backend",
-        "crates/reinhardt-query/tests"
+        "crates/reinhardt-query/tests",
+        "Renamed from build_alter_table_with_writer by the main forward merge (#6887); the PostgreSQL renderer can now separate ALTER TABLE actions into statements for CockroachDB batches and still only renders typed AST nodes."
       ]
     },
     {
@@ -58686,7 +58759,7 @@
       "symbol": "SqliteQueryBuilder as QueryBuilder::build_alter_table",
       "kind": "sql-literal",
       "line": 1497,
-      "fingerprint": "0b37119260632d72ff6bbd7df66b309d8536643606980b5891e640a3fa4f993a",
+      "fingerprint": "e9b632e9775dad321c7ad1b9e3431673516af12e70cd449e2be61381f684e981",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -58702,7 +58775,8 @@
         "renderer-selected"
       ],
       "evidence": [
-        "Reviewed reinhardt-query dependency/renderer boundary; query unit and executable rustdoc coverage."
+        "Reviewed reinhardt-query dependency/renderer boundary; query unit and executable rustdoc coverage.",
+        "Re-reviewed after the main forward merge (#6887): NOT NULL is rendered only for `not_null == Some(true)`; rendering stays executor-independent."
       ]
     },
     {
@@ -58711,7 +58785,7 @@
       "symbol": "SqliteQueryBuilder as QueryBuilder::build_alter_table",
       "kind": "sql-literal",
       "line": 1539,
-      "fingerprint": "184253b055642a8954a49d40b0a84dc9a4ed72878eed5428666b284a459f3849",
+      "fingerprint": "9b73a44f68da4c4d0472324c0ee5049473d9181492cbbe1ca1d298c4501e5f30",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -58727,7 +58801,8 @@
         "renderer-selected"
       ],
       "evidence": [
-        "Reviewed reinhardt-query dependency/renderer boundary; query unit and executable rustdoc coverage."
+        "Reviewed reinhardt-query dependency/renderer boundary; query unit and executable rustdoc coverage.",
+        "Re-reviewed after the main forward merge (#6887): NOT NULL is rendered only for `not_null == Some(true)`; rendering stays executor-independent."
       ]
     },
     {
@@ -58812,7 +58887,7 @@
       "symbol": "SqliteQueryBuilder as QueryBuilder::build_create_table",
       "kind": "sql-literal",
       "line": 1410,
-      "fingerprint": "389fd8506ef1df910bb5caee117b0124df1dc8f99ad8c32fb58353c8ffd2504b",
+      "fingerprint": "20687a537f1fe10d5c2fecc1ed5c295f7e06624fd4a98a8ac6bc2e8470671a3a",
       "conditions": [],
       "test_only": false,
       "category": "schema",
@@ -58828,7 +58903,8 @@
         "renderer-selected"
       ],
       "evidence": [
-        "Reviewed reinhardt-query dependency/renderer boundary; query unit and executable rustdoc coverage."
+        "Reviewed reinhardt-query dependency/renderer boundary; query unit and executable rustdoc coverage.",
+        "Re-reviewed after the main forward merge (#6887): NOT NULL is rendered only for `not_null == Some(true)`; rendering stays executor-independent."
       ]
     },
     {

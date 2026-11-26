@@ -3,7 +3,7 @@
 use rstest::{fixture, rstest};
 use std::fs;
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, Output};
 use tempfile::TempDir;
 
 struct Scaffold {
@@ -144,14 +144,29 @@ fn rest_scaffold_routing_examples_compile(scaffold: Scaffold) {
 		("enabled routing examples", enable_examples(&scaffold.urls)),
 	] {
 		fs::write(&urls_path, urls).expect("write generated project URL configuration");
-		let output = Command::new(env!("CARGO"))
-			.args(["check", "--quiet", "--offline", "--manifest-path"])
-			.arg(scaffold.root.path().join("Cargo.toml"))
-			.current_dir(scaffold.root.path())
-			.env("CARGO_TARGET_DIR", &target)
-			.env("CARGO_BUILD_BUILD_DIR", &build)
-			.output()
-			.expect("compile generated routing instructions");
+		let check_scaffold = |offline: bool| {
+			let mut command = Command::new(env!("CARGO"));
+			command.args(["check", "--quiet"]);
+			if offline {
+				command.arg("--offline");
+			}
+			command
+				.arg("--manifest-path")
+				.arg(scaffold.root.path().join("Cargo.toml"))
+				.current_dir(scaffold.root.path())
+				.env("CARGO_TARGET_DIR", &target)
+				.env("CARGO_BUILD_BUILD_DIR", &build)
+				.output()
+				.expect("compile generated routing instructions")
+		};
+		let output = check_scaffold(true);
+		// Fresh resolution can select a release that is not in the local registry
+		// cache yet; retry only those cache misses online.
+		let output = if !output.status.success() && offline_dependency_resolution_failed(&output) {
+			check_scaffold(false)
+		} else {
+			output
+		};
 
 		// Assert
 		assert_eq!(
@@ -161,4 +176,12 @@ fn rest_scaffold_routing_examples_compile(scaffold: Scaffold) {
 			String::from_utf8_lossy(&output.stderr),
 		);
 	}
+}
+
+fn offline_dependency_resolution_failed(output: &Output) -> bool {
+	let stderr = String::from_utf8_lossy(&output.stderr);
+	stderr.contains("--offline")
+		|| stderr.contains("no matching package named")
+		|| stderr.contains("failed to download")
+		|| stderr.contains("candidate versions found which didn't match")
 }
