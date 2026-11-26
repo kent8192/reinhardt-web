@@ -430,6 +430,7 @@ impl HttpServer {
 							connection
 						}
 						Err(error) => match self.accept_error_handler.on_error(&error) {
+							AcceptErrorAction::RetryAfter(delay) if delay.is_zero() => continue,
 							AcceptErrorAction::RetryAfter(delay) => {
 								retry.as_mut().reset(tokio::time::Instant::now() + delay);
 								waiting_to_retry = true;
