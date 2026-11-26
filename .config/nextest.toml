@@ -124,6 +124,14 @@ filter = 'package(=reinhardt-facade-tests) & binary(=middleware_features) & test
 threads-required = 2
 slow-timeout = { period = "1200s", terminate-after = 2 }
 
+# The protocol fixture matrix checks a standalone facade consumer three times
+# (WebSocket, GraphQL, both) in an isolated target directory, so each attempt
+# is a cold nested build. Reserve both slots and allow it to finish on CI.
+[[profile.default.overrides]]
+filter = 'package(=reinhardt-facade-tests) & binary(=test_fixture_features) & test(=protocol_features_expose_test_fixtures)'
+threads-required = 2
+slow-timeout = { period = "1200s", terminate-after = 2 }
+
 # This CLI regression builds a standalone consumer linking auth/session models.
 # Reserve both slots and allow its nested Cargo build to finish on a cold cache.
 [[profile.default.overrides]]

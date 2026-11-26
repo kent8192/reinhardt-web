@@ -59,7 +59,7 @@ use pg_escape::{quote_identifier, quote_literal};
 use reinhardt_query::prelude::{
 	Alias, AlterTableStatement, CockroachDBQueryBuilder, ColumnDef, ColumnType as QueryColumnType,
 	CreateIndexStatement, CreateTableStatement, DropIndexStatement, DropTableStatement,
-	GeneratedColumn, GeneratedStorage, MySqlQueryBuilder, PostgresQueryBuilder, Query,
+	GeneratedColumn, GeneratedStorage, IntoIden, MySqlQueryBuilder, PostgresQueryBuilder, Query,
 	QueryBuilder, SchemaExpr, SchemaFunc, SimpleExpr, SqliteQueryBuilder, Value,
 };
 use serde::{Deserialize, Serialize, ser::SerializeStruct};
@@ -1392,9 +1392,12 @@ pub enum Operation {
 		/// On PostgreSQL and CockroachDB, forward SQL compares its nullability
 		/// with `new_definition` and emits `SET NOT NULL` / `DROP NOT NULL` only
 		/// when they differ. If None, the nullability of `new_definition` is
-		/// always applied. Primary key columns are always treated as NOT NULL,
-		/// and a column that stops being a primary key keeps NOT NULL because
-		/// this operation does not drop the primary key constraint.
+		/// always applied. Primary key columns are always treated as NOT NULL.
+		/// When this definition is known, primary key changes drop the old
+		/// constraint before relaxing NOT NULL and add it after enforcing NOT NULL.
+		/// The constraint uses the conventional `{table}_pkey` name; custom-named
+		/// or composite keys require explicit constraint operations. If None,
+		/// forward SQL preserves the existing primary key.
 		#[serde(default, skip_serializing_if = "Option::is_none")]
 		old_definition: Option<ColumnDefinition>,
 		/// The new definition.
@@ -3354,6 +3357,13 @@ impl Operation {
 				match dialect {
 					SqlDialect::Postgres | SqlDialect::Cockroachdb => {
 						let mut statements = Vec::new();
+						let primary_key_changed = old_definition
+							.as_ref()
+							.is_some_and(|old| old.primary_key != new_definition.primary_key);
+						if primary_key_changed && !new_definition.primary_key {
+							statements
+								.push(Self::alter_primary_key_sql(table, column, false, dialect));
+						}
 						if old_definition.as_ref().is_some_and(|old_definition| {
 							effective_column_default(old_definition.default.as_ref()).is_some()
 								|| old_definition.sequence_default.is_some()
@@ -3420,13 +3430,6 @@ impl Operation {
 						// count as NOT NULL (see `ColumnDefinition::effective_not_null`).
 						let new_not_null = new_definition.effective_not_null();
 						let nullability_changed = match old_definition {
-							// PK demotion: the old column is NOT NULL as a primary key,
-							// and AlterColumn never drops the primary key constraint, so
-							// DROP NOT NULL would hit "column is in a primary key" and
-							// abort the migration. Keep NOT NULL until the constraint is
-							// gone. Remove this skip once a PK-constraint operation runs
-							// before AlterColumn.
-							Some(old) if old.primary_key && !new_definition.primary_key => false,
 							Some(old) => old.effective_not_null() != new_not_null,
 							None => true,
 						};
@@ -3437,6 +3440,10 @@ impl Operation {
 								Self::quote_schema_identifier(column, dialect),
 								if new_not_null { "SET" } else { "DROP" }
 							));
+						}
+						if primary_key_changed && new_definition.primary_key {
+							statements
+								.push(Self::alter_primary_key_sql(table, column, true, dialect));
 						}
 						statements.join(" ")
 					}
@@ -4339,6 +4346,39 @@ impl Operation {
 		}
 	}
 
+	// AlterColumn carries a single-column definition, so it migrates conventional
+	// single-column primary keys. Named/composite keys use constraint operations.
+	fn alter_primary_key_sql(
+		table: &str,
+		column: &str,
+		primary_key: bool,
+		dialect: &SqlDialect,
+	) -> String {
+		let mut statement = Query::alter_table();
+		statement.table(Alias::new(table));
+		// PostgreSQL's default constraint name reserves five of its 63 identifier
+		// bytes for `_pkey`, truncating the table prefix at a UTF-8 boundary.
+		let prefix = if matches!(dialect, SqlDialect::Postgres) {
+			&table[..table.floor_char_boundary(58)]
+		} else {
+			table
+		};
+		let constraint_name = Alias::new(format!("{prefix}_pkey"));
+		if primary_key {
+			statement.add_constraint(reinhardt_query::types::TableConstraint::PrimaryKey {
+				name: Some(constraint_name.into_iden()),
+				columns: vec![Alias::new(column).into_iden()],
+			});
+		} else {
+			statement.drop_constraint(constraint_name);
+		}
+		let sql = crate::backends::sql_build_helpers::build_alter_table_sql(
+			crate::backends::types::DatabaseType::Postgres,
+			&statement,
+		);
+		format!("{sql};")
+	}
+
 	/// Generate `CreateCompositePrimaryKey` SQL
 	///
 	/// Produces `ALTER TABLE ... ADD CONSTRAINT ... PRIMARY KEY (...)` for
@@ -4897,6 +4937,11 @@ impl Operation {
 							"DROP NOT NULL"
 						};
 						let mut statements = Vec::new();
+						let primary_key_changed = old_def.primary_key != new_definition.primary_key;
+						if primary_key_changed && new_definition.primary_key {
+							statements
+								.push(Self::alter_primary_key_sql(table, column, false, dialect));
+						}
 						let default_changed = old_def.default != new_definition.default;
 						if default_changed {
 							// A default for the new type may not cast to the old type.
@@ -4928,6 +4973,10 @@ impl Operation {
 								quote_identifier(column),
 								default,
 							));
+						}
+						if primary_key_changed && old_def.primary_key {
+							statements
+								.push(Self::alter_primary_key_sql(table, column, true, dialect));
 						}
 						statements
 					}
@@ -7212,6 +7261,10 @@ impl Operation {
 	}
 
 	/// Convert Operation to reinhardt-query statement or sanitized raw SQL
+	///
+	/// `AlterColumn` applies the new definition's effective nullability, including
+	/// an explicit `DROP NOT NULL` for nullable columns. An existing primary key
+	/// retains NOT NULL because this operation does not remove its constraint.
 	pub fn to_statement(&self) -> OperationStatement {
 		match self {
 			Self::CreateTable { columns, .. } | Self::CreateInheritedTable { columns, .. }
@@ -7266,11 +7319,13 @@ impl Operation {
 			Operation::AlterColumn {
 				table,
 				column,
+				old_definition,
 				new_definition,
 				..
 			} => OperationStatement::TableAlter(self.build_alter_column(
 				table,
 				column,
+				old_definition.as_ref(),
 				new_definition,
 			)),
 			Operation::RenameTable { old_name, new_name } => {
@@ -7753,6 +7808,7 @@ impl Operation {
 		&self,
 		table: &str,
 		column: &str,
+		old_definition: Option<&ColumnDefinition>,
 		new_definition: &ColumnDefinition,
 	) -> AlterTableStatement {
 		let mut stmt = Query::alter_table();
@@ -7761,9 +7817,11 @@ impl Operation {
 		let mut col_def = ColumnDef::new(Alias::new(column));
 		col_def = self.apply_column_type(col_def, &new_definition.type_definition);
 
-		if new_definition.not_null {
-			col_def = col_def.not_null(true);
-		}
+		// A primary key constraint survives AlterColumn, including PK demotion.
+		// Preserve its implicit NOT NULL until that constraint is removed.
+		let not_null = new_definition.effective_not_null()
+			|| old_definition.is_some_and(|old| old.primary_key);
+		col_def = col_def.not_null(not_null);
 		if let Some(generated) = &new_definition.generated {
 			col_def = self.apply_generated_column(col_def, generated);
 		}
@@ -8654,45 +8712,83 @@ mod tests {
 		);
 	}
 
-	#[test]
-	fn test_alter_column_to_statement() {
+	#[rstest]
+	#[case::relax_known(Some(true), false, false, false, "DROP")]
+	#[case::require_known(Some(false), false, true, false, "SET")]
+	#[case::relax_unknown(None, false, false, false, "DROP")]
+	#[case::require_unknown(None, false, true, false, "SET")]
+	#[case::unchanged_nullable(Some(false), false, false, false, "DROP")]
+	#[case::unchanged_required(Some(true), false, true, false, "SET")]
+	#[case::primary_key_promoted(Some(false), false, false, true, "SET")]
+	#[case::primary_key_implicit_required(Some(false), true, false, true, "SET")]
+	#[case::primary_key_demoted(Some(true), true, false, false, "SET")]
+	fn test_alter_column_to_statement(
+		#[case] old_not_null: Option<bool>,
+		#[case] old_primary_key: bool,
+		#[case] new_not_null: bool,
+		#[case] new_primary_key: bool,
+		#[case] expected_action: &str,
+		#[values(SqlDialect::Postgres, SqlDialect::Cockroachdb, SqlDialect::Mysql)]
+		dialect: SqlDialect,
+	) {
+		use reinhardt_query::backend::{
+			CockroachDBQueryBuilder, PostgresQueryBuilder, QueryBuilder,
+		};
+
+		// Arrange
 		let op = Operation::AlterColumn {
 			table: "users".to_string(),
 			column: "age".to_string(),
-			old_definition: None,
+			old_definition: old_not_null.map(|not_null| ColumnDefinition {
+				not_null,
+				primary_key: old_primary_key,
+				..ColumnDefinition::new("age", FieldType::Integer)
+			}),
 			new_definition: ColumnDefinition {
-				name: "age".to_string(),
-				type_definition: FieldType::BigInteger,
-				not_null: true,
-				unique: false,
-				primary_key: false,
-				auto_increment: false,
-				default: None,
-				generated: None,
-				domain: None,
-				identity: None,
-				sequence_default: None,
+				not_null: new_not_null,
+				primary_key: new_primary_key,
+				..ColumnDefinition::new("metadata_name", FieldType::BigInteger)
 			},
 			mysql_options: None,
 		};
 
+		// Act
 		let stmt = op.to_statement();
-		let sql = stmt.to_sql_string(crate::backends::types::DatabaseType::Postgres);
-		assert!(
-			sql.contains("ALTER TABLE"),
-			"SQL should contain ALTER TABLE keyword, got: {}",
-			sql
-		);
-		assert!(
-			sql.contains("users"),
-			"SQL should reference 'users' table, got: {}",
-			sql
-		);
-		assert!(
-			sql.contains("age"),
-			"SQL should reference 'age' column, got: {}",
-			sql
-		);
+		let (sql, expected) = match dialect {
+			SqlDialect::Postgres | SqlDialect::Cockroachdb => {
+				let OperationStatement::TableAlter(stmt) = stmt else {
+					panic!("AlterColumn must produce a structured TableAlter statement");
+				};
+				let (sql, _) = if matches!(dialect, SqlDialect::Postgres) {
+					PostgresQueryBuilder::new().build_alter_table(&stmt)
+				} else {
+					CockroachDBQueryBuilder::new().build_alter_table(&stmt)
+				};
+				let prefix = "ALTER TABLE \"users\" ALTER COLUMN \"age\"";
+				let expected = if matches!(dialect, SqlDialect::Postgres) {
+					format!("{prefix} TYPE BIGINT, ALTER COLUMN \"age\" {expected_action} NOT NULL")
+				} else {
+					format!("{prefix} TYPE BIGINT; {prefix} {expected_action} NOT NULL")
+				};
+				(sql, expected)
+			}
+			SqlDialect::Mysql => {
+				let sql = stmt.to_sql_string(crate::backends::types::DatabaseType::Mysql);
+				let suffix = if expected_action == "SET" {
+					" NOT NULL"
+				} else {
+					""
+				};
+				(
+					sql,
+					format!("ALTER TABLE `users` MODIFY COLUMN `age` BIGINT{suffix}"),
+				)
+			}
+			SqlDialect::Sqlite => unreachable!("SQLite requires table recreation"),
+		};
+
+		// Assert
+		assert_eq!(sql, expected);
 	}
 
 	#[test]
@@ -11076,8 +11172,8 @@ mod tests {
 	/// `ALTER COLUMN ... TYPE` alone keeps the existing NOT NULL flag
 	/// (reinhardt-web#6724). A known `old_definition` limits the statement to
 	/// real changes; an unknown one applies `new_definition`. Primary key
-	/// columns count as NOT NULL, and a demoted primary key keeps NOT NULL
-	/// because AlterColumn does not drop the primary key constraint.
+	/// changes must drop the constraint before relaxing nullability and add
+	/// it only after enforcing NOT NULL.
 	#[rstest]
 	#[case::not_null_to_nullable(Some(true), false, false, false, Some("DROP"))]
 	#[case::nullable_to_not_null(Some(false), false, true, false, Some("SET"))]
@@ -11088,7 +11184,9 @@ mod tests {
 	#[case::primary_key_keeps_not_null(Some(true), true, false, true, None)]
 	#[case::primary_key_unknown_old(None, false, false, true, Some("SET"))]
 	#[case::primary_key_promoted(Some(false), false, false, true, Some("SET"))]
-	#[case::primary_key_demoted_to_nullable(Some(true), true, false, false, None)]
+	#[case::primary_key_demoted_to_nullable(Some(true), true, false, false, Some("DROP"))]
+	#[case::primary_key_demoted_to_not_null(Some(true), true, true, false, None)]
+	#[case::primary_key_promoted_from_not_null(Some(true), false, true, true, None)]
 	fn test_to_sql_alter_column_changes_nullability_for_postgres_family(
 		#[case] old_not_null: Option<bool>,
 		#[case] old_primary_key: bool,
@@ -11114,12 +11212,22 @@ mod tests {
 			new_definition,
 			mysql_options: None,
 		};
-		let mut expected =
-			vec!["ALTER TABLE events ALTER COLUMN created_at TYPE TIMESTAMPTZ;".to_string()];
+		let mut expected = Vec::new();
+		if old_not_null.is_some() && old_primary_key && !new_primary_key {
+			expected.push(r#"ALTER TABLE "events" DROP CONSTRAINT "events_pkey";"#.to_string());
+		}
+		expected.push("ALTER TABLE events ALTER COLUMN created_at TYPE TIMESTAMPTZ;".to_string());
 		if let Some(clause) = expected_clause {
 			expected.push(format!(
 				"ALTER TABLE events ALTER COLUMN created_at {clause} NOT NULL;"
 			));
+		}
+
+		if old_not_null.is_some() && !old_primary_key && new_primary_key {
+			expected.push(
+				r#"ALTER TABLE "events" ADD CONSTRAINT "events_pkey" PRIMARY KEY ("created_at");"#
+					.to_string(),
+			);
 		}
 
 		// Act
@@ -11127,6 +11235,57 @@ mod tests {
 
 		// Assert
 		assert_eq!(sql, expected.join(" "));
+	}
+
+	#[rstest]
+	#[case::promotion(false, true, vec![
+		r#"ALTER TABLE "events" DROP CONSTRAINT "events_pkey";"#,
+		"ALTER TABLE events ALTER COLUMN id TYPE INTEGER;",
+		"ALTER TABLE events ALTER COLUMN id DROP NOT NULL;",
+	])]
+	#[case::demotion(true, false, vec![
+		"ALTER TABLE events ALTER COLUMN id TYPE INTEGER;",
+		"ALTER TABLE events ALTER COLUMN id SET NOT NULL;",
+		r#"ALTER TABLE "events" ADD CONSTRAINT "events_pkey" PRIMARY KEY ("id");"#,
+	])]
+	fn test_reverse_alter_column_primary_key_change(
+		#[case] old_primary_key: bool,
+		#[case] new_primary_key: bool,
+		#[case] expected: Vec<&str>,
+		#[values(SqlDialect::Postgres, SqlDialect::Cockroachdb)] dialect: SqlDialect,
+		#[values(false, true)] use_state: bool,
+	) {
+		// Arrange
+		let old_definition = ColumnDefinition {
+			primary_key: old_primary_key,
+			..ColumnDefinition::new("id", FieldType::Integer)
+		};
+		let new_definition = ColumnDefinition {
+			primary_key: new_primary_key,
+			..old_definition.clone()
+		};
+		let mut state = ProjectState::new();
+		let mut model = ModelState::new("app", "Event");
+		model.table_name = "events".to_owned();
+		let mut field = FieldState::new("id", FieldType::Integer, true);
+		field
+			.params
+			.insert("primary_key".to_owned(), old_primary_key.to_string());
+		model.add_field(field);
+		state.add_model(model);
+		let operation = Operation::AlterColumn {
+			table: "events".to_owned(),
+			column: "id".to_owned(),
+			old_definition: (!use_state).then_some(old_definition),
+			new_definition,
+			mysql_options: None,
+		};
+
+		// Act
+		let statements = operation.to_reverse_sql(&dialect, &state).unwrap().unwrap();
+
+		// Assert: each payload is a separate statement for sqlx Extended Query.
+		assert_eq!(statements, expected);
 	}
 
 	/// Reverse `AlterColumn` SQL must restore NOT NULL for a primary key
