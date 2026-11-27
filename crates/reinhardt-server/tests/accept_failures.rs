@@ -219,7 +219,14 @@ async fn stopping_returns_the_accept_error() {
 	let held = fill_descriptor_table();
 
 	// Act
-	let _waiting = socket.connect(serving.address).await.unwrap();
+	// The connection only has to reach the queue to make accept fail. Once the
+	// server stops it closes the listener, and Linux resets queued connections,
+	// so the client may see the reset before it sees the handshake complete.
+	let _waiting = match socket.connect(serving.address).await {
+		Ok(stream) => Some(stream),
+		Err(error) if error.kind() == io::ErrorKind::ConnectionReset => None,
+		Err(error) => panic!("unexpected connect error: {error}"),
+	};
 	let result = tokio::time::timeout(Duration::from_secs(5), serving.finished())
 		.await
 		.expect("the server should stop on the first failed accept");
