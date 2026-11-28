@@ -344,6 +344,42 @@ async fn msw_integration_tests() {
 		worker.stop().await;
 	}
 
+	// === Scenario 11b: Header matchers see custom request headers ===
+	{
+		let worker = MockServiceWorker::new();
+		worker.handle(
+			rest::get("/api/keyed")
+				.header("x-api-key", "canary")
+				.respond(MockResponse::text("keyed")),
+		);
+		worker.start().await;
+
+		let headers = web_sys::Headers::new().unwrap();
+		headers.set("X-Api-Key", "canary").unwrap();
+		let opts = RequestInit::new();
+		opts.set_method("GET");
+		opts.set_headers(&headers);
+		let window = web_sys::window().unwrap();
+		let resp: Response = JsFuture::from(window.fetch_with_str_and_init("/api/keyed", &opts))
+			.await
+			.unwrap()
+			.unchecked_into();
+		let body = JsFuture::from(resp.text().unwrap())
+			.await
+			.unwrap()
+			.as_string()
+			.unwrap_or_default();
+
+		assert_eq!(resp.status(), 200);
+		assert_eq!(body, "keyed");
+		let calls = worker.all_calls();
+		assert_eq!(
+			calls[0].headers.get("x-api-key").map(String::as_str),
+			Some("canary")
+		);
+		worker.stop().await;
+	}
+
 	// === Scenario 12: Model clients decode structured, legacy, and raw errors in order ===
 	#[cfg(feature = "model-server-fnset-msw")]
 	{

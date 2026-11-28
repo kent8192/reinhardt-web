@@ -86,6 +86,30 @@ impl UrlMatcher {
 	}
 }
 
+impl UrlMatcher {
+	/// Match paths against a regular expression, without the caller depending on
+	/// the `regex` crate.
+	///
+	/// # Panics
+	///
+	/// Panics if `pattern` is not a valid regular expression.
+	pub fn regex(pattern: &str) -> Self {
+		UrlMatcher::Regex(Regex::new(pattern).expect("MSW: invalid path regular expression"))
+	}
+}
+
+impl From<Regex> for UrlMatcher {
+	fn from(regex: Regex) -> Self {
+		UrlMatcher::Regex(regex)
+	}
+}
+
+impl From<String> for UrlMatcher {
+	fn from(pattern: String) -> Self {
+		UrlMatcher::from(pattern.as_str())
+	}
+}
+
 impl From<&str> for UrlMatcher {
 	fn from(pattern: &str) -> Self {
 		// Normalize the pattern using the same path-extraction logic used during matching,
@@ -156,6 +180,13 @@ mod tests {
 		let matcher: UrlMatcher = "/api/users/:id".into();
 		assert!(!matcher.matches("/api/users"));
 		assert!(!matcher.matches("/api/users/42/extra"));
+	}
+
+	#[rstest]
+	fn regex_constructor_matches_paths() {
+		let matcher = UrlMatcher::regex(r"^/servers/[^/]+/mcp$");
+		assert!(matcher.matches("/servers/abc/mcp?x=1"));
+		assert!(!matcher.matches("/servers/abc/other"));
 	}
 
 	#[rstest]

@@ -9,7 +9,7 @@ use std::cell::{Cell, Ref, RefCell};
 use std::rc::Rc;
 
 #[cfg(native)]
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 #[cfg(native)]
 use std::sync::{Arc, Mutex, MutexGuard};
 
@@ -30,6 +30,50 @@ pub(crate) type ResponseFn =
 #[cfg(wasm)]
 pub(crate) type ResponseFn =
 	dyn Fn(&super::handler::InterceptedRequest) -> super::response::MockResponse;
+
+/// A request predicate registered with [`RestHandlerBuilder::matching`](super::rest::RestHandlerBuilder::matching).
+#[cfg(native)]
+pub(crate) type PredicateFn = dyn Fn(&super::handler::InterceptedRequest) -> bool + Send + Sync;
+
+#[cfg(wasm)]
+pub(crate) type PredicateFn = dyn Fn(&super::handler::InterceptedRequest) -> bool;
+
+/// Counts the requests a handler answered, for call expectations.
+#[cfg(wasm)]
+pub(crate) struct HitCounter(Cell<usize>);
+
+#[cfg(wasm)]
+impl HitCounter {
+	pub(crate) fn new() -> Self {
+		Self(Cell::new(0))
+	}
+
+	pub(crate) fn increment(&self) {
+		self.0.set(self.0.get() + 1);
+	}
+
+	pub(crate) fn get(&self) -> usize {
+		self.0.get()
+	}
+}
+
+#[cfg(native)]
+pub(crate) struct HitCounter(AtomicUsize);
+
+#[cfg(native)]
+impl HitCounter {
+	pub(crate) fn new() -> Self {
+		Self(AtomicUsize::new(0))
+	}
+
+	pub(crate) fn increment(&self) {
+		self.0.fetch_add(1, Ordering::SeqCst);
+	}
+
+	pub(crate) fn get(&self) -> usize {
+		self.0.load(Ordering::SeqCst)
+	}
+}
 
 #[cfg(wasm)]
 pub(crate) struct OnceFlag(Cell<bool>);
@@ -88,6 +132,14 @@ impl SharedHandlers {
 	pub(crate) fn borrow(&self) -> Ref<'_, Vec<Box<dyn ErasedHandler>>> {
 		self.0.borrow()
 	}
+
+	pub(crate) fn unmet_expectations(&self) -> Vec<String> {
+		self.0
+			.borrow()
+			.iter()
+			.filter_map(|handler| handler.unmet_expectation())
+			.collect()
+	}
 }
 
 #[cfg(native)]
@@ -113,6 +165,18 @@ impl SharedHandlers {
 
 	pub(crate) fn lock(&self) -> MutexGuard<'_, Vec<Box<dyn ErasedHandler>>> {
 		self.0.lock().expect("MSW handler lock poisoned")
+	}
+
+	/// Like [`Self::lock`], but usable from `Drop` after a panic poisoned the lock.
+	pub(crate) fn unmet_expectations(&self) -> Vec<String> {
+		let handlers = match self.0.lock() {
+			Ok(handlers) => handlers,
+			Err(poisoned) => poisoned.into_inner(),
+		};
+		handlers
+			.iter()
+			.filter_map(|handler| handler.unmet_expectation())
+			.collect()
 	}
 }
 

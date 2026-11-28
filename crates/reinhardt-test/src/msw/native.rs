@@ -122,12 +122,18 @@ impl MockServiceWorker {
 	}
 
 	/// Remove all handlers and recorded requests.
+	///
+	/// Expectations set with `expect(n)` are removed unchecked; call `verify()`
+	/// first to check them.
 	pub fn reset(&self) {
 		self.handlers.clear();
 		self.recorder.clear();
 	}
 
 	/// Remove all handlers but keep recorded requests.
+	///
+	/// Expectations set with `expect(n)` are removed unchecked; call `verify()`
+	/// first to check them.
 	pub fn reset_handlers(&self) {
 		self.handlers.clear();
 	}
@@ -184,6 +190,17 @@ impl MockServiceWorker {
 	pub fn all_calls(&self) -> Vec<RecordedRequest> {
 		self.recorder.all()
 	}
+
+	/// Panics if a handler registered with `expect(n)` did not answer exactly
+	/// `n` requests. Dropping the worker runs the same check.
+	pub fn verify(&self) {
+		let unmet = self.handlers.unmet_expectations();
+		assert!(
+			unmet.is_empty(),
+			"MockServiceWorker: unmet call expectations:\n{}",
+			unmet.join("\n")
+		);
+	}
 }
 
 impl Default for MockServiceWorker {
@@ -201,6 +218,10 @@ impl Drop for MockServiceWorker {
 			.take()
 		{
 			runtime.handle.abort();
+		}
+		// Check expectations unless the test is already failing.
+		if !std::thread::panicking() {
+			self.verify();
 		}
 	}
 }

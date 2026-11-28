@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use super::handler::{InterceptedRequest, Method, RestHandler};
+use super::handler::{InterceptedRequest, Method, RequestRules, RestHandler};
 use super::matcher::UrlMatcher;
 use super::response::MockResponse;
 
@@ -37,6 +37,7 @@ pub struct RestHandlerBuilder {
 	matcher: UrlMatcher,
 	once: bool,
 	delay: Option<Duration>,
+	rules: RequestRules,
 }
 
 impl RestHandlerBuilder {
@@ -46,6 +47,7 @@ impl RestHandlerBuilder {
 			matcher,
 			once: false,
 			delay: None,
+			rules: RequestRules::new(),
 		}
 	}
 
@@ -61,6 +63,76 @@ impl RestHandlerBuilder {
 		self
 	}
 
+	/// Match only requests that carry this header value. Header names are
+	/// compared case-insensitively.
+	pub fn header(self, name: impl Into<String>, value: impl Into<String>) -> Self {
+		let name = name.into().to_ascii_lowercase();
+		let value = value.into();
+		let condition = format!("header {name}: {value}");
+		self.condition(
+			condition,
+			Box::new(move |request: &InterceptedRequest| {
+				request
+					.headers
+					.get(&name)
+					.is_some_and(|actual| *actual == value)
+			}),
+		)
+	}
+
+	/// Match only requests whose body contains this text.
+	pub fn body_contains(self, needle: impl Into<String>) -> Self {
+		let needle = needle.into();
+		let condition = format!("body contains {needle:?}");
+		self.condition(
+			condition,
+			Box::new(move |request: &InterceptedRequest| {
+				request
+					.body
+					.as_deref()
+					.is_some_and(|body| body.contains(&needle))
+			}),
+		)
+	}
+
+	/// Match only requests for which `predicate` returns `true`.
+	///
+	/// The predicate runs while the worker's handler list is locked, so it must
+	/// not call back into the worker, and a panic in it poisons the worker.
+	#[cfg(native)]
+	pub fn matching(
+		self,
+		predicate: impl Fn(&InterceptedRequest) -> bool + Send + Sync + 'static,
+	) -> Self {
+		self.condition("custom predicate".to_string(), Box::new(predicate))
+	}
+
+	/// Match only requests for which `predicate` returns `true`.
+	#[cfg(wasm)]
+	pub fn matching(self, predicate: impl Fn(&InterceptedRequest) -> bool + 'static) -> Self {
+		self.condition("custom predicate".to_string(), Box::new(predicate))
+	}
+
+	/// Expect this handler to answer exactly `calls` requests. The worker checks
+	/// the expectation in `verify()` and when it is dropped (unless the thread is
+	/// already panicking).
+	///
+	/// Only requests this handler answers count. `reset()` and
+	/// `reset_handlers()` remove the handler together with its expectation, so
+	/// call `verify()` first if the expectation should still be checked.
+	///
+	/// A [`once`](Self::once) handler answers at most one request, so combining
+	/// it with an expectation above one can never be met.
+	pub fn expect(mut self, calls: usize) -> Self {
+		self.rules.expected = Some(calls);
+		self
+	}
+
+	fn condition(mut self, description: String, predicate: Box<super::state::PredicateFn>) -> Self {
+		self.rules.predicates.push((description, predicate));
+		self
+	}
+
 	/// Respond with a fixed response.
 	pub fn respond(self, response: impl Into<MockResponse>) -> RestHandler {
 		let response = response.into();
@@ -70,6 +142,7 @@ impl RestHandlerBuilder {
 			Box::new(move |_| response.clone()),
 			self.once,
 			self.delay,
+			self.rules,
 		)
 	}
 
@@ -85,6 +158,7 @@ impl RestHandlerBuilder {
 			Box::new(f),
 			self.once,
 			self.delay,
+			self.rules,
 		)
 	}
 
@@ -100,12 +174,13 @@ impl RestHandlerBuilder {
 			Box::new(f),
 			self.once,
 			self.delay,
+			self.rules,
 		)
 	}
 
 	/// Simulate a network error (rejected Promise with TypeError).
 	pub fn network_error(self) -> RestHandler {
-		RestHandler::network_error(self.method, self.matcher, self.once)
+		RestHandler::network_error(self.method, self.matcher, self.once, self.rules)
 	}
 }
 
