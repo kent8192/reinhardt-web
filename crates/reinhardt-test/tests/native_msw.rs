@@ -6,7 +6,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use reinhardt_test::msw::{MockResponse, MockServiceWorker, UnhandledPolicy, rest};
+use reinhardt_test::msw::{MockResponse, MockServiceWorker, UnhandledPolicy, UrlMatcher, rest};
 use serde_json::json;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
@@ -558,4 +558,55 @@ async fn native_worker_checks_expectations_when_dropped() {
 	reqwest::get(endpoint(&worker, "/never"))
 		.await
 		.expect("mock request should succeed");
+}
+
+#[tokio::test]
+async fn native_worker_routes_by_path_regex() {
+	// Arrange
+	let worker = MockServiceWorker::new();
+	worker.handle(
+		rest::get(UrlMatcher::regex(r"^/servers/[^/]+/mcp$"))
+			.respond(MockResponse::json(json!({ "server": "matched" }))),
+	);
+	worker.start().await;
+
+	// Act
+	let matched = reqwest::get(endpoint(&worker, "/servers/abc/mcp"))
+		.await
+		.expect("mock request should succeed");
+	let unmatched = reqwest::get(endpoint(&worker, "/servers/abc/other"))
+		.await
+		.expect("mock request should succeed");
+
+	// Assert
+	assert_eq!(matched.status().as_u16(), 200);
+	let body: serde_json::Value = matched.json().await.expect("JSON body");
+	assert_eq!(body, json!({ "server": "matched" }));
+	assert_eq!(unmatched.status().as_u16(), 500);
+}
+
+#[tokio::test]
+async fn native_worker_expectation_counts_only_requests_a_once_handler_answered() {
+	// Arrange
+	let worker = MockServiceWorker::new();
+	worker.handle(
+		rest::get("/api/token")
+			.once()
+			.expect(1)
+			.respond(MockResponse::empty()),
+	);
+	worker.start().await;
+
+	// Act: the second request finds the handler consumed.
+	let first = reqwest::get(endpoint(&worker, "/api/token"))
+		.await
+		.expect("mock request should succeed");
+	let second = reqwest::get(endpoint(&worker, "/api/token"))
+		.await
+		.expect("mock request should succeed");
+
+	// Assert
+	assert_eq!(first.status().as_u16(), 200);
+	assert_eq!(second.status().as_u16(), 500);
+	worker.verify();
 }

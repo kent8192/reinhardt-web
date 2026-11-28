@@ -120,6 +120,9 @@ impl RestHandlerBuilder {
 	/// Only requests this handler answers count. `reset()` and
 	/// `reset_handlers()` remove the handler together with its expectation, so
 	/// call `verify()` first if the expectation should still be checked.
+	///
+	/// A [`once`](Self::once) handler answers at most one request, so combining
+	/// it with an expectation above one can never be met.
 	pub fn expect(mut self, calls: usize) -> Self {
 		self.rules.expected = Some(calls);
 		self
