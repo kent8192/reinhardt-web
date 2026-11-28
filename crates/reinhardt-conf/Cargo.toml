@@ -70,7 +70,9 @@ async = ["async-trait", "tokio"]
 dynamic-redis = ["async", "redis"]
 dynamic-database = ["async", "reinhardt-query", "sqlx"]
 vault = ["async", "reqwest"]
-aws-secrets = ["async", "aws-config", "aws-sdk-secretsmanager", "time"]
+# `aws-secrets` still enables the empty `aws-smithy-runtime` feature so the
+# public feature graph stays semver-compatible with earlier releases.
+aws-secrets = ["async", "aws-config", "aws-sdk-secretsmanager", "aws-smithy-runtime", "time"]
 # Preserve the former implicit dependency feature for existing feature selections.
 aws-smithy-runtime = []
 azure-keyvault = ["async", "azure_identity", "azure_security_keyvault_secrets", "futures"]

@@ -34,7 +34,9 @@ oauth = []
 token = []
 basic = ["dep:argon2", "dep:password-hash"]
 argon2-hasher = ["basic"]
-social = ["dep:jsonwebtoken"]
+# `social` still enables the empty `p256` feature so the public feature graph
+# stays semver-compatible with releases that shipped the p256 dependency.
+social = ["dep:jsonwebtoken", "p256"]
 # Kept so existing feature selections still resolve; ES256 verification uses
 # jsonwebtoken, so this feature no longer activates a p256 dependency.
 p256 = []
