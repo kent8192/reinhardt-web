@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.23](https://github.com/kent8192/reinhardt-web/compare/reinhardt-graphql@v0.4.0-alpha.22...reinhardt-graphql@v0.4.0-alpha.23) - 2026-11-28
+
+### Fixed
+
+- *(graphql)* remove the unused async-graphql-warp dependency
+
 ## [0.4.0-alpha.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-graphql@v0.4.0-alpha.15...reinhardt-graphql@v0.4.0-alpha.16) - 2026-09-23
 
 ### Documentation

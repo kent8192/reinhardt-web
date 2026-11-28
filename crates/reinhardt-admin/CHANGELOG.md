@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.23](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin@v0.4.0-alpha.22...reinhardt-admin@v0.4.0-alpha.23) - 2026-11-28
+
+### Documentation
+
+- *(admin)* document browser WASM verification
+
+### Maintenance
+
+- merge develop/0.4.0 into admin WASM build fix
+
+### Testing
+
+- *(admin)* align browser validation fixtures with typed events
+- *(admin)* assert relation selections through browser FormData
+
 ## [0.4.0-alpha.22](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin@v0.4.0-alpha.21...reinhardt-admin@v0.4.0-alpha.22) - 2026-10-22
 
 ### Documentation
