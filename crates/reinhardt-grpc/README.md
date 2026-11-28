@@ -15,11 +15,11 @@ Add `reinhardt` to your `Cargo.toml`:
 <!-- reinhardt-version-sync:3 -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.4.0-alpha.22", features = ["grpc"] }
+reinhardt = { version = "0.4.0-alpha.23", features = ["grpc"] }
 
 # Or use a preset:
-# reinhardt = { version = "0.4.0-alpha.22", features = ["standard"] }  # Recommended
-# reinhardt = { version = "0.4.0-alpha.22", features = ["full"] }      # All features
+# reinhardt = { version = "0.4.0-alpha.23", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.4.0-alpha.23", features = ["full"] }      # All features
 ```
 
 Then import gRPC features:
@@ -221,7 +221,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 <!-- reinhardt-version-sync -->
 ```toml
 [dependencies]
-reinhardt-grpc = "0.4.0-alpha.22"
+reinhardt-grpc = "0.4.0-alpha.23"
 tonic = "0.12"
 prost = "0.13"
 
@@ -254,7 +254,7 @@ Facade consumers can enable `grpc` alongside a preset that includes DI:
 <!-- reinhardt-version-sync -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.4.0-alpha.22", package = "reinhardt-web", default-features = false, features = ["minimal", "grpc"] }
+reinhardt = { version = "0.4.0-alpha.23", package = "reinhardt-web", default-features = false, features = ["minimal", "grpc"] }
 ```
 
 Direct `reinhardt-grpc` consumers can instead enable this crate's `di`
@@ -263,8 +263,8 @@ feature explicitly and depend on `reinhardt-di` for DI types:
 <!-- reinhardt-version-sync:2 -->
 ```toml
 [dependencies]
-reinhardt-grpc = { version = "0.4.0-alpha.22", features = ["di"] }
-reinhardt-di = "0.4.0-alpha.22"
+reinhardt-grpc = { version = "0.4.0-alpha.23", features = ["di"] }
+reinhardt-di = "0.4.0-alpha.23"
 ```
 
 The basic example below uses the facade configuration. Direct consumers should

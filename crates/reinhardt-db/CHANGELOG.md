@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.23](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.4.0-alpha.22...reinhardt-db@v0.4.0-alpha.23) - 2026-11-28
+
+### Fixed
+
+- *(deps)* remove legacy aws tls from the stable line
+
+### Maintenance
+
+- *(sync)* merge main into develop/0.4.0
+- *(sync)* refresh develop/0.4.0 merge base
+
 ## [0.4.0-alpha.22](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.4.0-alpha.21...reinhardt-db@v0.4.0-alpha.22) - 2026-10-22
 
 ### Added

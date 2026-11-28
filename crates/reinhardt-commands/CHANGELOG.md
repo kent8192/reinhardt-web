@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.23](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.4.0-alpha.22...reinhardt-commands@v0.4.0-alpha.23) - 2026-11-28
+
+### Fixed
+
+- *(commands)* pin the shell's Unicode crates as a matching pair
+
 ## [0.4.0-alpha.22](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.4.0-alpha.21...reinhardt-commands@v0.4.0-alpha.22) - 2026-10-22
 
 ### Added

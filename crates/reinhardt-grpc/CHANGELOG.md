@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.23](https://github.com/kent8192/reinhardt-web/compare/reinhardt-grpc@v0.4.0-alpha.22...reinhardt-grpc@v0.4.0-alpha.23) - 2026-11-28
+
+### Added
+
+- *(grpc)* add mutual TLS transport and service identity authorization
+
+### Fixed
+
+- *(grpc)* hide client private keys in TLS configuration diagnostics
+- *(grpc)* select TLS provider in mixed dependency graphs
+
+### Testing
+
+- *(grpc)* verify facade-only mutual TLS consumer compilation
+- *(grpc)* cover server TLS private key redaction
+
 ### Added
 
 - Optional `tls` transport with mandatory mutual TLS, HTTPS-only client channels, URI SAN peer identities, and per-service authorization interceptors. Facade users enable `grpc-tls`.

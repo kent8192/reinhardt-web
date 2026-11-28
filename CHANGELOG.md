@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.23](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.4.0-alpha.22...reinhardt-web@v0.4.0-alpha.23) - 2026-11-28
+
+### Documentation
+
+- add release announcement(s)
+
+### Fixed
+
+- *(ci)* give the facade protocol fixture matrix a cold-build timeout
+- *(test)* retry the facade binary-model consumer after offline cache misses
+- *(test)* retry the REST scaffold routing consumer after offline cache misses
+- *(server)* accept again at once after a per-connection accept error
+
+### Maintenance
+
+- *(db)* merge develop into statement cache regressions
+
+### Testing
+
+- *(db)* build cache regression SQL with query builders
+- *(db)* reuse shared PostgreSQL cache regression fixture
+- *(server)* accept a reset connect when the server stops on accept failure
+
 ### Added
 
 - *(auth)* [**breaking**] allow explicitly opted-in OpenID Provider clients to issue and rotate refresh tokens using the shared OAuth token-family policy. `OidcTokenResponse` now includes `refresh_token: Option<String>`; callers that construct response literals must add `refresh_token: None`. Refresh responses omit a new ID Token and retain the original UserInfo subject. Disabled host accounts cannot refresh, and inconsistent reuse revokes only the affected family.

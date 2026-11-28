@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.23](https://github.com/kent8192/reinhardt-web/compare/reinhardt-server@v0.4.0-alpha.22...reinhardt-server@v0.4.0-alpha.23) - 2026-11-28
+
+### Added
+
+- *(server)* configure request body budgets per HTTP listener
+
+### Fixed
+
+- *(server)* retry a failed accept instead of ending HttpServer
+- *(server)* accept again at once after a per-connection accept error
+
+### Testing
+
+- *(server)* accept a reset connect when the server stops on accept failure
+
 ### Added
 
 - `HttpServer::with_max_body_size` and `Http2Server::with_max_body_size` configure listener body budgets while preserving the 10 MiB default and per-request admission overrides. Oversized bodies receive HTTP 413 before handler execution.
